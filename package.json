@@ -1,0 +1,21 @@
+{
+  "name": "apple-music-party-radio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n party,client -c blue,green \"npx partykit dev\" \"npm run dev --prefix client\"",
+    "build": "npm run build --prefix client",
+    "deploy": "npx partykit deploy && npm run build",
+    "generate-token": "node scripts/generate-token.mjs",
+    "install:all": "npm install && npm install --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "partykit": "^0.0.107"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
