@@ -250,6 +250,7 @@ export default function App() {
           <span className="text-white font-semibold">Apple Music Party Radio</span>
         </div>
         <div className="text-muted text-xs flex items-center gap-3">
+          <span className="text-muted/40 font-mono">{__COMMIT__}</span>
           {renamingDJ ? (
             <input
               ref={renameRef}

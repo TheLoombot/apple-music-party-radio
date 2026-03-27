@@ -1,3 +1,5 @@
+declare const __COMMIT__: string
+
 // Minimal type declarations for MusicKit JS v3
 // Full docs: https://developer.apple.com/documentation/musickitjs
 
