@@ -83,9 +83,7 @@ export default function App() {
     stationSocket.onPoolUpdate = setPool
     playbackLoop.start(currentStationId)
 
-    window.history.replaceState(null, "", `${import.meta.env.BASE_URL}${currentStationId}`)
-
-    return () => playbackLoop.stop()
+return () => playbackLoop.stop()
   }, [currentStationId, appState])
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
