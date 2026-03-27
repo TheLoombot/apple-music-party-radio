@@ -42,7 +42,7 @@ export async function searchCatalog(term: string, storefront = "us"): Promise<Se
 
   const songs: SearchItem[] = (data.results?.songs?.data ?? [])
     .map((item: any) => { const t = normalizeTrack(item); return t ? { kind: "song" as const, track: t } : null })
-    .filter((x): x is SearchItem => x !== null)
+    .filter((x: SearchItem | null): x is SearchItem => x !== null)
 
   const albums: SearchItem[] = (data.results?.albums?.data ?? []).map((item: any) => ({
     kind: "album" as const,
@@ -79,7 +79,7 @@ export async function getAlbumTracks(albumId: string, storefront = "us"): Promis
   )
   if (!res.ok) return []
   const data = await res.json()
-  return (data.data ?? []).map(normalizeTrack).filter((t): t is Track => t !== null)
+  return (data.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null)
 }
 
 export async function getPlaylistTracks(playlistId: string, storefront = "us"): Promise<Track[]> {
@@ -89,7 +89,7 @@ export async function getPlaylistTracks(playlistId: string, storefront = "us"): 
   )
   if (!res.ok) return []
   const data = await res.json()
-  return (data.data ?? []).map(normalizeTrack).filter((t): t is Track => t !== null)
+  return (data.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null)
 }
 
 // Library tracks use playParams.catalogId, not item.id
@@ -147,7 +147,7 @@ export async function getLibraryPlaylistTracks(playlistId: string): Promise<Trac
   if (!res.ok) return []
   const data = await res.json()
   const tracks: (Track | null)[] = (data.data ?? []).map(normalizeLibraryTrack)
-  return tracks.filter((t): t is Track => t !== null)
+  return tracks.filter((t: Track | null): t is Track => t !== null)
 }
 
 export async function getChartSongs(storefront = "us"): Promise<Track[]> {
@@ -158,7 +158,7 @@ export async function getChartSongs(storefront = "us"): Promise<Track[]> {
   )
   if (!res.ok) return []
   const data = await res.json()
-  return (data.results?.songs?.[0]?.data ?? []).map(normalizeTrack).filter((t): t is Track => t !== null)
+  return (data.results?.songs?.[0]?.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null)
 }
 
 export async function getRecommendedPlaylists(): Promise<PlaylistResult[]> {
