@@ -27,6 +27,7 @@ jobs:
       - run: npx partykit deploy
         env:
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
+          PARTYKIT_LOGIN: theloombot
 
       - run: npm run build --prefix client
         env:
