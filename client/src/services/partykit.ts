@@ -65,8 +65,8 @@ export class StationSocket {
     this.send({ type: "expire_track", key, addToPool })
   }
 
-  removeFromPool(catalogId: string) {
-    this.send({ type: "remove_from_pool", catalogId })
+  removeFromPool(isrc: string) {
+    this.send({ type: "remove_from_pool", isrc })
   }
 
   clearPool() {

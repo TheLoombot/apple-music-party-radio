@@ -3,18 +3,20 @@ import { SetupScreen } from "./components/SetupScreen"
 import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
 import { SearchTracks, PoolLibrary } from "./components/AddTracks"
+import { Discovery } from "./components/Discovery"
 import { StationList } from "./components/StationList"
 import { initMusicKit, authorize, isAuthorized } from "./services/musickit"
 import { getUserStorefront } from "./services/appleMusic"
 import { getUserId, getDisplayName, setDisplayName } from "./services/identity"
 import { stationSocket, indexSocket } from "./services/partykit"
-import { playbackLoop } from "./services/playbackLoop"
+import { PlaybackLoop } from "./services/playbackLoop"
+import { AppleMusicPlayer } from "./services/appleMusicPlayer"
+import { AppleMusicCatalog } from "./services/catalog"
 import type { AppUser, Station, QueueItem, Track } from "./types"
 
 type AppState = "loading" | "setup" | "naming" | "auth" | "ready"
 
 const DEV_TOKEN_SET = !!import.meta.env.VITE_APPLE_DEVELOPER_TOKEN
-
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>("loading")
@@ -31,6 +33,8 @@ export default function App() {
   const [renamingDJ, setRenamingDJ] = useState(false)
   const [renameInput, setRenameInput] = useState("")
   const renameRef = useRef<HTMLInputElement>(null)
+  const playbackLoop = useRef(new PlaybackLoop(new AppleMusicPlayer()))
+  const catalog = useRef(new AppleMusicCatalog("us"))
 
   // Boot: check config, init MusicKit
   useEffect(() => {
@@ -46,12 +50,10 @@ export default function App() {
           setAppState("naming")
           return
         }
-        // If MusicKit already has a valid session, skip the auth screen entirely
         if (isAuthorized()) {
           console.log("[boot] session restored, completing auth silently")
           await completeAuth()
         } else {
-          console.warn("[boot] not authorized after init — showing auth screen")
           setAppState("auth")
         }
       })
@@ -61,29 +63,24 @@ export default function App() {
       })
   }, [])
 
-  // Once authorized + named, wire up PartyKit connections
+  // Once ready, wire up PartyKit
   useEffect(() => {
     if (appState !== "ready" || !user) return
-
-    // Station discovery
     indexSocket.onStationsUpdate = setStations
     indexSocket.connect()
     indexSocket.register(user.uid, user.displayName, user.storefront)
-
     return () => indexSocket.disconnect()
   }, [appState, user])
 
   // Start playback loop when station changes
   useEffect(() => {
     if (appState !== "ready" || !currentStationId) return
-
-    playbackLoop.onNowPlayingChange = setNowPlaying
-    playbackLoop.onQueueChange = setUpNext
-    playbackLoop.onPlaybackBlocked = () => setPlaybackBlocked(true)
+    playbackLoop.current.onNowPlayingChange = setNowPlaying
+    playbackLoop.current.onQueueChange = setUpNext
+    playbackLoop.current.onPlaybackBlocked = () => setPlaybackBlocked(true)
     stationSocket.onPoolUpdate = setPool
-    playbackLoop.start(currentStationId)
-
-return () => playbackLoop.stop()
+    playbackLoop.current.start(currentStationId)
+    return () => playbackLoop.current.stop()
   }, [currentStationId, appState])
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
@@ -95,10 +92,11 @@ return () => playbackLoop.stop()
   }
 
   const completeAuth = async () => {
-    await authorize()  // silent if already authorized, prompts if not
+    await authorize()
     const storefront = await getUserStorefront()
     const uid = getUserId()
     const displayName = getDisplayName() ?? `DJ ${uid.slice(0, 6)}`
+    catalog.current = new AppleMusicCatalog(storefront)
     setUser({ uid, storefront, displayName })
     setCurrentStationId(uid)
     setAppState("ready")
@@ -122,8 +120,8 @@ return () => playbackLoop.stop()
     stationSocket.removeTrack(item.key)
   }, [])
 
-  const handleRemoveFromPool = useCallback((catalogId: string) => {
-    stationSocket.removeFromPool(catalogId)
+  const handleRemoveFromPool = useCallback((isrc: string) => {
+    stationSocket.removeFromPool(isrc)
   }, [])
 
   const handleClearPool = useCallback(() => {
@@ -136,14 +134,14 @@ return () => playbackLoop.stop()
 
   const handleMuteToggle = useCallback(() => {
     setIsMuted(prev => {
-      playbackLoop.setMuted(!prev)
+      playbackLoop.current.setMuted(!prev)
       return !prev
     })
   }, [])
 
   const handleResume = useCallback(async () => {
     setPlaybackBlocked(false)
-    await playbackLoop.resume()
+    await playbackLoop.current.resume()
   }, [])
 
   const handleStartRename = useCallback(() => {
@@ -167,6 +165,7 @@ return () => playbackLoop.stop()
     setNowPlaying(null)
     setUpNext([])
     setPlaybackBlocked(false)
+    playbackLoop.current.enableAutoplay()
     setCurrentStationId(stationId)
   }, [currentStationId])
 
@@ -237,11 +236,10 @@ return () => playbackLoop.stop()
   if (!user) return null
 
   const isOwnStation = currentStationId === user.uid
-  const currentStation = stations.find(s => s.id === currentStationId)
-  const queuedCatalogIds = new Set([
-    ...(nowPlaying ? [nowPlaying.catalogId] : []),
-    ...upNext.map(i => i.catalogId)
-  ])
+  const queuedIsrcs = new Set([
+    ...(nowPlaying ? [nowPlaying.isrc] : []),
+    ...upNext.map(i => i.isrc)
+  ].filter(Boolean))
 
   return (
     <div className="min-h-screen bg-surface">
@@ -293,6 +291,11 @@ return () => playbackLoop.stop()
             stationOwner={currentStationId}
             onRemove={handleRemoveTrack}
           />
+          <Discovery
+            catalog={catalog.current}
+            queuedIsrcs={queuedIsrcs}
+            onAddTrack={handleAddTrack}
+          />
         </div>
         <div className="space-y-4">
           <StationList
@@ -304,17 +307,19 @@ return () => playbackLoop.stop()
           />
           <SearchTracks
             currentUser={user}
+            catalog={catalog.current}
             onAddTrack={handleAddTrack}
-            queuedCatalogIds={queuedCatalogIds}
+            queuedIsrcs={queuedIsrcs}
           />
           <PoolLibrary
             currentUser={user}
+            catalog={catalog.current}
             stationOwner={currentStationId}
             pool={pool}
             onAddTrack={handleAddTrack}
             onRemoveFromPool={handleRemoveFromPool}
             onClearPool={handleClearPool}
-            queuedCatalogIds={queuedCatalogIds}
+            queuedIsrcs={queuedIsrcs}
           />
         </div>
       </div>

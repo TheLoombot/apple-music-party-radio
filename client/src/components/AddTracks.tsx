@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Trash2, ChevronRight, ChevronLeft, Disc3, ListMusic } from "lucide-react"
-import { searchCatalog, getAlbumTracks, getPlaylistTracks, getLibraryPlaylists, getLibraryPlaylistTracks } from "../services/appleMusic"
 import { artworkUrl } from "../services/musickit"
-import { formatDuration } from "../utils"
+import { TrackRow } from "./TrackRow"
+import type { MusicCatalog } from "../services/catalog"
 import type { Track, SearchItem, AlbumResult, PlaylistResult, LibraryPlaylistResult, AppUser } from "../types"
 
 type BrowseTarget = (AlbumResult | PlaylistResult | LibraryPlaylistResult) & { tracks: Track[] | null }
@@ -12,11 +12,12 @@ type BrowseTarget = (AlbumResult | PlaylistResult | LibraryPlaylistResult) & { t
 
 interface SearchProps {
   currentUser: AppUser
+  catalog: MusicCatalog
   onAddTrack: (track: Track) => void
-  queuedCatalogIds: Set<string>
+  queuedIsrcs: Set<string>
 }
 
-export function SearchTracks({ currentUser, onAddTrack, queuedCatalogIds }: SearchProps) {
+export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: SearchProps) {
   const [query, setQuery] = useState("")
   const [searchResults, setSearchResults] = useState<SearchItem[]>([])
   const [searching, setSearching] = useState(false)
@@ -33,24 +34,24 @@ export function SearchTracks({ currentUser, onAddTrack, queuedCatalogIds }: Sear
     debounceRef.current = setTimeout(async () => {
       setSearching(true)
       try {
-        setSearchResults(await searchCatalog(query, currentUser.storefront))
+        setSearchResults(await catalog.search(query))
       } finally {
         setSearching(false)
       }
     }, 350)
 
     return () => clearTimeout(debounceRef.current)
-  }, [query, currentUser.storefront])
+  }, [query, catalog])
 
   async function handleBrowse(item: AlbumResult | PlaylistResult | LibraryPlaylistResult) {
     setBrowseTarget({ ...item, tracks: null })
     let tracks: Track[]
     if (item.kind === "album") {
-      tracks = await getAlbumTracks(item.id, currentUser.storefront)
+      tracks = await catalog.getAlbumTracks(item.id)
     } else if (item.kind === "library-playlist") {
-      tracks = await getLibraryPlaylistTracks(item.id)
+      tracks = await catalog.getLibraryPlaylistTracks(item.id)
     } else {
-      tracks = await getPlaylistTracks(item.id, currentUser.storefront)
+      tracks = await catalog.getPlaylistTracks(item.id)
     }
     setBrowseTarget({ ...item, tracks })
   }
@@ -84,7 +85,7 @@ export function SearchTracks({ currentUser, onAddTrack, queuedCatalogIds }: Sear
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search Apple Music…"
+            placeholder="Search music…"
             className="w-full bg-surface text-white placeholder-muted rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent pr-8"
           />
           {(query || browseTarget) && (
@@ -134,10 +135,10 @@ export function SearchTracks({ currentUser, onAddTrack, queuedCatalogIds }: Sear
                 <ul>
                   {browseTarget.tracks.map((track, i) => (
                     <TrackRow
-                      key={track.catalogId}
+                      key={track.isrc || track.platformIds.apple || track.name}
                       track={track}
                       trackNumber={browseTarget.kind === "album" ? i + 1 : undefined}
-                      added={queuedCatalogIds.has(track.catalogId)}
+                      added={queuedIsrcs.has(track.isrc)}
                       onAdd={() => onAddTrack(track)}
                     />
                   ))}
@@ -164,9 +165,9 @@ export function SearchTracks({ currentUser, onAddTrack, queuedCatalogIds }: Sear
                   {searchResults.map((item) =>
                     item.kind === "song" ? (
                       <TrackRow
-                        key={item.track.catalogId}
+                        key={item.track.isrc || item.track.platformIds.apple || item.track.name}
                         track={item.track}
-                        added={queuedCatalogIds.has(item.track.catalogId)}
+                        added={queuedIsrcs.has(item.track.isrc)}
                         onAdd={() => onAddTrack(item.track)}
                       />
                     ) : (
@@ -206,15 +207,16 @@ export function SearchTracks({ currentUser, onAddTrack, queuedCatalogIds }: Sear
 
 interface PoolLibraryProps {
   currentUser: AppUser
+  catalog: MusicCatalog
   stationOwner: string
   pool: Track[]
   onAddTrack: (track: Track) => void
-  onRemoveFromPool: (catalogId: string) => void
+  onRemoveFromPool: (isrc: string) => void
   onClearPool: () => void
-  queuedCatalogIds: Set<string>
+  queuedIsrcs: Set<string>
 }
 
-export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRemoveFromPool, onClearPool, queuedCatalogIds }: PoolLibraryProps) {
+export function PoolLibrary({ currentUser, catalog, stationOwner, pool, onAddTrack, onRemoveFromPool, onClearPool, queuedIsrcs }: PoolLibraryProps) {
   const [tab, setTab] = useState<"pool" | "library">("pool")
   const [browseTarget, setBrowseTarget] = useState<BrowseTarget | null>(null)
   const [libraryPlaylists, setLibraryPlaylists] = useState<LibraryPlaylistResult[] | null>(null)
@@ -230,7 +232,7 @@ export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRem
     if (libraryPlaylists !== null) return
     setLoadingLibrary(true)
     try {
-      setLibraryPlaylists(await getLibraryPlaylists())
+      setLibraryPlaylists(await catalog.getLibraryPlaylists())
     } finally {
       setLoadingLibrary(false)
     }
@@ -239,7 +241,7 @@ export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRem
   async function handleBrowse(item: LibraryPlaylistResult) {
     savedScroll.current = scrollRef.current?.scrollTop ?? 0
     setBrowseTarget({ ...item, tracks: null })
-    const tracks = await getLibraryPlaylistTracks(item.id)
+    const tracks = await catalog.getLibraryPlaylistTracks(item.id)
     setBrowseTarget({ ...item, tracks })
   }
 
@@ -321,11 +323,14 @@ export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRem
                 <div className="p-6 text-center text-muted text-sm">No tracks found</div>
               ) : (
                 <ul>
-                  {browseTarget.tracks.map(track => (
+                  {browseTarget.tracks.filter((t, i, arr) => {
+                    const k = t.isrc || t.platformIds.apple || t.name
+                    return arr.findIndex(x => (x.isrc || x.platformIds.apple || x.name) === k) === i
+                  }).map(track => (
                     <TrackRow
-                      key={track.catalogId}
+                      key={track.isrc || track.platformIds.apple || track.name}
                       track={track}
-                      added={queuedCatalogIds.has(track.catalogId)}
+                      added={queuedIsrcs.has(track.isrc)}
                       onAdd={() => onAddTrack(track)}
                     />
                   ))}
@@ -365,9 +370,12 @@ export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRem
                   </div>
                   <ul>
                     <AnimatePresence initial={false}>
-                      {pool.map(track => (
+                      {pool.filter((t, i, arr) => {
+                        const k = t.isrc || t.platformIds.apple || t.name
+                        return arr.findIndex(x => (x.isrc || x.platformIds.apple || x.name) === k) === i
+                      }).map(track => (
                         <motion.li
-                          key={track.catalogId}
+                          key={track.isrc || track.platformIds.apple || track.name}
                           layout
                           initial={{ opacity: 0, y: -6 }}
                           animate={{ opacity: 1, y: 0 }}
@@ -376,10 +384,10 @@ export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRem
                         >
                           <TrackRow
                             track={track}
-                            added={queuedCatalogIds.has(track.catalogId)}
+                            added={queuedIsrcs.has(track.isrc)}
                             onAdd={() => onAddTrack(track)}
-                            onRemove={isOwner ? () => onRemoveFromPool(track.catalogId) : undefined}
-                            unavailable={!isCatalogId(track.catalogId)}
+                            onRemove={isOwner ? () => onRemoveFromPool(track.isrc) : undefined}
+                            unavailable={!track.platformIds.apple}
                           />
                         </motion.li>
                       ))}
@@ -443,71 +451,6 @@ export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRem
 }
 
 // ─── Shared sub-components ────────────────────────────────────────────────────
-
-// Catalog IDs are numeric strings. Anything else (e.g. "i.xxx" library IDs)
-// means the track can't be played from the catalog.
-function isCatalogId(id: string) { return /^\d+$/.test(id) }
-
-function TrackRow({ track, trackNumber, added, onAdd, onRemove, unavailable }: {
-  track: Track
-  trackNumber?: number
-  added: boolean
-  onAdd: () => void
-  onRemove?: () => void
-  unavailable?: boolean
-}) {
-  return (
-    <div className={`flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 group ${unavailable ? "opacity-50" : ""}`}>
-      {trackNumber != null ? (
-        <span className="text-xs text-muted w-5 text-right flex-shrink-0 tabular-nums">{trackNumber}</span>
-      ) : (
-        <div className="relative w-10 h-10 rounded flex-shrink-0 overflow-hidden bg-surface">
-          {track.artworkUrl
-            ? <img src={artworkUrl(track.artworkUrl, 40)} alt="" className="w-full h-full object-cover" />
-            : <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>
-          }
-          {unavailable && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-amber-400 text-xs font-bold">
-              !
-            </div>
-          )}
-        </div>
-      )}
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm truncate ${unavailable ? "text-muted line-through" : "text-white"}`}>{track.name}</p>
-        <p className="text-muted text-xs truncate">
-          {unavailable
-            ? "No longer available"
-            : trackNumber != null ? track.artistName : `${track.artistName} — ${track.albumName}`}
-        </p>
-      </div>
-
-      <span className="text-xs text-muted tabular-nums flex-shrink-0">{formatDuration(track.durationMs)}</span>
-
-      <div className="flex items-center gap-1 flex-shrink-0">
-        {onRemove && (
-          <button
-            onClick={onRemove}
-            className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-full flex items-center justify-center text-muted hover:text-red-400 transition-all"
-            title="Remove from pool"
-          >
-            <Trash2 size={14} />
-          </button>
-        )}
-        <button
-          onClick={onAdd}
-          disabled={added || unavailable}
-          className={`w-7 h-7 rounded-full flex items-center justify-center text-sm transition-all ${
-            added ? "bg-green-500/20 text-green-400" : unavailable ? "bg-surface text-muted cursor-not-allowed" : "bg-surface text-muted hover:bg-accent hover:text-white"
-          }`}
-          title={unavailable ? "No longer available" : "Add to queue"}
-        >
-          {added ? "✓" : "+"}
-        </button>
-      </div>
-    </div>
-  )
-}
 
 function BrowsableRow({ item, onBrowse }: {
   item: AlbumResult | PlaylistResult | LibraryPlaylistResult

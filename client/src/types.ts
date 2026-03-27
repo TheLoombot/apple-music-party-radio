@@ -1,10 +1,18 @@
+export type Platform = "apple" | "spotify"
+
+export interface PlatformIds {
+  apple?: string    // Apple Music catalog ID (numeric string)
+  spotify?: string  // Spotify track ID
+}
+
 export interface Track {
-  catalogId: string
   isrc: string
+  platformIds: PlatformIds
+  addedViaPlatform: Platform
   name: string
   artistName: string
   albumName: string
-  artworkUrl: string
+  artworkUrl: string   // Apple Music: {w}x{h} template; Spotify: direct URL
   durationMs: number
 }
 
@@ -44,11 +52,12 @@ export interface Station {
   id: string            // owner's userId (= PartyKit room name)
   displayName: string
   storefront: string
-  isLive: boolean
+  liveUntil: number    // Unix ms; station is live if liveUntil > Date.now()
+  nowPlayingAddedBy?: string
 }
 
 export interface AppUser {
   uid: string
-  storefront: string
   displayName: string
+  storefront: string
 }

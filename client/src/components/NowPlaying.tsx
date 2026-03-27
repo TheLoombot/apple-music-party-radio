@@ -38,6 +38,50 @@ function useProgress(track: QueueItem | null) {
   return { progress, elapsed }
 }
 
+const BAR_DELAYS = ["0s", "0.15s", "0.3s", "0.45s"]
+const BAR_DURATIONS = ["0.7s", "0.9s", "0.75s", "0.85s"]
+
+function SoundBars({ active }: { active: boolean }) {
+  return (
+    <div className="flex items-end gap-0.5 h-4">
+      {BAR_DELAYS.map((delay, i) => (
+        <div
+          key={i}
+          className="sound-bar w-1"
+          style={{
+            height: "100%",
+            animationDelay: delay,
+            animationDuration: BAR_DURATIONS[i],
+            background: active
+              ? "linear-gradient(to top, #22c55e 0%, #eab308 60%, #fc3c44 100%)"
+              : "rgba(255,255,255,0.2)",
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+function MuteToggle({ quiet, onClick }: { quiet: boolean; onClick: () => void }) {
+  return (
+    <>
+      <SoundBars active={!quiet} />
+      <button
+        onClick={onClick}
+        className="px-3 py-1.5 rounded-xl font-bold text-sm tracking-wide transition-all bg-surface hover:opacity-80"
+        style={quiet ? {
+          background: "linear-gradient(to right, #22c55e, #eab308, #fc3c44)",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundClip: "text",
+        } : { color: "white" }}
+      >
+        {quiet ? "UNMUTE" : "MUTE"}
+      </button>
+    </>
+  )
+}
+
 export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume }: Props) {
   const { progress, elapsed } = useProgress(track)
 
@@ -59,14 +103,16 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             <div className="p-4 flex gap-4 items-start">
               {/* Album art */}
               <motion.div
-                key={track.catalogId}
+                key={track.isrc || track.platformIds.apple}
                 initial={{ scale: 0.92, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ duration: 0.3, ease: "easeOut" }}
                 className="flex-shrink-0 w-28 h-28 rounded-lg overflow-hidden bg-surface"
               >
                 {track.artworkUrl ? (
-                  <img src={artworkUrl(track.artworkUrl, 112)} alt={track.albumName} className="w-full h-full object-cover" />
+                  <a href={artworkUrl(track.artworkUrl, 3000)} target="_blank" rel="noreferrer" className="block w-full h-full">
+                    <img src={artworkUrl(track.artworkUrl, 112)} alt={track.albumName} className="w-full h-full object-cover" />
+                  </a>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-muted text-3xl">♪</div>
                 )}
@@ -94,21 +140,16 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 </p>
 
                 <div className="flex items-center gap-2 mt-3">
-                  {isBlocked ? (
-                    <button
-                      onClick={onResume}
-                      className="flex items-center gap-1.5 bg-accent hover:bg-accent-hover text-white text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
-                    >
-                      ▶ Tap to listen
-                    </button>
-                  ) : (
-                    <button onClick={onMuteToggle} className="text-muted hover:text-white transition-colors text-sm" title={isMuted ? "Unmute" : "Mute"}>
-                      {isMuted ? "🔇" : "🔊"}
-                    </button>
-                  )}
+                  <MuteToggle
+                    quiet={isBlocked || isMuted}
+                    onClick={isBlocked ? onResume : onMuteToggle}
+                  />
                   {canSkip && (
-                    <button onClick={onSkip} className="ml-auto text-muted hover:text-accent transition-colors" title="Skip track">
-                      ⏭
+                    <button
+                      onClick={onSkip}
+                      className="px-3 py-1.5 rounded-xl font-bold text-sm tracking-wide transition-all bg-surface text-white hover:opacity-80"
+                    >
+                      SKIP
                     </button>
                   )}
                 </div>

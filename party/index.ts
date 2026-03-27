@@ -11,15 +11,20 @@
  *
  * Room: "{userId}"
  *   Handles the queue, song pool, and all playback state for one station.
- *   Tracks connection count; notifies index room when going live/offline.
  */
 import type * as Party from "partykit/server"
 
 // ─── Shared types (mirrored from client/src/types.ts) ────────────────────────
 
+interface PlatformIds {
+  apple?: string
+  spotify?: string
+}
+
 interface Track {
-  catalogId: string
   isrc: string
+  platformIds: PlatformIds
+  addedViaPlatform: string
   name: string
   artistName: string
   albumName: string
@@ -42,14 +47,13 @@ interface StationMeta {
   id: string
   displayName: string
   storefront: string
-  isLive: boolean
+  liveUntil: number   // Unix ms; 0 = not live; client computes isLive as liveUntil > Date.now()
+  nowPlayingAddedBy?: string
 }
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 export default class RadioParty implements Party.Server {
-  private connectionCount = 0
-
   constructor(readonly room: Party.Room) {}
 
   /** Send current state to a newly connected client */
@@ -58,22 +62,36 @@ export default class RadioParty implements Party.Server {
       const stations = await this.storage<StationMeta[]>("stations", [])
       conn.send(json({ type: "stations_update", stations }))
     } else {
-      this.connectionCount++
-      if (this.connectionCount === 1) {
-        await this.notifyIndex(true)
-      }
       const queue = await this.storage<QueueItem[]>("queue", [])
       const pool = await this.storage<PoolTrack[]>("pool", [])
       conn.send(json({ type: "state", queue, pool }))
+      // Sync live status to index on every connect so stale flags get corrected
+      void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy)
+      // Re-arm expiration alarm in case the DO restarted and lost it
+      if (queue.length > 0) {
+        void this.room.storage.setAlarm(queue[0].expirationTime)
+      }
     }
   }
 
-  async onClose(_conn: Party.Connection) {
-    if (this.room.id !== "index") {
-      this.connectionCount = Math.max(0, this.connectionCount - 1)
-      if (this.connectionCount === 0) {
-        await this.notifyIndex(false)
-      }
+  async onAlarm() {
+    if (this.room.id === "index") return
+    const queue = await this.storage<QueueItem[]>("queue", [])
+    if (queue.length === 0) return
+    if (Date.now() >= queue[0].expirationTime) {
+      await this.expireTrack(queue[0].key, true)
+    }
+  }
+
+  async onClose(conn: Party.Connection) {
+    if (this.room.id === "index") return
+    const remaining = [...this.room.getConnections()].filter(c => c.id !== conn.id)
+    if (remaining.length > 0) return
+    // Last listener left — liveUntil already encodes the correct expiry time,
+    // but if the queue is empty there's nothing to expire so clear it now.
+    const queue = await this.storage<QueueItem[]>("queue", [])
+    if (queue.length === 0) {
+      await this.notifyIndex(0)
     }
   }
 
@@ -98,7 +116,11 @@ export default class RadioParty implements Party.Server {
         const stations = await this.storage<StationMeta[]>("stations", [])
         const idx = stations.findIndex(s => s.id === msg.id)
         if (idx >= 0) {
-          stations[idx] = { ...stations[idx], isLive: msg.isLive }
+          stations[idx] = {
+            ...stations[idx],
+            liveUntil: msg.liveUntil ?? 0,
+            nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
+          }
           await this.room.storage.put("stations", stations)
           this.room.broadcast(json({ type: "stations_update", stations }))
         }
@@ -126,7 +148,7 @@ export default class RadioParty implements Party.Server {
       id: msg.id,
       displayName: msg.displayName,
       storefront: msg.storefront,
-      isLive: existing?.isLive ?? false,
+      liveUntil: existing?.liveUntil ?? 0,
     }
 
     if (idx >= 0) stations[idx] = meta
@@ -140,11 +162,11 @@ export default class RadioParty implements Party.Server {
 
   private async handleStation(msg: any) {
     switch (msg.type) {
-      case "add_track":    return this.addTrack(msg.track, msg.addedBy)
-      case "remove_track": return this.removeTrack(msg.key)
-      case "skip_track":   return this.skipTrack()
+      case "add_track":        return this.addTrack(msg.track, msg.addedBy)
+      case "remove_track":     return this.removeTrack(msg.key)
+      case "skip_track":       return this.skipTrack()
       case "expire_track":     return this.expireTrack(msg.key, msg.addToPool)
-      case "remove_from_pool": return this.removeFromPool(msg.catalogId)
+      case "remove_from_pool": return this.removeFromPool(msg.isrc)
       case "clear_pool":       return this.clearPool()
       case "robot_dj":         return this.robotDJ()
     }
@@ -193,7 +215,7 @@ export default class RadioParty implements Party.Server {
     if (newQueue.length === 0) {
       await this.robotDJ()
     } else if (newQueue.length === 1 && newQueue[0].addedBy === "robot") {
-      await this.addRobotTrack(newQueue.map(i => i.catalogId))
+      await this.addRobotTrack(newQueue.map(i => i.isrc))
     }
   }
 
@@ -210,7 +232,7 @@ export default class RadioParty implements Party.Server {
       let pool = await this.storage<PoolTrack[]>("pool", [])
       pool = [
         { ...trackData, lastPlayedAt: Date.now() },
-        ...pool.filter(t => t.catalogId !== trackData.catalogId)
+        ...pool.filter(t => t.isrc !== trackData.isrc)
       ].slice(0, 250)
       await this.room.storage.put("pool", pool)
       this.room.broadcast(json({ type: "pool_update", pool }))
@@ -221,13 +243,13 @@ export default class RadioParty implements Party.Server {
     console.log(`[expireTrack] queue length: ${queue.length}, first addedBy: "${queue[0]?.addedBy}"`)
     if (queue.length === 1 && queue[0].addedBy === "robot") {
       console.log("[expireTrack] adding follow-up robot track")
-      await this.addRobotTrack(queue.map(i => i.catalogId))
+      await this.addRobotTrack(queue.map(i => i.isrc))
     }
   }
 
-  private async removeFromPool(catalogId: string) {
+  private async removeFromPool(isrc: string) {
     let pool = await this.storage<PoolTrack[]>("pool", [])
-    pool = pool.filter(t => t.catalogId !== catalogId)
+    pool = pool.filter(t => t.isrc !== isrc)
     await this.room.storage.put("pool", pool)
     this.room.broadcast(json({ type: "pool_update", pool }))
   }
@@ -237,23 +259,28 @@ export default class RadioParty implements Party.Server {
     this.room.broadcast(json({ type: "pool_update", pool: [] }))
   }
 
+  private hasListeners(): boolean {
+    return [...this.room.getConnections()].length > 0
+  }
+
   private async robotDJ() {
     const queue = await this.storage<QueueItem[]>("queue", [])
     if (queue.length > 0) return
+    if (!this.hasListeners()) return
 
-    const pool = (await this.storage<PoolTrack[]>("pool", [])).filter(isCatalogId)
+    const pool = (await this.storage<PoolTrack[]>("pool", [])).filter(hasAnyPlatformId)
     if (pool.length === 0) return
 
     const first = pool[Math.floor(Math.random() * pool.length)]
     const { lastPlayedAt: _1, ...track1 } = first
     await this.addTrack(track1, "robot")
-
-    await this.addRobotTrack([first.catalogId])
+    await this.addRobotTrack([first.isrc])
   }
 
-  private async addRobotTrack(excludeCatalogIds: string[]) {
+  private async addRobotTrack(excludeIsrcs: string[]) {
+    if (!this.hasListeners()) return
     const pool = await this.storage<PoolTrack[]>("pool", [])
-    const candidates = pool.filter(t => isCatalogId(t) && !excludeCatalogIds.includes(t.catalogId))
+    const candidates = pool.filter(t => hasAnyPlatformId(t) && !excludeIsrcs.includes(t.isrc))
     if (candidates.length === 0) return
     const pick = candidates[Math.floor(Math.random() * candidates.length)]
     const { lastPlayedAt: _, ...track } = pick
@@ -262,13 +289,13 @@ export default class RadioParty implements Party.Server {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
-  private async notifyIndex(isLive: boolean) {
+  private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string) {
     try {
       const indexRoom = this.room.context.parties.main.get("index")
       await indexRoom.fetch("/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "station_status", id: this.room.id, isLive }),
+        body: JSON.stringify({ type: "station_status", id: this.room.id, liveUntil, nowPlayingAddedBy }),
       })
     } catch (e) {
       console.error("[notifyIndex] failed", e)
@@ -276,18 +303,44 @@ export default class RadioParty implements Party.Server {
   }
 
   private async storage<T>(key: string, fallback: T): Promise<T> {
-    return (await this.room.storage.get<T>(key)) ?? fallback
+    const raw = await this.room.storage.get<any>(key)
+    if (raw == null) return fallback
+    if (key === "queue" || key === "pool") {
+      return (raw as any[]).map(migrateTrack) as unknown as T
+    }
+    return raw as T
   }
 
   private broadcastQueue(queue: QueueItem[]) {
     this.room.broadcast(json({ type: "queue_update", queue }))
+    void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy)
+    if (queue.length > 0) {
+      void this.room.storage.setAlarm(queue[0].expirationTime)
+    }
   }
+}
+
+function liveUntilFromQueue(queue: QueueItem[]): number {
+  return queue.length > 0 ? queue[queue.length - 1].expirationTime : 0
 }
 
 function json(data: object): string {
   return JSON.stringify(data)
 }
 
-function isCatalogId(t: { catalogId: string }): boolean {
-  return /^\d+$/.test(t.catalogId)
+function hasAnyPlatformId(t: { platformIds: PlatformIds }): boolean {
+  return !!(t.platformIds?.apple || t.platformIds?.spotify)
+}
+
+// Migrate old catalogId-based track shape to the new platformIds shape.
+// Runs transparently on every queue/pool read until all stored data is updated.
+function migrateTrack(item: any): any {
+  if (item.platformIds) return item  // already new shape
+  const { catalogId, isrc, ...rest } = item
+  return {
+    ...rest,
+    isrc: isrc ?? "",
+    platformIds: { apple: catalogId },
+    addedViaPlatform: "apple",
+  }
 }

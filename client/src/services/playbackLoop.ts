@@ -1,23 +1,26 @@
 /**
- * Synchronized playback loop — now driven by PartyKit instead of Firebase.
+ * Synchronized playback loop — driven by PartyKit queue state.
  *
- * Listens for queue updates from the station socket and drives MusicKit JS
+ * Listens for queue updates from the station socket and drives a MusicPlayer
  * so all listeners hear the same track at the same position.
  */
 import { stationSocket } from "./partykit"
-import { playTrackAtOffset, getMusicKit } from "./musickit"
+import { UnavailableError } from "./player"
+import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
 
 export class PlaybackLoop {
   private stationId = ""
   private expirationTimer: ReturnType<typeof setTimeout> | null = null
   private currentTrackKey: string | null = null
-  private pendingPlay: { catalogId: string; expirationTime: number; durationMs: number } | null = null
+  private pendingPlay: { track: QueueItem; offsetSeconds: number } | null = null
   private autoplayEnabled = false   // stays true once user has tapped "Tap to listen"
 
   onNowPlayingChange?: (item: QueueItem | null) => void
   onQueueChange?: (upNext: QueueItem[]) => void
   onPlaybackBlocked?: () => void
+
+  constructor(private player: MusicPlayer) {}
 
   start(stationId: string) {
     this.stop()
@@ -39,18 +42,25 @@ export class PlaybackLoop {
   async resume() {
     this.autoplayEnabled = true
     if (!this.pendingPlay) return
-    const { catalogId, expirationTime, durationMs } = this.pendingPlay
+    const { track, offsetSeconds } = this.pendingPlay
     this.pendingPlay = null
-    const offsetSeconds = Math.max(0, (Date.now() - (expirationTime - durationMs)) / 1000)
     try {
-      await playTrackAtOffset(catalogId, offsetSeconds)
+      await this.player.playAtOffset(track, offsetSeconds)
     } catch (err) {
-      console.error("[PlaybackLoop] resume error:", err)
+      if (err instanceof UnavailableError) {
+        console.warn("[PlaybackLoop] track unavailable on resume:", track.name)
+      } else {
+        console.error("[PlaybackLoop] resume error:", err)
+      }
     }
   }
 
+  enableAutoplay() {
+    this.autoplayEnabled = true
+  }
+
   setMuted(muted: boolean) {
-    try { getMusicKit().volume = muted ? 0 : 1 } catch { /* not ready */ }
+    this.player.setVolume(muted ? 0 : 1)
   }
 
   private handleQueueUpdate = async (queue: QueueItem[]) => {
@@ -60,6 +70,9 @@ export class PlaybackLoop {
 
     if (queue.length === 0) {
       this.onNowPlayingChange?.(null)
+      this.currentTrackKey = null
+      this.pendingPlay = null
+      this.player.stop()
       stationSocket.triggerRobotDJ()
       return
     }
@@ -90,17 +103,20 @@ export class PlaybackLoop {
     // Never call play() without a prior user gesture — browser/MusicKit will show
     // a dialog and throw an opaque internal error before we can catch NotAllowedError.
     if (!this.autoplayEnabled) {
-      this.pendingPlay = { catalogId: track0.catalogId, expirationTime: track0.expirationTime, durationMs: track0.durationMs }
+      this.pendingPlay = { track: track0, offsetSeconds }
       this.onPlaybackBlocked?.()
       return
     }
 
     try {
-      await playTrackAtOffset(track0.catalogId, offsetSeconds)
+      await this.player.playAtOffset(track0, offsetSeconds)
     } catch (err) {
-      console.error("[PlaybackLoop] playback error:", err)
+      if (err instanceof UnavailableError) {
+        console.warn("[PlaybackLoop] track unavailable:", track0.name)
+        // Expiration timer will still fire and advance the queue for this listener
+      } else {
+        console.error("[PlaybackLoop] playback error:", err)
+      }
     }
   }
 }
-
-export const playbackLoop = new PlaybackLoop()

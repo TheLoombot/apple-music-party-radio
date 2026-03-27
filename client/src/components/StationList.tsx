@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Trash2 } from "lucide-react"
 import type { Station } from "../types"
 
@@ -30,6 +30,18 @@ interface Props {
 }
 
 export function StationList({ stations, currentStationId, ownStationId, onSelect, onRemove }: Props) {
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    const next = stations
+      .map(s => s.liveUntil)
+      .filter(t => t > Date.now())
+      .sort((a, b) => a - b)[0]
+    if (!next) return
+    const timer = setTimeout(() => setNow(Date.now()), next - Date.now() + 200)
+    return () => clearTimeout(timer)
+  }, [stations])
+
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
@@ -45,9 +57,12 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
             const isOwn = station.id === ownStationId
             return (
               <li key={station.id}>
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => onSelect(station.id)}
-                  className={`w-full text-left flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors ${active ? "bg-accent/10" : ""}`}
+                  onKeyDown={e => e.key === "Enter" && onSelect(station.id)}
+                  className={`group w-full text-left flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
                 >
                   <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-sm text-accent font-bold flex-shrink-0">
                     {station.displayName?.[0]?.toUpperCase() ?? "?"}
@@ -58,9 +73,18 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
                       {isOwn && <span className="text-muted text-xs font-normal ml-1.5">(you)</span>}
                     </p>
                   </div>
-                  {station.isLive && (
+                  {station.liveUntil > now && (
                     <span className="flex items-center gap-1.5 text-xs text-accent flex-shrink-0">
-                      <LiveDot /> live
+                      <LiveDot />
+                      <span>
+                        {station.nowPlayingAddedBy
+                          ? station.nowPlayingAddedBy === "robot"
+                            ? "🤖"
+                            : station.nowPlayingAddedBy === ownStationId
+                            ? "you"
+                            : station.nowPlayingAddedBy
+                          : "live"}
+                      </span>
                     </span>
                   )}
                   <button
@@ -70,7 +94,7 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
                   >
                     <Trash2 size={13} />
                   </button>
-                </button>
+                </div>
               </li>
             )
           })}

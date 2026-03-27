@@ -23,3 +23,4 @@ export function getDisplayName(): string | null {
 export function setDisplayName(name: string) {
   localStorage.setItem("ampr_display_name", name)
 }
+

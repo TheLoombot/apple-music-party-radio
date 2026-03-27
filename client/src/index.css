@@ -17,3 +17,13 @@ body {
   animation: live-pulse 1s ease-in-out infinite;
   will-change: transform, opacity;
 }
+
+@keyframes sound-bar {
+  0%, 100% { clip-path: inset(78% 0 0 0 round 2px); }
+  50% { clip-path: inset(0% 0 0 0 round 2px); }
+}
+
+.sound-bar {
+  animation: sound-bar 0.8s ease-in-out infinite;
+  will-change: clip-path;
+}
