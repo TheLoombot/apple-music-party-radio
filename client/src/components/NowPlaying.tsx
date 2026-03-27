@@ -1,8 +1,45 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import type { QueueItem, AppUser } from "../types"
+
+function ArtworkModal({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [onClose])
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      onClick={onClose}
+    >
+      <motion.div
+        className="relative max-w-[min(90vw,90vh)] w-full"
+        initial={{ scale: 0.92, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.92, opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={e => e.stopPropagation()}
+      >
+        <img src={src} alt={alt} className="w-full h-full object-contain rounded-xl shadow-2xl" />
+        <button
+          onClick={onClose}
+          className="absolute -top-3 -right-3 w-7 h-7 rounded-full bg-surface text-muted hover:text-white flex items-center justify-center text-sm leading-none shadow-lg transition-colors"
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </motion.div>
+    </motion.div>
+  )
+}
 
 interface Props {
   track: QueueItem | null
@@ -119,6 +156,8 @@ function useMediaSession(
 export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume }: Props) {
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
+  const [artworkOpen, setArtworkOpen] = useState(false)
+  const closeArtwork = useCallback(() => setArtworkOpen(false), [])
   useMediaSession(
     track,
     isPlaying,
@@ -153,9 +192,9 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 className="flex-shrink-0 w-28 h-28 rounded-lg overflow-hidden bg-surface"
               >
                 {track.artworkUrl ? (
-                  <a href={artworkUrl(track.artworkUrl, 3000)} target="_blank" rel="noreferrer" className="block w-full h-full">
+                  <button onClick={() => setArtworkOpen(true)} className="block w-full h-full cursor-zoom-in">
                     <img src={artworkUrl(track.artworkUrl, 112)} alt={track.albumName} className="w-full h-full object-cover" />
-                  </a>
+                  </button>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-muted text-3xl">♪</div>
                 )}
@@ -226,6 +265,16 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             <p className="text-sm">Station is quiet.</p>
             <p className="text-xs mt-1">Add a track to get it started.</p>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {artworkOpen && track?.artworkUrl && (
+          <ArtworkModal
+            src={artworkUrl(track.artworkUrl, 3000)}
+            alt={track.albumName}
+            onClose={closeArtwork}
+          />
         )}
       </AnimatePresence>
     </div>
