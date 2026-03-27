@@ -4,6 +4,7 @@ import path from 'path'
 import { execSync } from 'child_process'
 
 const commitHash = (() => {
+  if (process.env.VITE_COMMIT_SHA) return process.env.VITE_COMMIT_SHA.slice(0, 7)
   try { return execSync('git rev-parse --short HEAD').toString().trim() } catch { return 'dev' }
 })()
 

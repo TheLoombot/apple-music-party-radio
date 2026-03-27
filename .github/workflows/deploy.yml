@@ -28,6 +28,7 @@ jobs:
         env:
           VITE_APPLE_DEVELOPER_TOKEN: ${{ secrets.VITE_APPLE_DEVELOPER_TOKEN }}
           VITE_PARTYKIT_HOST: ${{ secrets.VITE_PARTYKIT_HOST }}
+          VITE_COMMIT_SHA: ${{ github.sha }}
 
       - uses: actions/upload-pages-artifact@v3
         with:
