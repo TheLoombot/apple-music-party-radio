@@ -33,12 +33,12 @@ export class StationSocket {
     this.socket.onmessage = (e) => {
       const msg = JSON.parse(e.data)
       if (msg.type === "state") {
-        this.onQueueUpdate?.(msg.queue ?? [])
-        this.onPoolUpdate?.(msg.pool ?? [])
+        this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean))
+        this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean))
       } else if (msg.type === "queue_update") {
-        this.onQueueUpdate?.(msg.queue ?? [])
+        this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean))
       } else if (msg.type === "pool_update") {
-        this.onPoolUpdate?.(msg.pool ?? [])
+        this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean))
       }
     }
 
