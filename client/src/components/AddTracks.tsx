@@ -13,14 +13,14 @@ type BrowseTarget = (AlbumResult | PlaylistResult | LibraryPlaylistResult) & { t
 interface SearchProps {
   currentUser: AppUser
   onAddTrack: (track: Track) => void
+  queuedCatalogIds: Set<string>
 }
 
-export function SearchTracks({ currentUser, onAddTrack }: SearchProps) {
+export function SearchTracks({ currentUser, onAddTrack, queuedCatalogIds }: SearchProps) {
   const [query, setQuery] = useState("")
   const [searchResults, setSearchResults] = useState<SearchItem[]>([])
   const [searching, setSearching] = useState(false)
   const [browseTarget, setBrowseTarget] = useState<BrowseTarget | null>(null)
-  const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set())
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
 
   const isSearching = query.trim().length > 0
@@ -53,14 +53,6 @@ export function SearchTracks({ currentUser, onAddTrack }: SearchProps) {
       tracks = await getPlaylistTracks(item.id, currentUser.storefront)
     }
     setBrowseTarget({ ...item, tracks })
-  }
-
-  function handleAdd(track: Track) {
-    onAddTrack(track)
-    setAddedKeys(prev => new Set([...prev, track.catalogId]))
-    setTimeout(() => {
-      setAddedKeys(prev => { const n = new Set(prev); n.delete(track.catalogId); return n })
-    }, 2000)
   }
 
   return (
@@ -145,8 +137,8 @@ export function SearchTracks({ currentUser, onAddTrack }: SearchProps) {
                       key={track.catalogId}
                       track={track}
                       trackNumber={browseTarget.kind === "album" ? i + 1 : undefined}
-                      added={addedKeys.has(track.catalogId)}
-                      onAdd={() => handleAdd(track)}
+                      added={queuedCatalogIds.has(track.catalogId)}
+                      onAdd={() => onAddTrack(track)}
                     />
                   ))}
                 </ul>
@@ -174,8 +166,8 @@ export function SearchTracks({ currentUser, onAddTrack }: SearchProps) {
                       <TrackRow
                         key={item.track.catalogId}
                         track={item.track}
-                        added={addedKeys.has(item.track.catalogId)}
-                        onAdd={() => handleAdd(item.track)}
+                        added={queuedCatalogIds.has(item.track.catalogId)}
+                        onAdd={() => onAddTrack(item.track)}
                       />
                     ) : (
                       <BrowsableRow
@@ -219,14 +211,15 @@ interface PoolLibraryProps {
   onAddTrack: (track: Track) => void
   onRemoveFromPool: (catalogId: string) => void
   onClearPool: () => void
+  queuedCatalogIds: Set<string>
 }
 
-export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRemoveFromPool, onClearPool }: PoolLibraryProps) {
+export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRemoveFromPool, onClearPool, queuedCatalogIds }: PoolLibraryProps) {
   const [tab, setTab] = useState<"pool" | "library">("pool")
   const [browseTarget, setBrowseTarget] = useState<BrowseTarget | null>(null)
   const [libraryPlaylists, setLibraryPlaylists] = useState<LibraryPlaylistResult[] | null>(null)
   const [loadingLibrary, setLoadingLibrary] = useState(false)
-  const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set())
+  const [playlistFilter, setPlaylistFilter] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
 
@@ -259,14 +252,6 @@ export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRem
       })
     })
   }, [])
-
-  function handleAdd(track: Track) {
-    onAddTrack(track)
-    setAddedKeys(prev => new Set([...prev, track.catalogId]))
-    setTimeout(() => {
-      setAddedKeys(prev => { const n = new Set(prev); n.delete(track.catalogId); return n })
-    }, 2000)
-  }
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden flex flex-col">
@@ -340,8 +325,8 @@ export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRem
                     <TrackRow
                       key={track.catalogId}
                       track={track}
-                      added={addedKeys.has(track.catalogId)}
-                      onAdd={() => handleAdd(track)}
+                      added={queuedCatalogIds.has(track.catalogId)}
+                      onAdd={() => onAddTrack(track)}
                     />
                   ))}
                 </ul>
@@ -391,8 +376,8 @@ export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRem
                         >
                           <TrackRow
                             track={track}
-                            added={addedKeys.has(track.catalogId)}
-                            onAdd={() => handleAdd(track)}
+                            added={queuedCatalogIds.has(track.catalogId)}
+                            onAdd={() => onAddTrack(track)}
                             onRemove={isOwner ? () => onRemoveFromPool(track.catalogId) : undefined}
                             unavailable={!isCatalogId(track.catalogId)}
                           />
@@ -419,11 +404,34 @@ export function PoolLibrary({ currentUser, stationOwner, pool, onAddTrack, onRem
               ) : !libraryPlaylists || libraryPlaylists.length === 0 ? (
                 <div className="p-6 text-center text-muted text-sm">No playlists found</div>
               ) : (
-                <ul>
-                  {libraryPlaylists.map(pl => (
-                    <BrowsableRow key={pl.id} item={pl} onBrowse={() => handleBrowse(pl)} />
-                  ))}
-                </ul>
+                <>
+                  <div className="px-3 py-2 border-b border-border/50">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={playlistFilter}
+                        onChange={e => setPlaylistFilter(e.target.value)}
+                        placeholder="Filter playlists…"
+                        className="w-full bg-surface text-white placeholder-muted rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-accent pr-6"
+                      />
+                      {playlistFilter && (
+                        <button
+                          onClick={() => setPlaylistFilter("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white transition-colors text-sm leading-none"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <ul>
+                    {libraryPlaylists
+                      .filter(pl => pl.name.toLowerCase().includes(playlistFilter.toLowerCase()))
+                      .map(pl => (
+                        <BrowsableRow key={pl.id} item={pl} onBrowse={() => handleBrowse(pl)} />
+                      ))}
+                  </ul>
+                </>
               )}
             </motion.div>
           )}

@@ -110,24 +110,31 @@ function normalizeLibraryTrack(item: any): Track | null {
 }
 
 export async function getLibraryPlaylists(): Promise<LibraryPlaylistResult[]> {
-  const res = await fetch(
-    "https://api.music.apple.com/v1/me/library/playlists?limit=25&include=catalog",
-    { headers: headers() }
-  )
-  if (!res.ok) return []
-  const data = await res.json()
-  return (data.data ?? []).map((item: any) => {
-    const catalogAttrs = item.relationships?.catalog?.data?.[0]?.attributes
-    const curator = catalogAttrs?.curatorName ?? item.attributes?.description?.standard ?? ""
-    return {
-      kind: "library-playlist" as const,
-      id: item.id,
-      name: item.attributes?.name ?? "",
-      subtitle: curator,
-      artworkUrl: item.attributes?.artwork?.url ?? catalogAttrs?.artwork?.url ?? "",
-      trackCount: item.attributes?.trackCount ?? catalogAttrs?.trackCount ?? undefined
+  const results: LibraryPlaylistResult[] = []
+  let url = "https://api.music.apple.com/v1/me/library/playlists?limit=100&include=catalog"
+
+  while (url) {
+    const res = await fetch(url, { headers: headers() })
+    if (!res.ok) break
+    const data = await res.json()
+
+    for (const item of data.data ?? []) {
+      const catalogAttrs = item.relationships?.catalog?.data?.[0]?.attributes
+      const curator = catalogAttrs?.curatorName ?? item.attributes?.description?.standard ?? ""
+      results.push({
+        kind: "library-playlist" as const,
+        id: item.id,
+        name: item.attributes?.name ?? "",
+        subtitle: curator,
+        artworkUrl: item.attributes?.artwork?.url ?? catalogAttrs?.artwork?.url ?? "",
+        trackCount: item.attributes?.trackCount ?? catalogAttrs?.trackCount ?? undefined
+      })
     }
-  })
+
+    url = data.next ? `https://api.music.apple.com${data.next}` : ""
+  }
+
+  return results
 }
 
 export async function getLibraryPlaylistTracks(playlistId: string): Promise<Track[]> {

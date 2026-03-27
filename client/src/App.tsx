@@ -235,6 +235,10 @@ export default function App() {
 
   const isOwnStation = currentStationId === user.uid
   const currentStation = stations.find(s => s.id === currentStationId)
+  const queuedCatalogIds = new Set([
+    ...(nowPlaying ? [nowPlaying.catalogId] : []),
+    ...upNext.map(i => i.catalogId)
+  ])
 
   return (
     <div className="min-h-screen bg-surface">
@@ -304,6 +308,7 @@ export default function App() {
           <SearchTracks
             currentUser={user}
             onAddTrack={handleAddTrack}
+            queuedCatalogIds={queuedCatalogIds}
           />
           <PoolLibrary
             currentUser={user}
@@ -312,6 +317,7 @@ export default function App() {
             onAddTrack={handleAddTrack}
             onRemoveFromPool={handleRemoveFromPool}
             onClearPool={handleClearPool}
+            queuedCatalogIds={queuedCatalogIds}
           />
         </div>
       </div>

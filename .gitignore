@@ -8,3 +8,4 @@ client/.env
 dist/
 client/dist/
 .partykit/state/
+*.swp
