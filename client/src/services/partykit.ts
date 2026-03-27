@@ -8,6 +8,14 @@
 import PartySocket from "partysocket"
 import type { QueueItem, Track, Station } from "../types"
 
+// Ensure every track from the server has a platformIds object.
+// Mirrors the server-side migrateTrack — runs on every received queue/pool item.
+function migrateTrack<T extends object>(item: T): T {
+  const t = item as any
+  if (t?.platformIds) return item
+  return { ...item, platformIds: { apple: t?.catalogId }, addedViaPlatform: t?.addedViaPlatform ?? "apple" }
+}
+
 // In dev, partykit runs locally on port 1999.
 // In production, set VITE_PARTYKIT_HOST to your deployed host, e.g.:
 //   apple-music-party-radio.yourusername.partykit.dev
@@ -33,12 +41,12 @@ export class StationSocket {
     this.socket.onmessage = (e) => {
       const msg = JSON.parse(e.data)
       if (msg.type === "state") {
-        this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean))
-        this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean))
+        this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
+        this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean).map(migrateTrack))
       } else if (msg.type === "queue_update") {
-        this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean))
+        this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
       } else if (msg.type === "pool_update") {
-        this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean))
+        this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean).map(migrateTrack))
       }
     }
 

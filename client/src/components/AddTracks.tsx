@@ -135,7 +135,7 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
                 <ul>
                   {browseTarget.tracks.map((track, i) => (
                     <TrackRow
-                      key={track.platformIds.apple || track.isrc || track.name}
+                      key={track.platformIds?.apple || track.isrc || track.name}
                       track={track}
                       trackNumber={browseTarget.kind === "album" ? i + 1 : undefined}
                       added={queuedIsrcs.has(track.isrc)}
@@ -164,11 +164,11 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
                 <ul>
                   {searchResults.filter((item, i, arr) => {
                     if (item.kind !== "song") return true
-                    return arr.findIndex(x => x.kind === "song" && (x.track.isrc || x.track.platformIds.apple) === (item.track.isrc || item.track.platformIds.apple)) === i
+                    return arr.findIndex(x => x.kind === "song" && (x.track.isrc || x.track.platformIds?.apple) === (item.track.isrc || item.track.platformIds?.apple)) === i
                   }).map((item) =>
                     item.kind === "song" ? (
                       <TrackRow
-                        key={item.track.platformIds.apple || item.track.isrc || item.track.name}
+                        key={item.track.platformIds?.apple || item.track.isrc || item.track.name}
                         track={item.track}
                         added={queuedIsrcs.has(item.track.isrc)}
                         onAdd={() => onAddTrack(item.track)}
@@ -327,11 +327,11 @@ export function PoolLibrary({ currentUser, catalog, stationOwner, pool, onAddTra
               ) : (
                 <ul>
                   {browseTarget.tracks.filter((t, i, arr) => {
-                    const k = t.isrc || t.platformIds.apple || t.name
+                    const k = t.isrc || t.platformIds?.apple || t.name
                     return arr.findIndex(x => (x.isrc || x.platformIds.apple || x.name) === k) === i
                   }).map(track => (
                     <TrackRow
-                      key={track.isrc || track.platformIds.apple || track.name}
+                      key={track.isrc || track.platformIds?.apple || track.name}
                       track={track}
                       added={queuedIsrcs.has(track.isrc)}
                       onAdd={() => onAddTrack(track)}
@@ -374,11 +374,11 @@ export function PoolLibrary({ currentUser, catalog, stationOwner, pool, onAddTra
                   <ul>
                     <AnimatePresence initial={false}>
                       {pool.filter((t, i, arr) => {
-                        const k = t.isrc || t.platformIds.apple || t.name
+                        const k = t.isrc || t.platformIds?.apple || t.name
                         return arr.findIndex(x => (x.isrc || x.platformIds.apple || x.name) === k) === i
                       }).map(track => (
                         <motion.li
-                          key={track.isrc || track.platformIds.apple || track.name}
+                          key={track.isrc || track.platformIds?.apple || track.name}
                           layout
                           initial={{ opacity: 0, y: -6 }}
                           animate={{ opacity: 1, y: 0 }}
@@ -390,7 +390,7 @@ export function PoolLibrary({ currentUser, catalog, stationOwner, pool, onAddTra
                             added={queuedIsrcs.has(track.isrc)}
                             onAdd={() => onAddTrack(track)}
                             onRemove={isOwner ? () => onRemoveFromPool(track.isrc) : undefined}
-                            unavailable={!track.platformIds.apple}
+                            unavailable={!track.platformIds?.apple}
                           />
                         </motion.li>
                       ))}

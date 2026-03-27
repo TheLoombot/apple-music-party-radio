@@ -99,7 +99,7 @@ export function Discovery({ catalog, queuedIsrcs, onAddTrack }: Props) {
           <ul>
             {chartTracks.map(track => (
               <TrackRow
-                key={track.platformIds.apple ?? track.isrc}
+                key={track.platformIds?.apple ?? track.isrc}
                 track={track}
                 added={queuedIsrcs.has(track.isrc)}
                 onAdd={() => onAddTrack(track)}
@@ -116,7 +116,7 @@ export function Discovery({ catalog, queuedIsrcs, onAddTrack }: Props) {
           <ul>
             {browsing.tracks.map(track => (
               <TrackRow
-                key={track.platformIds.apple ?? track.isrc}
+                key={track.platformIds?.apple ?? track.isrc}
                 track={track}
                 added={queuedIsrcs.has(track.isrc)}
                 onAdd={() => onAddTrack(track)}

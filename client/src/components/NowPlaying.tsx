@@ -146,7 +146,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             <div className="p-4 flex gap-4 items-start">
               {/* Album art */}
               <motion.div
-                key={track.isrc || track.platformIds.apple}
+                key={track.isrc || track.platformIds?.apple}
                 initial={{ scale: 0.92, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ duration: 0.3, ease: "easeOut" }}
