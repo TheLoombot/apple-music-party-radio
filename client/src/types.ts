@@ -44,6 +44,7 @@ export interface Station {
   id: string            // owner's userId (= PartyKit room name)
   displayName: string
   storefront: string
+  isLive: boolean
 }
 
 export interface AppUser {

@@ -23,10 +23,11 @@ function LiveDot() {
 interface Props {
   stations: Station[]
   currentStationId: string
+  ownStationId: string
   onSelect: (stationId: string) => void
 }
 
-export function StationList({ stations, currentStationId, onSelect }: Props) {
+export function StationList({ stations, currentStationId, ownStationId, onSelect }: Props) {
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
@@ -39,6 +40,7 @@ export function StationList({ stations, currentStationId, onSelect }: Props) {
         <ul>
           {stations.map(station => {
             const active = station.id === currentStationId
+            const isOwn = station.id === ownStationId
             return (
               <li key={station.id}>
                 <button
@@ -51,9 +53,10 @@ export function StationList({ stations, currentStationId, onSelect }: Props) {
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm truncate ${active ? "text-accent" : "text-white"}`}>
                       {station.displayName}
+                      {isOwn && <span className="text-muted text-xs font-normal ml-1.5">(you)</span>}
                     </p>
                   </div>
-                  {active && (
+                  {station.isLive && (
                     <span className="flex items-center gap-1.5 text-xs text-accent flex-shrink-0">
                       <LiveDot /> live
                     </span>

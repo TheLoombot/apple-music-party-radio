@@ -7,9 +7,11 @@
  *
  * Room: "index"
  *   Handles station registration and discovery.
+ *   Receives live-status pings from station rooms via HTTP POST.
  *
  * Room: "{userId}"
  *   Handles the queue, song pool, and all playback state for one station.
+ *   Tracks connection count; notifies index room when going live/offline.
  */
 import type * as Party from "partykit/server"
 
@@ -40,11 +42,14 @@ interface StationMeta {
   id: string
   displayName: string
   storefront: string
+  isLive: boolean
 }
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 export default class RadioParty implements Party.Server {
+  private connectionCount = 0
+
   constructor(readonly room: Party.Room) {}
 
   /** Send current state to a newly connected client */
@@ -53,9 +58,22 @@ export default class RadioParty implements Party.Server {
       const stations = await this.storage<StationMeta[]>("stations", [])
       conn.send(json({ type: "stations_update", stations }))
     } else {
+      this.connectionCount++
+      if (this.connectionCount === 1) {
+        await this.notifyIndex(true)
+      }
       const queue = await this.storage<QueueItem[]>("queue", [])
       const pool = await this.storage<PoolTrack[]>("pool", [])
       conn.send(json({ type: "state", queue, pool }))
+    }
+  }
+
+  async onClose(_conn: Party.Connection) {
+    if (this.room.id !== "index") {
+      this.connectionCount = Math.max(0, this.connectionCount - 1)
+      if (this.connectionCount === 0) {
+        await this.notifyIndex(false)
+      }
     }
   }
 
@@ -72,6 +90,23 @@ export default class RadioParty implements Party.Server {
     }
   }
 
+  /** Receive live-status pings from station rooms */
+  async onRequest(req: Party.Request): Promise<Response> {
+    if (this.room.id === "index" && req.method === "POST") {
+      const msg = await req.json() as any
+      if (msg.type === "station_status") {
+        const stations = await this.storage<StationMeta[]>("stations", [])
+        const idx = stations.findIndex(s => s.id === msg.id)
+        if (idx >= 0) {
+          stations[idx] = { ...stations[idx], isLive: msg.isLive }
+          await this.room.storage.put("stations", stations)
+          this.room.broadcast(json({ type: "stations_update", stations }))
+        }
+      }
+    }
+    return new Response("ok")
+  }
+
   // ─── Index room ─────────────────────────────────────────────────────────
 
   private async handleIndex(msg: any) {
@@ -79,7 +114,13 @@ export default class RadioParty implements Party.Server {
 
     const stations = await this.storage<StationMeta[]>("stations", [])
     const idx = stations.findIndex(s => s.id === msg.id)
-    const meta: StationMeta = { id: msg.id, displayName: msg.displayName, storefront: msg.storefront }
+    const existing = idx >= 0 ? stations[idx] : null
+    const meta: StationMeta = {
+      id: msg.id,
+      displayName: msg.displayName,
+      storefront: msg.storefront,
+      isLive: existing?.isLive ?? false,
+    }
 
     if (idx >= 0) stations[idx] = meta
     else stations.push(meta)
@@ -160,7 +201,6 @@ export default class RadioParty implements Party.Server {
     if (addToPool) {
       const { key: _k, expirationTime: _e, addedBy: _a, addedAt: _t, ...trackData } = expired
       let pool = await this.storage<PoolTrack[]>("pool", [])
-      // Remove any existing entry for this track, then prepend the fresh one
       pool = [
         { ...trackData, lastPlayedAt: Date.now() },
         ...pool.filter(t => t.catalogId !== trackData.catalogId)
@@ -171,8 +211,6 @@ export default class RadioParty implements Party.Server {
 
     this.broadcastQueue(queue)
 
-    // If the track now playing was queued by Robot DJ and nothing follows it,
-    // add another robot track so there's always something coming up.
     console.log(`[expireTrack] queue length: ${queue.length}, first addedBy: "${queue[0]?.addedBy}"`)
     if (queue.length === 1 && queue[0].addedBy === "robot") {
       console.log("[expireTrack] adding follow-up robot track")
@@ -194,12 +232,11 @@ export default class RadioParty implements Party.Server {
 
   private async robotDJ() {
     const queue = await this.storage<QueueItem[]>("queue", [])
-    if (queue.length > 0) return  // someone else already added a track
+    if (queue.length > 0) return
 
     const pool = (await this.storage<PoolTrack[]>("pool", [])).filter(isCatalogId)
     if (pool.length === 0) return
 
-    // Pick first track, then a second that's different
     const first = pool[Math.floor(Math.random() * pool.length)]
     const { lastPlayedAt: _1, ...track1 } = first
     await this.addTrack(track1, "robot")
@@ -207,7 +244,6 @@ export default class RadioParty implements Party.Server {
     await this.addRobotTrack([first.catalogId])
   }
 
-  // Pick a random pool track not already in the given exclusion list and add it.
   private async addRobotTrack(excludeCatalogIds: string[]) {
     const pool = await this.storage<PoolTrack[]>("pool", [])
     const candidates = pool.filter(t => isCatalogId(t) && !excludeCatalogIds.includes(t.catalogId))
@@ -218,6 +254,19 @@ export default class RadioParty implements Party.Server {
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  private async notifyIndex(isLive: boolean) {
+    try {
+      const indexRoom = this.room.context.parties.main.get("index")
+      await indexRoom.fetch("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "station_status", id: this.room.id, isLive }),
+      })
+    } catch (e) {
+      console.error("[notifyIndex] failed", e)
+    }
+  }
 
   private async storage<T>(key: string, fallback: T): Promise<T> {
     return (await this.room.storage.get<T>(key)) ?? fallback

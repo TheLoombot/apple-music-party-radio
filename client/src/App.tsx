@@ -265,14 +265,6 @@ return () => playbackLoop.stop()
               DJ <span className="text-white group-hover:underline decoration-dotted">{user.displayName}</span>
             </button>
           )}
-          {!isOwnStation && (
-            <button
-              onClick={() => handleSelectStation(user.uid)}
-              className="text-accent hover:underline"
-            >
-              My Station
-            </button>
-          )}
         </div>
       </header>
 
@@ -301,6 +293,7 @@ return () => playbackLoop.stop()
           <StationList
             stations={stations}
             currentStationId={currentStationId}
+            ownStationId={user.uid}
             onSelect={handleSelectStation}
           />
           <SearchTracks
