@@ -62,8 +62,7 @@ export default class RadioParty implements Party.Server {
       const stations = await this.storage<StationMeta[]>("stations", [])
       conn.send(json({ type: "stations_update", stations }))
     } else {
-      const queue = await this.storage<QueueItem[]>("queue", [])
-      const pool = await this.storage<PoolTrack[]>("pool", [])
+      const { queue, pool } = await this.flushExpired()
       conn.send(json({ type: "state", queue, pool }))
       // Sync live status to index on every connect so stale flags get corrected
       void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy)
@@ -288,6 +287,31 @@ export default class RadioParty implements Party.Server {
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  /** Expire all past-due tracks from the queue in one pass, returning clean state. */
+  private async flushExpired(): Promise<{ queue: QueueItem[], pool: PoolTrack[] }> {
+    let queue = await this.storage<QueueItem[]>("queue", [])
+    let pool = await this.storage<PoolTrack[]>("pool", [])
+    const now = Date.now()
+    let changed = false
+
+    while (queue.length > 0 && now >= queue[0].expirationTime) {
+      const { key: _k, expirationTime: _e, addedBy: _a, addedAt: _t, ...trackData } = queue[0]
+      queue = queue.slice(1)
+      pool = [{ ...trackData, lastPlayedAt: now }, ...pool.filter(t => t.isrc !== trackData.isrc)].slice(0, 250)
+      changed = true
+    }
+
+    if (changed) {
+      await this.room.storage.put("queue", queue)
+      await this.room.storage.put("pool", pool)
+      // Notify any already-connected clients of the cleaned-up state
+      this.room.broadcast(json({ type: "queue_update", queue }))
+      this.room.broadcast(json({ type: "pool_update", pool }))
+    }
+
+    return { queue, pool }
+  }
 
   private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string) {
     try {

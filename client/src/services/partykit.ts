@@ -15,8 +15,6 @@ const HOST = import.meta.env.DEV
   ? `${window.location.hostname}:1999`
   : (import.meta.env.VITE_PARTYKIT_HOST as string)
 
-const PARTY_OPTIONS = import.meta.env.DEV ? { protocol: "ws" } : {}
-
 // ─── Station socket ───────────────────────────────────────────────────────────
 
 export class StationSocket {
@@ -27,7 +25,10 @@ export class StationSocket {
 
   connect(stationId: string) {
     this.disconnect()
-    this.socket = new PartySocket({ host: HOST, room: stationId, ...PARTY_OPTIONS })
+    const opts = import.meta.env.DEV
+      ? { host: HOST, room: stationId, protocol: "ws" as const }
+      : { host: HOST, room: stationId }
+    this.socket = new PartySocket(opts)
 
     this.socket.onmessage = (e) => {
       const msg = JSON.parse(e.data)
@@ -92,7 +93,10 @@ export class IndexSocket {
 
   connect() {
     this.disconnect()
-    this.socket = new PartySocket({ host: HOST, room: "index", ...PARTY_OPTIONS })
+    const opts = import.meta.env.DEV
+      ? { host: HOST, room: "index", protocol: "ws" as const }
+      : { host: HOST, room: "index" }
+    this.socket = new PartySocket(opts)
     this.socket.onmessage = (e) => {
       const msg = JSON.parse(e.data)
       if (msg.type === "stations_update") {

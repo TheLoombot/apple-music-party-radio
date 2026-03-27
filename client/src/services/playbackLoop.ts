@@ -16,6 +16,7 @@ export class PlaybackLoop {
   private currentTrack: QueueItem | null = null
   private pendingPlay: { track: QueueItem; offsetSeconds: number } | null = null
   private autoplayEnabled = false   // stays true once user has tapped "Tap to listen"
+  private robotDJPending = false    // prevent duplicate triggerRobotDJ for the same empty-queue event
 
   onNowPlayingChange?: (item: QueueItem | null) => void
   onQueueChange?: (upNext: QueueItem[]) => void
@@ -40,6 +41,7 @@ export class PlaybackLoop {
     this.currentTrackKey = null
     this.currentTrack = null
     this.pendingPlay = null
+    this.robotDJPending = false
     // intentionally keep autoplayEnabled — once the user has tapped, don't ask again
   }
 
@@ -85,9 +87,14 @@ export class PlaybackLoop {
       this.currentTrack = null
       this.pendingPlay = null
       this.player.stop()
-      stationSocket.triggerRobotDJ()
+      if (!this.robotDJPending) {
+        this.robotDJPending = true
+        stationSocket.triggerRobotDJ()
+      }
       return
     }
+
+    this.robotDJPending = false
 
     const track0 = queue[0]
     const now = Date.now()

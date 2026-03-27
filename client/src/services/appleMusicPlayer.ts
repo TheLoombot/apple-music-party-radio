@@ -11,11 +11,11 @@ export class AppleMusicPlayer implements MusicPlayer {
   }
 
   stop() {
-    try { getMusicKit().stop() } catch { /* not ready */ }
+    try { (getMusicKit() as any).stop() } catch { /* not ready */ }
   }
 
   setVolume(level: number) {
-    try { getMusicKit().volume = level } catch { /* not ready */ }
+    try { (getMusicKit() as any).volume = level } catch { /* not ready */ }
     // iOS Safari ignores programmatic volume changes; toggle muted as fallback
     try {
       const audio = document.querySelector("audio")
