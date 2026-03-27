@@ -330,7 +330,7 @@ export default class RadioParty implements Party.Server {
     const raw = await this.room.storage.get<any>(key)
     if (raw == null) return fallback
     if (key === "queue" || key === "pool") {
-      return (raw as any[]).map(migrateTrack) as unknown as T
+      return (raw as any[]).filter(Boolean).map(migrateTrack) as unknown as T
     }
     return raw as T
   }
