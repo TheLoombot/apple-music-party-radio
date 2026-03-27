@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { Trash2 } from "lucide-react"
 import type { Station } from "../types"
 
 function LiveDot() {
@@ -25,9 +26,10 @@ interface Props {
   currentStationId: string
   ownStationId: string
   onSelect: (stationId: string) => void
+  onRemove: (stationId: string) => void
 }
 
-export function StationList({ stations, currentStationId, ownStationId, onSelect }: Props) {
+export function StationList({ stations, currentStationId, ownStationId, onSelect, onRemove }: Props) {
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
@@ -61,6 +63,13 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
                       <LiveDot /> live
                     </span>
                   )}
+                  <button
+                    onClick={e => { e.stopPropagation(); onRemove(station.id) }}
+                    className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all flex-shrink-0"
+                    title="Remove station"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </button>
               </li>
             )

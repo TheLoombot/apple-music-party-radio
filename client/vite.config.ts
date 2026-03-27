@@ -6,5 +6,5 @@ export default defineConfig(({ command }) => ({
   plugins: [react()],
   envDir: path.resolve(__dirname, '..'),  // read .env from project root
   base: command === 'build' ? '/apple-music-party-radio/' : '/',
-  server: { port: 5173 }
+  server: { port: 5173, host: true, allowedHosts: true }
 }))

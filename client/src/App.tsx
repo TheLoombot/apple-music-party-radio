@@ -170,6 +170,11 @@ return () => playbackLoop.stop()
     setCurrentStationId(stationId)
   }, [currentStationId])
 
+  const handleRemoveStation = useCallback((stationId: string) => {
+    indexSocket.removeStation(stationId)
+    if (stationId === currentStationId) handleSelectStation(user!.uid)
+  }, [currentStationId])
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   if (appState === "setup") return <SetupScreen error={setupError} />
@@ -295,6 +300,7 @@ return () => playbackLoop.stop()
             currentStationId={currentStationId}
             ownStationId={user.uid}
             onSelect={handleSelectStation}
+            onRemove={handleRemoveStation}
           />
           <SearchTracks
             currentUser={user}

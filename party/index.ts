@@ -110,6 +110,13 @@ export default class RadioParty implements Party.Server {
   // ─── Index room ─────────────────────────────────────────────────────────
 
   private async handleIndex(msg: any) {
+    if (msg.type === "remove_station") {
+      let stations = await this.storage<StationMeta[]>("stations", [])
+      stations = stations.filter(s => s.id !== msg.id)
+      await this.room.storage.put("stations", stations)
+      this.room.broadcast(json({ type: "stations_update", stations }))
+      return
+    }
     if (msg.type !== "register") return
 
     const stations = await this.storage<StationMeta[]>("stations", [])

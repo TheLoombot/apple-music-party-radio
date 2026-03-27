@@ -12,8 +12,10 @@ import type { QueueItem, Track, Station } from "../types"
 // In production, set VITE_PARTYKIT_HOST to your deployed host, e.g.:
 //   apple-music-party-radio.yourusername.partykit.dev
 const HOST = import.meta.env.DEV
-  ? "localhost:1999"
+  ? `${window.location.hostname}:1999`
   : (import.meta.env.VITE_PARTYKIT_HOST as string)
+
+const PARTY_OPTIONS = import.meta.env.DEV ? { protocol: "ws" } : {}
 
 // ─── Station socket ───────────────────────────────────────────────────────────
 
@@ -25,7 +27,7 @@ export class StationSocket {
 
   connect(stationId: string) {
     this.disconnect()
-    this.socket = new PartySocket({ host: HOST, room: stationId })
+    this.socket = new PartySocket({ host: HOST, room: stationId, ...PARTY_OPTIONS })
 
     this.socket.onmessage = (e) => {
       const msg = JSON.parse(e.data)
@@ -90,7 +92,7 @@ export class IndexSocket {
 
   connect() {
     this.disconnect()
-    this.socket = new PartySocket({ host: HOST, room: "index" })
+    this.socket = new PartySocket({ host: HOST, room: "index", ...PARTY_OPTIONS })
     this.socket.onmessage = (e) => {
       const msg = JSON.parse(e.data)
       if (msg.type === "stations_update") {
@@ -106,6 +108,10 @@ export class IndexSocket {
 
   register(id: string, displayName: string, storefront: string) {
     this.socket?.send(JSON.stringify({ type: "register", id, displayName, storefront }))
+  }
+
+  removeStation(id: string) {
+    this.socket?.send(JSON.stringify({ type: "remove_station", id }))
   }
 }
 
