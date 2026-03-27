@@ -65,25 +65,68 @@ function SoundBars({ active }: { active: boolean }) {
 function MuteToggle({ quiet, onClick }: { quiet: boolean; onClick: () => void }) {
   return (
     <>
-      <SoundBars active={!quiet} />
+      <div className="px-3 py-1.5 rounded-xl bg-surface flex items-center">
+        <SoundBars active={!quiet} />
+      </div>
       <button
         onClick={onClick}
         className="px-3 py-1.5 rounded-xl font-bold text-sm tracking-wide transition-all bg-surface hover:opacity-80"
-        style={quiet ? {
-          background: "linear-gradient(to right, #22c55e, #eab308, #fc3c44)",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent",
-          backgroundClip: "text",
-        } : { color: "white" }}
       >
-        {quiet ? "UNMUTE" : "MUTE"}
+        {quiet ? (
+          <span className="shimmer-text">UNMUTE</span>
+        ) : (
+          <span className="text-white">MUTE</span>
+        )}
       </button>
     </>
   )
 }
 
+function useMediaSession(
+  track: QueueItem | null,
+  isPlaying: boolean,
+  canSkip: boolean,
+  onSkip: () => void,
+  onPlay: () => void,
+  onPause: () => void,
+) {
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return
+
+    if (!track) {
+      navigator.mediaSession.metadata = null
+      navigator.mediaSession.playbackState = "none"
+      return
+    }
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.name,
+      artist: track.artistName,
+      album: track.albumName,
+      artwork: track.artworkUrl
+        ? [{ src: artworkUrl(track.artworkUrl, 512), sizes: "512x512", type: "image/jpeg" }]
+        : [],
+    })
+
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused"
+
+    navigator.mediaSession.setActionHandler("play", onPlay)
+    navigator.mediaSession.setActionHandler("pause", onPause)
+    navigator.mediaSession.setActionHandler("nexttrack", canSkip ? onSkip : null)
+  }, [track?.key, isPlaying, canSkip])
+}
+
 export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume }: Props) {
   const { progress, elapsed } = useProgress(track)
+  const isPlaying = !isMuted && !isBlocked
+  useMediaSession(
+    track,
+    isPlaying,
+    canSkip,
+    onSkip,
+    isBlocked ? onResume : onMuteToggle,
+    isBlocked ? () => {} : onMuteToggle,
+  )
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">

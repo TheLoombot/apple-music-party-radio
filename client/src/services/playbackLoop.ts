@@ -13,6 +13,7 @@ export class PlaybackLoop {
   private stationId = ""
   private expirationTimer: ReturnType<typeof setTimeout> | null = null
   private currentTrackKey: string | null = null
+  private currentTrack: QueueItem | null = null
   private pendingPlay: { track: QueueItem; offsetSeconds: number } | null = null
   private autoplayEnabled = false   // stays true once user has tapped "Tap to listen"
 
@@ -28,13 +29,16 @@ export class PlaybackLoop {
 
     stationSocket.onQueueUpdate = this.handleQueueUpdate
     stationSocket.connect(stationId)
+    document.addEventListener("visibilitychange", this.handleVisibilityChange)
   }
 
   stop() {
+    document.removeEventListener("visibilitychange", this.handleVisibilityChange)
     stationSocket.onQueueUpdate = undefined
     stationSocket.disconnect()
     if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
     this.currentTrackKey = null
+    this.currentTrack = null
     this.pendingPlay = null
     // intentionally keep autoplayEnabled — once the user has tapped, don't ask again
   }
@@ -63,6 +67,13 @@ export class PlaybackLoop {
     this.player.setVolume(muted ? 0 : 1)
   }
 
+  private handleVisibilityChange = () => {
+    if (document.hidden || !this.currentTrack) return
+    if (Date.now() >= this.currentTrack.expirationTime) {
+      stationSocket.expireTrack(this.currentTrack.key, true)
+    }
+  }
+
   private handleQueueUpdate = async (queue: QueueItem[]) => {
     this.onQueueChange?.(queue.slice(1))
 
@@ -71,6 +82,7 @@ export class PlaybackLoop {
     if (queue.length === 0) {
       this.onNowPlayingChange?.(null)
       this.currentTrackKey = null
+      this.currentTrack = null
       this.pendingPlay = null
       this.player.stop()
       stationSocket.triggerRobotDJ()
@@ -97,6 +109,7 @@ export class PlaybackLoop {
     if (track0.key === this.currentTrackKey) return  // already playing
 
     this.currentTrackKey = track0.key
+    this.currentTrack = track0
     const startTime = track0.expirationTime - track0.durationMs
     const offsetSeconds = Math.max(0, (now - startTime) / 1000)
 

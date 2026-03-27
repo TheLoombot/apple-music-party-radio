@@ -135,7 +135,7 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
                 <ul>
                   {browseTarget.tracks.map((track, i) => (
                     <TrackRow
-                      key={track.isrc || track.platformIds.apple || track.name}
+                      key={track.platformIds.apple || track.isrc || track.name}
                       track={track}
                       trackNumber={browseTarget.kind === "album" ? i + 1 : undefined}
                       added={queuedIsrcs.has(track.isrc)}
@@ -162,10 +162,13 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
                 <div className="p-6 text-center text-muted text-sm">No results</div>
               ) : (
                 <ul>
-                  {searchResults.map((item) =>
+                  {searchResults.filter((item, i, arr) => {
+                    if (item.kind !== "song") return true
+                    return arr.findIndex(x => x.kind === "song" && (x.track.isrc || x.track.platformIds.apple) === (item.track.isrc || item.track.platformIds.apple)) === i
+                  }).map((item) =>
                     item.kind === "song" ? (
                       <TrackRow
-                        key={item.track.isrc || item.track.platformIds.apple || item.track.name}
+                        key={item.track.platformIds.apple || item.track.isrc || item.track.name}
                         track={item.track}
                         added={queuedIsrcs.has(item.track.isrc)}
                         onAdd={() => onAddTrack(item.track)}

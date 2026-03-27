@@ -18,6 +18,24 @@ body {
   will-change: transform, opacity;
 }
 
+@keyframes shimmer-text {
+  0% { background-position: 0% center; }
+  100% { background-position: 100% center; }
+}
+
+.shimmer-text {
+  /* Two identical periods in the gradient so 0% and 100% look the same — seamless loop */
+  background: linear-gradient(90deg,
+    #22c55e 0%, #eab308 15%, #fc3c44 22%, #fff 25%, #fc3c44 28%, #eab308 35%, #22c55e 50%,
+    #eab308 65%, #fc3c44 72%, #fff 75%, #fc3c44 78%, #eab308 85%, #22c55e 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer-text 3s linear infinite;
+}
+
 @keyframes sound-bar {
   0%, 100% { clip-path: inset(78% 0 0 0 round 2px); }
   50% { clip-path: inset(0% 0 0 0 round 2px); }
