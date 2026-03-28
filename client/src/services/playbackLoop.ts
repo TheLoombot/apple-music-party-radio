@@ -6,6 +6,7 @@
  */
 import { stationSocket } from "./partykit"
 import { UnavailableError } from "./player"
+import { startAudioSession, resumeAudioSession } from "./audioSession"
 import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
 
@@ -47,6 +48,7 @@ export class PlaybackLoop {
 
   async resume() {
     this.autoplayEnabled = true
+    startAudioSession()
     if (!this.pendingPlay) return
     const { track, offsetSeconds } = this.pendingPlay
     this.pendingPlay = null
@@ -70,7 +72,9 @@ export class PlaybackLoop {
   }
 
   private handleVisibilityChange = () => {
-    if (document.hidden || !this.currentTrack) return
+    if (document.hidden) return
+    resumeAudioSession()
+    if (!this.currentTrack) return
     if (Date.now() >= this.currentTrack.expirationTime) {
       stationSocket.expireTrack(this.currentTrack.key, true)
     }

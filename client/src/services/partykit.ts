@@ -27,6 +27,7 @@ const HOST = import.meta.env.DEV
 
 export class StationSocket {
   private socket: PartySocket | null = null
+  private pingInterval: ReturnType<typeof setInterval> | null = null
 
   onQueueUpdate?: (queue: QueueItem[]) => void
   onPoolUpdate?: (pool: Track[]) => void
@@ -51,9 +52,14 @@ export class StationSocket {
     }
 
     this.socket.onerror = (e) => console.error("[StationSocket]", e)
+
+    // Keep the WebSocket alive while the tab is backgrounded on iOS.
+    // The server ignores unknown message types so this is a no-op server-side.
+    this.pingInterval = setInterval(() => this.send({ type: "ping" }), 20_000)
   }
 
   disconnect() {
+    if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null }
     this.socket?.close()
     this.socket = null
   }
