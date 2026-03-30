@@ -9,12 +9,13 @@ interface Props {
 
 export function StationChat({ messages, currentUser, onSend }: Props) {
   const [input, setInput] = useState("")
-  const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
   }, [messages])
 
   const handleSend = () => {
@@ -48,7 +49,6 @@ export function StationChat({ messages, currentUser, onSend }: Props) {
             )
           })
         )}
-        <div ref={bottomRef} />
       </div>
 
       <div className="px-3 py-3 border-t border-border flex gap-2">
@@ -56,7 +56,7 @@ export function StationChat({ messages, currentUser, onSend }: Props) {
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && handleSend()}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleSend() } }}
           placeholder="Say something…"
           className="flex-1 bg-surface text-white placeholder-muted rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent"
         />

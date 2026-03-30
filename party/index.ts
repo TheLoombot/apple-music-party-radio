@@ -331,7 +331,9 @@ export default class RadioParty implements Party.Server {
     let chat = await this.storage<ChatMessage[]>("chat", [])
     chat = [...chat, message].slice(-100)
     await this.room.storage.put("chat", chat)
-    this.room.broadcast(json({ type: "chat_message", message }))
+    // Broadcast to all other connections; send explicitly to sender
+    this.room.broadcast(json({ type: "chat_message", message }), [sender.id])
+    sender.send(json({ type: "chat_message", message }))
   }
 
   private hasListeners(): boolean {

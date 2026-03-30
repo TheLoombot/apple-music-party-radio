@@ -61,11 +61,11 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
         )}
         <button
           onClick={onAdd}
-          disabled={added || unavailable}
+          disabled={unavailable}
           className={`w-7 h-7 rounded-full flex items-center justify-center text-sm transition-all ${
-            added ? "bg-green-500/20 text-green-400" : unavailable ? "bg-surface text-muted cursor-not-allowed" : "bg-surface text-muted hover:bg-accent hover:text-white"
+            added ? "bg-green-500/20 text-green-400 hover:bg-red-500/20 hover:text-red-400" : unavailable ? "bg-surface text-muted cursor-not-allowed" : "bg-surface text-muted hover:bg-accent hover:text-white"
           }`}
-          title={unavailable ? "No longer available" : "Add to queue"}
+          title={unavailable ? "No longer available" : added ? "Remove from queue" : "Add to queue"}
         >
           {added ? "✓" : "+"}
         </button>

@@ -47,7 +47,8 @@ export class StationSocket {
       if (msg.type === "state") {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
         this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean).map(migrateTrack))
-        this.onChatUpdate?.(msg.chat ?? [])
+        this.chatMessages = msg.chat ?? []
+        this.onChatUpdate?.([...this.chatMessages])
       } else if (msg.type === "queue_update") {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
       } else if (msg.type === "pool_update") {

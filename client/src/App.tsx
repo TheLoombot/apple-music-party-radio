@@ -86,6 +86,7 @@ export default function App() {
     playbackLoop.current.onNowPlayingChange = setNowPlaying
     playbackLoop.current.onQueueChange = setUpNext
     playbackLoop.current.onPlaybackBlocked = () => setPlaybackBlocked(true)
+    playbackLoop.current.onMutedChange = setIsMuted
     stationSocket.onPoolUpdate = setPool
     stationSocket.onChatUpdate = setChatMessages
     playbackLoop.current.start(currentStationId)
@@ -123,8 +124,17 @@ export default function App() {
 
   const handleAddTrack = useCallback((track: Track) => {
     if (!user) return
-    stationSocket.addTrack(track, user.uid)
-  }, [user])
+    const fullQueue = [...(nowPlaying ? [nowPlaying] : []), ...upNext]
+    const existing = fullQueue.find(i =>
+      (track.isrc && i.isrc === track.isrc) ||
+      (track.platformIds?.apple && i.platformIds?.apple === track.platformIds.apple)
+    )
+    if (existing) {
+      stationSocket.removeTrack(existing.key)
+    } else {
+      stationSocket.addTrack(track, user.uid)
+    }
+  }, [user, nowPlaying, upNext])
 
   const handleRemoveTrack = useCallback((item: QueueItem) => {
     stationSocket.removeTrack(item.key)
@@ -143,11 +153,8 @@ export default function App() {
   }, [])
 
   const handleMuteToggle = useCallback(() => {
-    setIsMuted(prev => {
-      playbackLoop.current.setMuted(!prev)
-      return !prev
-    })
-  }, [])
+    playbackLoop.current.setMuted(!isMuted)
+  }, [isMuted])
 
   const handleResume = useCallback(async () => {
     setPlaybackBlocked(false)

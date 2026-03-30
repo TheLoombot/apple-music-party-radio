@@ -20,16 +20,19 @@ export class PlaybackLoop {
   private autoplayEnabled = false   // stays true once user has tapped "Tap to listen"
   private robotDJPending = false    // prevent duplicate triggerRobotDJ for the same empty-queue event
   private removePlaybackListener: (() => void) | null = null
+  private muted = false
 
   onNowPlayingChange?: (item: QueueItem | null) => void
   onQueueChange?: (upNext: QueueItem[]) => void
   onPlaybackBlocked?: () => void
+  onMutedChange?: (muted: boolean) => void
 
   constructor(private player: MusicPlayer) {}
 
   start(stationId: string) {
     this.stop()
     this.stationId = stationId
+    this.setMuted(false)
 
     stationSocket.onQueueUpdate = this.handleQueueUpdate
     stationSocket.connect(stationId)
@@ -53,6 +56,7 @@ export class PlaybackLoop {
 
   async resume() {
     this.autoplayEnabled = true
+    this.setMuted(false)
     startAudioSession()
     if (!this.pendingPlay) return
     const { track, offsetSeconds } = this.pendingPlay
@@ -73,7 +77,9 @@ export class PlaybackLoop {
   }
 
   setMuted(muted: boolean) {
+    this.muted = muted
     this.player.setVolume(muted ? 0 : 1)
+    this.onMutedChange?.(muted)
   }
 
   // MusicKit fires `completed` when the audio track ends naturally (driven by the

@@ -122,6 +122,14 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
 
   const relatedLoadedRef = useRef(false)
 
+  // Load related on initial render if the related tab is already active and queue has items
+  useEffect(() => {
+    if (tab !== "related" || relatedLoadedRef.current || queue.length === 0) return
+    relatedLoadedRef.current = true
+    allRelatedPlaylists.current = []
+    loadRelated(true)
+  }, [queue.length === 0])
+
   const handleTabChange = (t: Tab) => {
     setTab(t)
     if (t === "related" && !relatedLoadedRef.current && queue.length > 0) {
