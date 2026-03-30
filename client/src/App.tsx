@@ -74,14 +74,15 @@ export default function App() {
 
   // Start playback loop when station changes
   useEffect(() => {
-    if (appState !== "ready" || !currentStationId) return
+    if (appState !== "ready" || !currentStationId || !user) return
     playbackLoop.current.onNowPlayingChange = setNowPlaying
     playbackLoop.current.onQueueChange = setUpNext
     playbackLoop.current.onPlaybackBlocked = () => setPlaybackBlocked(true)
     stationSocket.onPoolUpdate = setPool
     playbackLoop.current.start(currentStationId)
+    stationSocket.join(user.uid, user.displayName)
     return () => playbackLoop.current.stop()
-  }, [currentStationId, appState])
+  }, [currentStationId, appState, user])
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 

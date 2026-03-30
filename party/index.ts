@@ -43,12 +43,18 @@ interface PoolTrack extends Track {
   lastPlayedAt: number
 }
 
+interface Listener {
+  userId: string
+  displayName: string
+}
+
 interface StationMeta {
   id: string
   displayName: string
   storefront: string
   liveUntil: number   // Unix ms; 0 = not live; client computes isLive as liveUntil > Date.now()
   nowPlayingAddedBy?: string
+  listeners?: Listener[]
 }
 
 // ─── Server ───────────────────────────────────────────────────────────────────
@@ -56,11 +62,17 @@ interface StationMeta {
 export default class RadioParty implements Party.Server {
   constructor(readonly room: Party.Room) {}
 
+  // Station rooms: connId → listener info (ephemeral, not persisted)
+  private connListeners = new Map<string, Listener>()
+
+  // Index room: stationId → listener list (ephemeral, not persisted)
+  private presenceMap = new Map<string, Listener[]>()
+
   /** Send current state to a newly connected client */
   async onConnect(conn: Party.Connection) {
     if (this.room.id === "index") {
       const stations = await this.storage<StationMeta[]>("stations", [])
-      conn.send(json({ type: "stations_update", stations }))
+      conn.send(json({ type: "stations_update", stations: this.withPresence(stations) }))
     } else {
       const { queue, pool } = await this.flushExpired()
       conn.send(json({ type: "state", queue, pool }))
@@ -84,6 +96,8 @@ export default class RadioParty implements Party.Server {
 
   async onClose(conn: Party.Connection) {
     if (this.room.id === "index") return
+    this.connListeners.delete(conn.id)
+    void this.notifyIndexPresence()
     const remaining = [...this.room.getConnections()].filter(c => c.id !== conn.id)
     if (remaining.length > 0) return
     // Last listener left — liveUntil already encodes the correct expiry time,
@@ -100,7 +114,7 @@ export default class RadioParty implements Party.Server {
       if (this.room.id === "index") {
         await this.handleIndex(msg)
       } else {
-        await this.handleStation(msg)
+        await this.handleStation(msg, sender)
       }
     } catch (err) {
       sender.send(json({ type: "error", message: String(err) }))
@@ -121,8 +135,12 @@ export default class RadioParty implements Party.Server {
             nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
           }
           await this.room.storage.put("stations", stations)
-          this.room.broadcast(json({ type: "stations_update", stations }))
+          this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
         }
+      } else if (msg.type === "station_presence") {
+        this.presenceMap.set(msg.id, msg.listeners ?? [])
+        const stations = await this.storage<StationMeta[]>("stations", [])
+        this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
       }
     }
     return new Response("ok")
@@ -135,7 +153,7 @@ export default class RadioParty implements Party.Server {
       let stations = await this.storage<StationMeta[]>("stations", [])
       stations = stations.filter(s => s.id !== msg.id)
       await this.room.storage.put("stations", stations)
-      this.room.broadcast(json({ type: "stations_update", stations }))
+      this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
       return
     }
     if (msg.type !== "register") return
@@ -154,13 +172,17 @@ export default class RadioParty implements Party.Server {
     else stations.push(meta)
 
     await this.room.storage.put("stations", stations)
-    this.room.broadcast(json({ type: "stations_update", stations }))
+    this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
   }
 
   // ─── Station room ────────────────────────────────────────────────────────
 
-  private async handleStation(msg: any) {
+  private async handleStation(msg: any, sender: Party.Connection) {
     switch (msg.type) {
+      case "join":
+        this.connListeners.set(sender.id, { userId: msg.userId, displayName: msg.displayName })
+        void this.notifyIndexPresence()
+        return
       case "add_track":        return this.addTrack(msg.track, msg.addedBy)
       case "remove_track":     return this.removeTrack(msg.key)
       case "skip_track":       return this.skipTrack()
@@ -311,6 +333,25 @@ export default class RadioParty implements Party.Server {
     }
 
     return { queue, pool }
+  }
+
+  private async notifyIndexPresence() {
+    const listeners = [...this.connListeners.values()]
+    try {
+      const indexRoom = this.room.context.parties.main.get("index")
+      await indexRoom.fetch("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "station_presence", id: this.room.id, listeners }),
+      })
+    } catch (e) {
+      console.error("[notifyIndexPresence] failed", e)
+    }
+  }
+
+  // Index room only — merges ephemeral presence into station list before broadcasting
+  private withPresence(stations: StationMeta[]): StationMeta[] {
+    return stations.map(s => ({ ...s, listeners: this.presenceMap.get(s.id) ?? [] }))
   }
 
   private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string) {

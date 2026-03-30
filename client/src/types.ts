@@ -48,12 +48,18 @@ export type SearchItem =
   | AlbumResult
   | PlaylistResult
 
+export interface Listener {
+  userId: string
+  displayName: string
+}
+
 export interface Station {
   id: string            // owner's userId (= PartyKit room name)
   displayName: string
   storefront: string
   liveUntil: number    // Unix ms; station is live if liveUntil > Date.now()
   nowPlayingAddedBy?: string
+  listeners?: Listener[]
 }
 
 export interface AppUser {

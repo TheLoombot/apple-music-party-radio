@@ -64,6 +64,10 @@ export class StationSocket {
     this.socket = null
   }
 
+  join(userId: string, displayName: string) {
+    this.send({ type: "join", userId, displayName })
+  }
+
   addTrack(track: Track, addedBy: string) {
     this.send({ type: "add_track", track, addedBy })
   }
