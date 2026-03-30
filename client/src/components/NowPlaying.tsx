@@ -46,8 +46,8 @@ interface Props {
 }
 
 function useProgress(track: QueueItem | null) {
-  const [progress, setProgress] = useState(0)   // 0–1
-  const [elapsed, setElapsed] = useState(0)      // ms
+  const [progress, setProgress] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
     if (!track) { setProgress(0); setElapsed(0); return }
@@ -72,11 +72,11 @@ const BAR_DURATIONS = ["0.7s", "0.9s", "0.75s", "0.85s"]
 
 function SoundBars({ active }: { active: boolean }) {
   return (
-    <div className="flex items-end gap-0.5 h-4">
+    <div className="flex items-end gap-0.5 h-6">
       {BAR_DELAYS.map((delay, i) => (
         <div
           key={i}
-          className="sound-bar w-1"
+          className="sound-bar w-1.5"
           style={{
             height: "100%",
             animationDelay: delay,
@@ -88,26 +88,6 @@ function SoundBars({ active }: { active: boolean }) {
         />
       ))}
     </div>
-  )
-}
-
-function MuteToggle({ quiet, onClick }: { quiet: boolean; onClick: () => void }) {
-  return (
-    <>
-      <div className="px-3 py-1.5 rounded-xl bg-surface flex items-center">
-        <SoundBars active={!quiet} />
-      </div>
-      <button
-        onClick={onClick}
-        className="px-3 py-1.5 rounded-xl font-bold text-sm tracking-wide transition-all bg-surface hover:opacity-80"
-      >
-        {quiet ? (
-          <span className="shimmer-text">UNMUTE</span>
-        ) : (
-          <span className="text-white">MUTE</span>
-        )}
-      </button>
-    </>
   )
 }
 
@@ -148,6 +128,7 @@ function useMediaSession(
 export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume }: Props) {
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
+  const quiet = isMuted || isBlocked
   const [artworkOpen, setArtworkOpen] = useState(false)
   const closeArtwork = useCallback(() => setArtworkOpen(false), [])
   useMediaSession(
@@ -174,65 +155,26 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
           >
-            <div className="p-4 flex gap-4 items-start">
-              {/* Album art */}
-              <motion.div
-                key={track.isrc || track.platformIds?.apple}
-                initial={{ scale: 0.92, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
-                className="flex-shrink-0 w-64 h-64 rounded-lg overflow-hidden bg-surface"
-              >
-                {track.artworkUrl ? (
-                  <button onClick={() => setArtworkOpen(true)} className="block w-full h-full cursor-zoom-in">
-                    <img src={artworkUrl(track.artworkUrl, 256)} alt={track.albumName} className="w-full h-full object-cover" />
-                  </button>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-muted text-3xl">♪</div>
-                )}
-              </motion.div>
-
-              {/* Track info */}
-              <motion.div
-                key={`${track.key}-info`}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, delay: 0.05 }}
-                className="flex-1 min-w-0"
-              >
-                <p className="text-muted/70 text-sm">{track.artistName}</p>
-                <p className="text-white text-xl font-bold">{track.name}</p>
-                <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>
-
-                <p className="text-muted text-sm mt-3">
-                  spun by{" "}
-                  <span className="text-white/60">
-                    {track.addedBy === "robot" ? "🤖"
-                      : track.addedBy === currentUser.uid ? "you"
-                      : track.addedBy}
-                  </span>
-                </p>
-
-                <div className="flex items-center gap-2 mt-3">
-                  <MuteToggle
-                    quiet={isBlocked || isMuted}
-                    onClick={isBlocked ? onResume : onMuteToggle}
-                  />
-                  {canSkip && (
-                    <button
-                      onClick={onSkip}
-                      className="px-3 py-1.5 rounded-xl font-bold text-sm tracking-wide transition-all bg-surface text-white hover:opacity-80"
-                    >
-                      SKIP
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            </div>
+            {/* Full-width album art */}
+            <motion.div
+              key={track.isrc || track.platformIds?.apple}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="w-full aspect-square bg-surface"
+            >
+              {track.artworkUrl ? (
+                <button onClick={() => setArtworkOpen(true)} className="block w-full h-full cursor-zoom-in">
+                  <img src={artworkUrl(track.artworkUrl, 400)} alt={track.albumName} className="w-full h-full object-cover" />
+                </button>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-muted text-6xl">♪</div>
+              )}
+            </motion.div>
 
             {/* Progress bar + time */}
-            <div className="px-4 pb-4">
-              <div className="w-full h-1 bg-surface rounded-full overflow-hidden">
+            <div className="px-4 pt-3">
+              <div className="w-full h-1.5 bg-surface rounded-full overflow-hidden">
                 <motion.div
                   className="h-full bg-accent rounded-full"
                   style={{ width: `${progress * 100}%` }}
@@ -242,6 +184,52 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <div className="flex justify-end mt-1.5">
                 <span className="text-sm text-muted tabular-nums">−{formatDuration(track.durationMs - elapsed)}</span>
               </div>
+            </div>
+
+            {/* Track info */}
+            <motion.div
+              key={`${track.key}-info`}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25, delay: 0.05 }}
+              className="px-4 pt-1 pb-3"
+            >
+              <p className="text-muted/70 text-sm">{track.artistName}</p>
+              <p className="text-white text-xl font-bold">{track.name}</p>
+              <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>
+              <p className="text-muted text-sm mt-2">
+                spun by{" "}
+                <span className="text-white/60">
+                  {track.addedBy === "robot" ? "🤖"
+                    : track.addedBy === currentUser.uid ? "you"
+                    : track.addedBy}
+                </span>
+              </p>
+            </motion.div>
+
+            {/* Controls */}
+            <div className="flex gap-2 px-4 pb-4">
+              <div className="flex-1 flex items-center justify-center py-3 rounded-xl bg-surface">
+                <SoundBars active={!quiet} />
+              </div>
+              <button
+                onClick={isBlocked ? onResume : onMuteToggle}
+                className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide transition-all hover:opacity-80"
+              >
+                {quiet ? (
+                  <span className="shimmer-text">UNMUTE</span>
+                ) : (
+                  <span className="text-white">MUTE</span>
+                )}
+              </button>
+              {canSkip && (
+                <button
+                  onClick={onSkip}
+                  className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide text-white transition-all hover:opacity-80"
+                >
+                  SKIP
+                </button>
+              )}
             </div>
           </motion.div>
         ) : (
