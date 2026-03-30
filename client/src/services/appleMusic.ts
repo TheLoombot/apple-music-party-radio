@@ -161,6 +161,33 @@ export async function getChartSongs(storefront = "us"): Promise<Track[]> {
   return (data.results?.songs?.[0]?.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null)
 }
 
+export async function getRelatedPlaylistsForSong(songId: string, storefront = "us"): Promise<PlaylistResult[]> {
+  // Step 1: resolve album ID from song
+  const songRes = await fetch(
+    `https://api.music.apple.com/v1/catalog/${storefront}/songs/${songId}?include=albums`,
+    { headers: headers() }
+  )
+  if (!songRes.ok) return []
+  const songData = await songRes.json()
+  const albumId = songData.data?.[0]?.relationships?.albums?.data?.[0]?.id
+  if (!albumId) return []
+
+  // Step 2: fetch the "appears-on" view — playlists this album is featured on
+  const res = await fetch(
+    `https://api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}?views=appears-on`,
+    { headers: headers() }
+  )
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data.data?.[0]?.views?.["appears-on"]?.data ?? []).map((item: any) => ({
+    kind: "playlist" as const,
+    id: item.id,
+    name: item.attributes?.name ?? "",
+    subtitle: item.attributes?.curatorName ?? "",
+    artworkUrl: item.attributes?.artwork?.url ?? ""
+  }))
+}
+
 export async function getRecommendedPlaylists(): Promise<PlaylistResult[]> {
   const res = await fetch(
     "https://api.music.apple.com/v1/me/recommendations",

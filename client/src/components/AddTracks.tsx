@@ -112,18 +112,18 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
               exit={{ opacity: 0, x: 20 }}
               transition={{ duration: 0.18 }}
             >
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-                <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden bg-surface">
+              <div className="flex items-center gap-4 px-4 py-4 border-b border-border bg-surface/40">
+                <div className="w-16 h-16 rounded-lg flex-shrink-0 overflow-hidden bg-surface shadow-md">
                   {browseTarget.artworkUrl
-                    ? <img src={artworkUrl(browseTarget.artworkUrl, 48)} alt="" className="w-full h-full object-cover" />
+                    ? <img src={artworkUrl(browseTarget.artworkUrl, 64)} alt="" className="w-full h-full object-cover" />
                     : <div className="w-full h-full flex items-center justify-center text-muted">
-                        {browseTarget.kind === "album" ? <Disc3 size={20} /> : <ListMusic size={20} />}
+                        {browseTarget.kind === "album" ? <Disc3 size={24} /> : <ListMusic size={24} />}
                       </div>
                   }
                 </div>
                 <div className="min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{browseTarget.name}</p>
-                  <p className="text-muted text-xs truncate">{browseTarget.subtitle}</p>
+                  <p className="text-white text-base font-bold truncate">{browseTarget.name}</p>
+                  {browseTarget.subtitle && <p className="text-muted text-sm truncate mt-0.5">{browseTarget.subtitle}</p>}
                 </div>
               </div>
 
@@ -138,7 +138,7 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
                       key={track.platformIds?.apple || track.isrc || track.name}
                       track={track}
                       trackNumber={browseTarget.kind === "album" ? i + 1 : undefined}
-                      added={queuedIsrcs.has(track.isrc)}
+                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
                       onAdd={() => onAddTrack(track)}
                     />
                   ))}
@@ -170,7 +170,7 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
                       <TrackRow
                         key={item.track.platformIds?.apple || item.track.isrc || item.track.name}
                         track={item.track}
-                        added={queuedIsrcs.has(item.track.isrc)}
+                        added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.platformIds?.apple ?? "")}
                         onAdd={() => onAddTrack(item.track)}
                       />
                     ) : (
@@ -307,16 +307,16 @@ export function PoolLibrary({ currentUser, catalog, stationOwner, pool, onAddTra
               exit={{ opacity: 0, x: 20 }}
               transition={{ duration: 0.18 }}
             >
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-                <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden bg-surface">
+              <div className="flex items-center gap-4 px-4 py-4 border-b border-border bg-surface/40">
+                <div className="w-16 h-16 rounded-lg flex-shrink-0 overflow-hidden bg-surface shadow-md">
                   {browseTarget.artworkUrl
-                    ? <img src={artworkUrl(browseTarget.artworkUrl, 48)} alt="" className="w-full h-full object-cover" />
-                    : <div className="w-full h-full flex items-center justify-center text-muted"><ListMusic size={20} /></div>
+                    ? <img src={artworkUrl(browseTarget.artworkUrl, 64)} alt="" className="w-full h-full object-cover" />
+                    : <div className="w-full h-full flex items-center justify-center text-muted"><ListMusic size={24} /></div>
                   }
                 </div>
                 <div className="min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{browseTarget.name}</p>
-                  <p className="text-muted text-xs truncate">{browseTarget.subtitle}</p>
+                  <p className="text-white text-base font-bold truncate">{browseTarget.name}</p>
+                  {browseTarget.subtitle && <p className="text-muted text-sm truncate mt-0.5">{browseTarget.subtitle}</p>}
                 </div>
               </div>
 
@@ -333,7 +333,7 @@ export function PoolLibrary({ currentUser, catalog, stationOwner, pool, onAddTra
                     <TrackRow
                       key={track.isrc || track.platformIds?.apple || track.name}
                       track={track}
-                      added={queuedIsrcs.has(track.isrc)}
+                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
                       onAdd={() => onAddTrack(track)}
                     />
                   ))}
@@ -387,7 +387,7 @@ export function PoolLibrary({ currentUser, catalog, stationOwner, pool, onAddTra
                         >
                           <TrackRow
                             track={track}
-                            added={queuedIsrcs.has(track.isrc)}
+                            added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
                             onAdd={() => onAddTrack(track)}
                             onRemove={isOwner ? () => onRemoveFromPool(track.isrc) : undefined}
                             unavailable={!track.platformIds?.apple}

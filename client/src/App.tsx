@@ -237,10 +237,12 @@ export default function App() {
   if (!user) return null
 
   const isOwnStation = currentStationId === user.uid
-  const queuedIsrcs = new Set([
-    ...(nowPlaying ? [nowPlaying.isrc] : []),
-    ...upNext.map(i => i.isrc)
-  ].filter(Boolean))
+  // Include both ISRCs and Apple catalog IDs — library tracks often have no ISRC
+  const queuedIsrcs = new Set(
+    [...(nowPlaying ? [nowPlaying] : []), ...upNext]
+      .flatMap(i => [i.isrc, i.platformIds?.apple])
+      .filter(Boolean) as string[]
+  )
 
   return (
     <div className="min-h-screen bg-surface">
@@ -296,6 +298,7 @@ export default function App() {
           <Discovery
             catalog={catalog.current}
             queuedIsrcs={queuedIsrcs}
+            queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
             onAddTrack={handleAddTrack}
           />
         </div>
