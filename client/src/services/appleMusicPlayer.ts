@@ -1,13 +1,21 @@
-import { playTrackAtOffset, getMusicKit } from "./musickit"
+import { playTrackAtOffset, syncQueueTail, getMusicKit } from "./musickit"
 import { UnavailableError } from "./player"
 import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
 
 export class AppleMusicPlayer implements MusicPlayer {
-  async playAtOffset(track: QueueItem, offsetSeconds: number): Promise<void> {
+  async playAtOffset(track: QueueItem, offsetSeconds: number, upNext: QueueItem[]): Promise<void> {
     const appleId = track.platformIds.apple
     if (!appleId) throw new UnavailableError("apple", track)
-    await playTrackAtOffset(appleId, offsetSeconds)
+    const upNextIds = upNext.map(t => t.platformIds.apple).filter(Boolean) as string[]
+    await playTrackAtOffset(appleId, offsetSeconds, upNextIds)
+  }
+
+  async syncQueue(currentTrack: QueueItem, upNext: QueueItem[]): Promise<void> {
+    const currentId = currentTrack.platformIds.apple
+    if (!currentId) return
+    const upNextIds = upNext.map(t => t.platformIds.apple).filter(Boolean) as string[]
+    await syncQueueTail(currentId, upNextIds)
   }
 
   stop() {

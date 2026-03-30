@@ -110,14 +110,37 @@ export function isAuthorized(): boolean {
   try { return getMusicKit().isAuthorized } catch { return false }
 }
 
-export async function playTrackAtOffset(catalogId: string, offsetSeconds: number): Promise<void> {
+export async function playTrackAtOffset(catalogId: string, offsetSeconds: number, upNextIds: string[] = []): Promise<void> {
   const music = getMusicKit()
-  await music.setQueue({ song: catalogId })
+  await music.setQueue({ songs: [catalogId, ...upNextIds] } as any)
   await music.play()
   if (offsetSeconds > 1) {
     await new Promise(r => setTimeout(r, 300))
     await music.seekToTime(offsetSeconds)
   }
+}
+
+/**
+ * Replace the items queued after the currently-playing track without restarting it.
+ * Captures the current playback position, rebuilds the queue, then re-seeks.
+ * Only called for user-initiated mutations (the tab is foregrounded), so a brief
+ * restart is acceptable.
+ */
+export async function syncQueueTail(currentId: string, upNextIds: string[]): Promise<void> {
+  const music = getMusicKit()
+  const t = music.currentPlaybackTime
+  await music.setQueue({ songs: [currentId, ...upNextIds] } as any)
+  await music.play()
+  if (t > 1) {
+    await new Promise(r => setTimeout(r, 300))
+    await music.seekToTime(t)
+  }
+}
+
+export function onNowPlayingItemChange(cb: () => void): () => void {
+  const handler = () => cb()
+  getMusicKit().addEventListener(MusicKit.Events.nowPlayingItemDidChange, handler)
+  return () => getMusicKit().removeEventListener(MusicKit.Events.nowPlayingItemDidChange, handler)
 }
 
 export function artworkUrl(template: string, size = 300): string {

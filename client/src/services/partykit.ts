@@ -6,7 +6,7 @@
  *  indexSocket    — connects to the "index" room, manages station discovery
  */
 import PartySocket from "partysocket"
-import type { QueueItem, Track, Station, ChatMessage } from "../types"
+import type { QueueItem, Track, PoolTrack, Station, ChatMessage } from "../types"
 
 // Ensure every track from the server has a platformIds object.
 // Mirrors the server-side migrateTrack — runs on every received queue/pool item.
@@ -31,7 +31,7 @@ export class StationSocket {
   private chatMessages: ChatMessage[] = []
 
   onQueueUpdate?: (queue: QueueItem[]) => void
-  onPoolUpdate?: (pool: Track[]) => void
+  onPoolUpdate?: (pool: PoolTrack[]) => void
   onChatUpdate?: (messages: ChatMessage[]) => void
 
   connect(stationId: string) {
