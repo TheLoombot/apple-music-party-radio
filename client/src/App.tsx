@@ -5,6 +5,7 @@ import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
 import { SearchTracks } from "./components/AddTracks"
 import { PoolModal } from "./components/PoolModal"
+import { StationChat } from "./components/StationChat"
 import { Discovery } from "./components/Discovery"
 import { StationList } from "./components/StationList"
 import { PlaylistModal } from "./components/PlaylistModal"
@@ -15,7 +16,7 @@ import { stationSocket, indexSocket } from "./services/partykit"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
 import { AppleMusicCatalog } from "./services/catalog"
-import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack } from "./types"
+import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack, ChatMessage } from "./types"
 
 type AppState = "loading" | "setup" | "naming" | "auth" | "ready"
 
@@ -32,6 +33,7 @@ export default function App() {
   const [upNext, setUpNext] = useState<QueueItem[]>([])
   const [pool, setPool] = useState<PoolTrack[]>([])
   const [poolModalOpen, setPoolModalOpen] = useState(false)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [isMuted, setIsMuted] = useState(false)
   const [playbackBlocked, setPlaybackBlocked] = useState(false)
   const [renamingDJ, setRenamingDJ] = useState(false)
@@ -85,6 +87,7 @@ export default function App() {
     playbackLoop.current.onQueueChange = setUpNext
     playbackLoop.current.onPlaybackBlocked = () => setPlaybackBlocked(true)
     stationSocket.onPoolUpdate = setPool
+    stationSocket.onChatUpdate = setChatMessages
     playbackLoop.current.start(currentStationId)
     stationSocket.join(user.uid, user.displayName)
     return () => playbackLoop.current.stop()
@@ -172,6 +175,7 @@ export default function App() {
     setNowPlaying(null)
     setUpNext([])
     setPlaybackBlocked(false)
+    setChatMessages([])
     playbackLoop.current.enableAutoplay()
     setCurrentStationId(stationId)
   }, [currentStationId])
@@ -336,10 +340,10 @@ export default function App() {
             isBlocked={playbackBlocked}
             onResume={handleResume}
             onAlbumClick={nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
-            onOpenPool={() => setPoolModalOpen(true)}
+            onOpenPool={isOwnStation ? () => setPoolModalOpen(true) : undefined}
           />
           <UpNext
-            queue={upNext}
+            queue={isOwnStation ? upNext : upNext.slice(0, 1)}
             currentUser={user}
             stationOwner={currentStationId}
             onRemove={handleRemoveTrack}
@@ -355,18 +359,27 @@ export default function App() {
             onSelect={handleSelectStation}
             onRemove={handleRemoveStation}
           />
-          <Discovery
-            catalog={catalog.current}
-            queuedIsrcs={queuedIsrcs}
-            queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
-            onAddTrack={handleAddTrack}
-          />
-          <SearchTracks
+          <StationChat
+            messages={chatMessages}
             currentUser={user}
-            catalog={catalog.current}
-            onAddTrack={handleAddTrack}
-            queuedIsrcs={queuedIsrcs}
+            onSend={(text) => stationSocket.sendChatMessage(text)}
           />
+          {isOwnStation && (
+            <>
+              <Discovery
+                catalog={catalog.current}
+                queuedIsrcs={queuedIsrcs}
+                queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
+                onAddTrack={handleAddTrack}
+              />
+              <SearchTracks
+                currentUser={user}
+                catalog={catalog.current}
+                onAddTrack={handleAddTrack}
+                queuedIsrcs={queuedIsrcs}
+              />
+            </>
+          )}
         </div>
       </div>
     </div>

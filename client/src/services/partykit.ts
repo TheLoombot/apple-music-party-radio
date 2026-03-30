@@ -6,7 +6,7 @@
  *  indexSocket    — connects to the "index" room, manages station discovery
  */
 import PartySocket from "partysocket"
-import type { QueueItem, Track, Station } from "../types"
+import type { QueueItem, Track, Station, ChatMessage } from "../types"
 
 // Ensure every track from the server has a platformIds object.
 // Mirrors the server-side migrateTrack — runs on every received queue/pool item.
@@ -28,12 +28,15 @@ const HOST = import.meta.env.DEV
 export class StationSocket {
   private socket: PartySocket | null = null
   private pingInterval: ReturnType<typeof setInterval> | null = null
+  private chatMessages: ChatMessage[] = []
 
   onQueueUpdate?: (queue: QueueItem[]) => void
   onPoolUpdate?: (pool: Track[]) => void
+  onChatUpdate?: (messages: ChatMessage[]) => void
 
   connect(stationId: string) {
     this.disconnect()
+    this.chatMessages = []
     const opts = import.meta.env.DEV
       ? { host: HOST, room: stationId, protocol: "ws" as const }
       : { host: HOST, room: stationId }
@@ -44,10 +47,14 @@ export class StationSocket {
       if (msg.type === "state") {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
         this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean).map(migrateTrack))
+        this.onChatUpdate?.(msg.chat ?? [])
       } else if (msg.type === "queue_update") {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
       } else if (msg.type === "pool_update") {
         this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean).map(migrateTrack))
+      } else if (msg.type === "chat_message") {
+        this.chatMessages = [...this.chatMessages, msg.message].slice(-100)
+        this.onChatUpdate?.([...this.chatMessages])
       }
     }
 
@@ -98,6 +105,10 @@ export class StationSocket {
 
   triggerRobotDJ() {
     this.send({ type: "robot_dj" })
+  }
+
+  sendChatMessage(text: string) {
+    this.send({ type: "chat_message", text })
   }
 
   private send(data: object) {

@@ -42,6 +42,15 @@ interface QueueItem extends Track {
 interface PoolTrack extends Track {
   lastPlayedAt: number
   addedByUsers: string[]
+  playCount: number
+}
+
+interface ChatMessage {
+  id: string
+  userId: string
+  displayName: string
+  text: string
+  sentAt: number
 }
 
 interface Listener {
@@ -76,7 +85,8 @@ export default class RadioParty implements Party.Server {
       conn.send(json({ type: "stations_update", stations: this.withPresence(stations) }))
     } else {
       const { queue, pool } = await this.flushExpired()
-      conn.send(json({ type: "state", queue, pool }))
+      const chat = await this.storage<ChatMessage[]>("chat", [])
+      conn.send(json({ type: "state", queue, pool, chat }))
       // Sync live status to index on every connect so stale flags get corrected
       void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy)
       // Re-arm expiration alarm in case the DO restarted and lost it
@@ -192,6 +202,7 @@ export default class RadioParty implements Party.Server {
       case "clear_pool":       return this.clearPool()
       case "robot_dj":         return this.robotDJ()
       case "reorder_queue":    return this.reorderQueue(msg.keys)
+      case "chat_message":     return this.handleChatMessage(msg, sender)
     }
   }
 
@@ -277,7 +288,7 @@ export default class RadioParty implements Party.Server {
         ? [...new Set([...prevUsers, addedBy])]
         : prevUsers
       pool = [
-        { ...trackData, lastPlayedAt: Date.now(), addedByUsers },
+        { ...trackData, lastPlayedAt: Date.now(), addedByUsers, playCount: (existing?.playCount ?? 0) + 1 },
         ...pool.filter(t => t.isrc !== trackData.isrc)
       ].slice(0, 100)
       await this.room.storage.put("pool", pool)
@@ -305,6 +316,24 @@ export default class RadioParty implements Party.Server {
     this.room.broadcast(json({ type: "pool_update", pool: [] }))
   }
 
+  private async handleChatMessage(msg: any, sender: Party.Connection) {
+    const text = (msg.text ?? "").trim().slice(0, 500)
+    if (!text) return
+    const listener = this.connListeners.get(sender.id)
+    if (!listener) return
+    const message: ChatMessage = {
+      id: crypto.randomUUID(),
+      userId: listener.userId,
+      displayName: listener.displayName,
+      text,
+      sentAt: Date.now(),
+    }
+    let chat = await this.storage<ChatMessage[]>("chat", [])
+    chat = [...chat, message].slice(-100)
+    await this.room.storage.put("chat", chat)
+    this.room.broadcast(json({ type: "chat_message", message }))
+  }
+
   private hasListeners(): boolean {
     return [...this.room.getConnections()].length > 0
   }
@@ -318,7 +347,7 @@ export default class RadioParty implements Party.Server {
     if (pool.length === 0) return
 
     const first = pool[Math.floor(Math.random() * pool.length)]
-    const { lastPlayedAt: _1, addedByUsers: _2, ...track1 } = first
+    const { lastPlayedAt: _1, addedByUsers: _2, playCount: _3, ...track1 } = first
     await this.addTrack(track1, "robot")
     await this.addRobotTrack([first.isrc])
   }
@@ -329,7 +358,7 @@ export default class RadioParty implements Party.Server {
     const candidates = pool.filter(t => hasAnyPlatformId(t) && !excludeIsrcs.includes(t.isrc))
     if (candidates.length === 0) return
     const pick = candidates[Math.floor(Math.random() * candidates.length)]
-    const { lastPlayedAt: _, addedByUsers: _2, ...track } = pick
+    const { lastPlayedAt: _, addedByUsers: _2, playCount: _3, ...track } = pick
     await this.addTrack(track, "robot")
   }
 
@@ -350,7 +379,7 @@ export default class RadioParty implements Party.Server {
       const addedByUsers = addedBy && addedBy !== "robot"
         ? [...new Set([...prevUsers, addedBy])]
         : prevUsers
-      pool = [{ ...trackData, lastPlayedAt: now, addedByUsers }, ...pool.filter(t => t.isrc !== trackData.isrc)].slice(0, 100)
+      pool = [{ ...trackData, lastPlayedAt: now, addedByUsers, playCount: (existing?.playCount ?? 0) + 1 }, ...pool.filter(t => t.isrc !== trackData.isrc)].slice(0, 100)
       changed = true
     }
 
@@ -431,9 +460,13 @@ function hasAnyPlatformId(t: { platformIds: PlatformIds }): boolean {
 // Runs transparently on every queue/pool read until all stored data is updated.
 function migrateTrack(item: any): any {
   if (item.platformIds) {
-    // Backfill addedByUsers for pool tracks that predate this field
-    if ('lastPlayedAt' in item && !item.addedByUsers) {
-      return { ...item, addedByUsers: [] }
+    // Backfill fields for pool tracks that predate them
+    if ('lastPlayedAt' in item) {
+      return {
+        ...item,
+        addedByUsers: item.addedByUsers ?? [],
+        playCount: item.playCount ?? 1,
+      }
     }
     return item
   }

@@ -65,6 +65,15 @@ export interface Station {
 export interface PoolTrack extends Track {
   lastPlayedAt: number
   addedByUsers: string[]
+  playCount: number
+}
+
+export interface ChatMessage {
+  id: string
+  userId: string
+  displayName: string
+  text: string
+  sentAt: number
 }
 
 export interface AppUser {

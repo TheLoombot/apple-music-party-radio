@@ -193,7 +193,7 @@ export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddT
                               : <p className="text-muted/50 text-xs">{track.albumName}</p>
                           )}
                           <p className="text-muted text-xs mt-2">
-                            last played {relativeTime(track.lastPlayedAt)}
+                            played {track.playCount}× · last {relativeTime(track.lastPlayedAt)}
                             {track.addedByUsers.length > 0 && (
                               <>
                                 <span className="mx-1">·</span>
