@@ -3,7 +3,8 @@ import { AnimatePresence } from "framer-motion"
 import { SetupScreen } from "./components/SetupScreen"
 import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
-import { SearchTracks, StationPool } from "./components/AddTracks"
+import { SearchTracks } from "./components/AddTracks"
+import { PoolModal } from "./components/PoolModal"
 import { Discovery } from "./components/Discovery"
 import { StationList } from "./components/StationList"
 import { PlaylistModal } from "./components/PlaylistModal"
@@ -14,7 +15,7 @@ import { stationSocket, indexSocket } from "./services/partykit"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
 import { AppleMusicCatalog } from "./services/catalog"
-import type { AppUser, Station, QueueItem, Track, AlbumResult } from "./types"
+import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack } from "./types"
 
 type AppState = "loading" | "setup" | "naming" | "auth" | "ready"
 
@@ -29,7 +30,8 @@ export default function App() {
   const [currentStationId, setCurrentStationId] = useState("")
   const [nowPlaying, setNowPlaying] = useState<QueueItem | null>(null)
   const [upNext, setUpNext] = useState<QueueItem[]>([])
-  const [pool, setPool] = useState<Track[]>([])
+  const [pool, setPool] = useState<PoolTrack[]>([])
+  const [poolModalOpen, setPoolModalOpen] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [playbackBlocked, setPlaybackBlocked] = useState(false)
   const [renamingDJ, setRenamingDJ] = useState(false)
@@ -304,6 +306,22 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {poolModalOpen && (
+          <PoolModal
+            pool={pool}
+            currentUser={user}
+            stationOwner={currentStationId}
+            queuedIsrcs={queuedIsrcs}
+            onAddTrack={handleAddTrack}
+            onRemoveFromPool={handleRemoveFromPool}
+            onClearPool={handleClearPool}
+            onClose={() => setPoolModalOpen(false)}
+            catalog={catalog.current}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Main layout */}
       <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-4">
@@ -318,6 +336,7 @@ export default function App() {
             isBlocked={playbackBlocked}
             onResume={handleResume}
             onAlbumClick={nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
+            onOpenPool={() => setPoolModalOpen(true)}
           />
           <UpNext
             queue={upNext}
@@ -326,15 +345,6 @@ export default function App() {
             onRemove={handleRemoveTrack}
             onReorder={isOwnStation ? (keys) => stationSocket.reorderQueue(keys) : undefined}
             onAlbumClick={(item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) }}
-          />
-          <StationPool
-            currentUser={user}
-            stationOwner={currentStationId}
-            pool={pool}
-            onAddTrack={handleAddTrack}
-            onRemoveFromPool={handleRemoveFromPool}
-            onClearPool={handleClearPool}
-            queuedIsrcs={queuedIsrcs}
           />
         </div>
         <div className="space-y-4">

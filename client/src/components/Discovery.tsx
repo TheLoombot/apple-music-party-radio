@@ -269,11 +269,11 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
                 ))}
               </ul>
               {relatedSeed && relatedPlaylist && (
-                <div className="px-4 py-2.5 border-t border-border/50 flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted truncate">
+                <div className="px-4 py-2.5 border-t border-border/50 flex items-start justify-between gap-3">
+                  <p className="text-xs text-muted">
                     <span className="text-white/70">{relatedSeed.name}</span>
                     <span className="text-muted/60"> appears on </span>
-                    <button onClick={() => handleSelectPlaylist(relatedPlaylist)} className="text-white/70 hover:text-white transition-colors">{relatedPlaylist.name}</button>
+                    <button onClick={() => handleSelectPlaylist(relatedPlaylist)} className="text-white/70 hover:text-red-400 transition-colors">{relatedPlaylist.name}</button>
                     <span className="text-muted/60"> alongside these tracks</span>
                   </p>
                   <button onClick={refreshRelated} className="text-muted hover:text-white transition-colors flex-shrink-0" title="Shuffle">↻</button>

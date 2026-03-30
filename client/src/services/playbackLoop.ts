@@ -7,6 +7,7 @@
 import { stationSocket } from "./partykit"
 import { UnavailableError } from "./player"
 import { startAudioSession, resumeAudioSession } from "./audioSession"
+import { onPlaybackStateChange } from "./musickit"
 import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
 
@@ -18,6 +19,7 @@ export class PlaybackLoop {
   private pendingPlay: { track: QueueItem; offsetSeconds: number } | null = null
   private autoplayEnabled = false   // stays true once user has tapped "Tap to listen"
   private robotDJPending = false    // prevent duplicate triggerRobotDJ for the same empty-queue event
+  private removePlaybackListener: (() => void) | null = null
 
   onNowPlayingChange?: (item: QueueItem | null) => void
   onQueueChange?: (upNext: QueueItem[]) => void
@@ -32,10 +34,13 @@ export class PlaybackLoop {
     stationSocket.onQueueUpdate = this.handleQueueUpdate
     stationSocket.connect(stationId)
     document.addEventListener("visibilitychange", this.handleVisibilityChange)
+    this.removePlaybackListener = onPlaybackStateChange(this.handlePlaybackState)
   }
 
   stop() {
     document.removeEventListener("visibilitychange", this.handleVisibilityChange)
+    this.removePlaybackListener?.()
+    this.removePlaybackListener = null
     stationSocket.onQueueUpdate = undefined
     stationSocket.disconnect()
     if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
@@ -69,6 +74,18 @@ export class PlaybackLoop {
 
   setMuted(muted: boolean) {
     this.player.setVolume(muted ? 0 : 1)
+  }
+
+  // MusicKit fires `completed` when the audio track ends naturally (driven by the
+  // audio engine, not the JS timer). This fires reliably even in backgrounded tabs
+  // where setTimeout is throttled, so we use it to trigger expireTrack immediately
+  // rather than waiting for the (potentially delayed) expirationTimer.
+  private handlePlaybackState = (state: number) => {
+    // MusicKit.PlaybackStates.completed = 10
+    if (state !== 10) return
+    if (!this.currentTrack) return
+    if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
+    stationSocket.expireTrack(this.currentTrack.key, true)
   }
 
   private handleVisibilityChange = () => {

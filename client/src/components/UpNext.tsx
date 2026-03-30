@@ -62,7 +62,7 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
         </AnimatePresence>
       </div>
 
-      <div className="h-[360px] overflow-y-auto">
+      <div>
         {queue.length === 0 ? (
           <div className="p-6 text-center text-muted text-sm">Queue is empty, robot DJ will take over from the station pool</div>
         ) : (
@@ -123,11 +123,11 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
 
                   <div className="flex-1 min-w-0">
                     <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
-                    <p className="text-white text-base font-semibold truncate">{item.name}</p>
+                    <p className="text-white text-base font-semibold">{item.name}</p>
                     {onAlbumClick
-                      ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-muted/80 transition-colors text-left w-full">{item.albumName}</button>
+                      ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{item.albumName}</button>
                       : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
-                    <p className="text-muted text-sm mt-2">
+                    <p className="text-muted text-xs mt-2">
                       queued by{" "}
                       <span className="text-white/60">
                         {item.addedBy === "robot" ? "🤖"

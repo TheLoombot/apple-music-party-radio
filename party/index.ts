@@ -41,6 +41,7 @@ interface QueueItem extends Track {
 
 interface PoolTrack extends Track {
   lastPlayedAt: number
+  addedByUsers: string[]
 }
 
 interface Listener {
@@ -268,12 +269,17 @@ export default class RadioParty implements Party.Server {
     await this.room.storage.put("queue", queue)
 
     if (addToPool) {
-      const { key: _k, expirationTime: _e, addedBy: _a, addedAt: _t, ...trackData } = expired
+      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, ...trackData } = expired
       let pool = await this.storage<PoolTrack[]>("pool", [])
+      const existing = pool.find(t => t.isrc === trackData.isrc)
+      const prevUsers = existing?.addedByUsers ?? []
+      const addedByUsers = addedBy && addedBy !== "robot"
+        ? [...new Set([...prevUsers, addedBy])]
+        : prevUsers
       pool = [
-        { ...trackData, lastPlayedAt: Date.now() },
+        { ...trackData, lastPlayedAt: Date.now(), addedByUsers },
         ...pool.filter(t => t.isrc !== trackData.isrc)
-      ].slice(0, 250)
+      ].slice(0, 100)
       await this.room.storage.put("pool", pool)
       this.room.broadcast(json({ type: "pool_update", pool }))
     }
@@ -312,7 +318,7 @@ export default class RadioParty implements Party.Server {
     if (pool.length === 0) return
 
     const first = pool[Math.floor(Math.random() * pool.length)]
-    const { lastPlayedAt: _1, ...track1 } = first
+    const { lastPlayedAt: _1, addedByUsers: _2, ...track1 } = first
     await this.addTrack(track1, "robot")
     await this.addRobotTrack([first.isrc])
   }
@@ -323,7 +329,7 @@ export default class RadioParty implements Party.Server {
     const candidates = pool.filter(t => hasAnyPlatformId(t) && !excludeIsrcs.includes(t.isrc))
     if (candidates.length === 0) return
     const pick = candidates[Math.floor(Math.random() * candidates.length)]
-    const { lastPlayedAt: _, ...track } = pick
+    const { lastPlayedAt: _, addedByUsers: _2, ...track } = pick
     await this.addTrack(track, "robot")
   }
 
@@ -337,9 +343,14 @@ export default class RadioParty implements Party.Server {
     let changed = false
 
     while (queue.length > 0 && now >= queue[0].expirationTime) {
-      const { key: _k, expirationTime: _e, addedBy: _a, addedAt: _t, ...trackData } = queue[0]
+      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, ...trackData } = queue[0]
       queue = queue.slice(1)
-      pool = [{ ...trackData, lastPlayedAt: now }, ...pool.filter(t => t.isrc !== trackData.isrc)].slice(0, 250)
+      const existing = pool.find(t => t.isrc === trackData.isrc)
+      const prevUsers = existing?.addedByUsers ?? []
+      const addedByUsers = addedBy && addedBy !== "robot"
+        ? [...new Set([...prevUsers, addedBy])]
+        : prevUsers
+      pool = [{ ...trackData, lastPlayedAt: now, addedByUsers }, ...pool.filter(t => t.isrc !== trackData.isrc)].slice(0, 100)
       changed = true
     }
 
@@ -419,7 +430,13 @@ function hasAnyPlatformId(t: { platformIds: PlatformIds }): boolean {
 // Migrate old catalogId-based track shape to the new platformIds shape.
 // Runs transparently on every queue/pool read until all stored data is updated.
 function migrateTrack(item: any): any {
-  if (item.platformIds) return item  // already new shape
+  if (item.platformIds) {
+    // Backfill addedByUsers for pool tracks that predate this field
+    if ('lastPlayedAt' in item && !item.addedByUsers) {
+      return { ...item, addedByUsers: [] }
+    }
+    return item
+  }
   const { catalogId, isrc, ...rest } = item
   return {
     ...rest,

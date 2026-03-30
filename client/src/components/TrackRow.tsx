@@ -39,10 +39,10 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
         {unavailable
           ? <p className="text-muted text-xs truncate">No longer available</p>
           : !hideArtist && <p className="text-muted/70 text-xs truncate">{track.artistName}</p>}
-        <p className={`text-base font-semibold truncate ${unavailable ? "text-muted/50 line-through" : "text-white"}`}>{track.name}</p>
+        <p className={`text-base font-semibold ${unavailable ? "text-muted/50 line-through" : "text-white"}`}>{track.name}</p>
         {!unavailable && trackNumber == null && (
           onAlbumClick
-            ? <button onClick={onAlbumClick} className="text-muted/50 text-xs truncate hover:text-muted/80 transition-colors text-left w-full">{track.albumName}</button>
+            ? <button onClick={onAlbumClick} className="text-muted/50 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{track.albumName}</button>
             : <p className="text-muted/50 text-xs truncate">{track.albumName}</p>
         )}
       </div>

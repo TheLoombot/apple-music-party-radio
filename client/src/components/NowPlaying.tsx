@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Volume2, VolumeX, SkipForward } from "lucide-react"
+import { Volume2, VolumeX, SkipForward, Library } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import type { QueueItem, AppUser } from "../types"
@@ -45,6 +45,7 @@ interface Props {
   isBlocked: boolean
   onResume: () => void
   onAlbumClick?: () => void
+  onOpenPool?: () => void
 }
 
 function useProgress(track: QueueItem | null) {
@@ -127,7 +128,7 @@ function useMediaSession(
   }, [track?.key, isPlaying, canSkip])
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool }: Props) {
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
   const quiet = isMuted || isBlocked
@@ -199,7 +200,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <p className="text-muted/70 text-sm">{track.artistName}</p>
               <p className="text-white text-xl font-bold">{track.name}</p>
               {onAlbumClick
-                ? <button onClick={onAlbumClick} className="text-muted/50 text-sm mt-0.5 hover:text-muted/80 transition-colors text-left">{track.albumName}</button>
+                ? <button onClick={onAlbumClick} className="text-muted/50 text-sm mt-0.5 hover:text-red-400 transition-colors text-left">{track.albumName}</button>
                 : <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>}
               <p className="text-muted text-sm mt-2">
                 spun by{" "}
@@ -218,7 +219,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               </div>
               <button
                 onClick={isBlocked ? onResume : onMuteToggle}
-                className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide transition-all hover:opacity-80 flex items-center justify-center gap-2"
+                className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide transition-all hover:text-red-400 flex items-center justify-center gap-2"
               >
                 {quiet ? (
                   <>
@@ -227,18 +228,27 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   </>
                 ) : (
                   <>
-                    <Volume2 size={18} className="text-white" />
-                    <span className="text-white">MUTE</span>
+                    <Volume2 size={18} />
+                    <span>MUTE</span>
                   </>
                 )}
               </button>
               {canSkip && (
                 <button
                   onClick={onSkip}
-                  className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide text-white transition-all hover:opacity-80 flex items-center justify-center gap-2"
+                  className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide text-white transition-all hover:text-red-400 flex items-center justify-center gap-2"
                 >
                   <SkipForward size={18} />
                   <span>SKIP</span>
+                </button>
+              )}
+              {onOpenPool && (
+                <button
+                  onClick={onOpenPool}
+                  className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide text-white transition-all hover:text-red-400 flex items-center justify-center gap-2"
+                >
+                  <Library size={18} />
+                  <span>POOL</span>
                 </button>
               )}
             </div>

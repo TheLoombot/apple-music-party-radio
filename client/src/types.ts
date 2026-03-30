@@ -62,6 +62,11 @@ export interface Station {
   listeners?: Listener[]
 }
 
+export interface PoolTrack extends Track {
+  lastPlayedAt: number
+  addedByUsers: string[]
+}
+
 export interface AppUser {
   uid: string
   displayName: string
