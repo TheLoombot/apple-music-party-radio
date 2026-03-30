@@ -3,7 +3,7 @@ import { ChevronRight, ListMusic } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { TrackRow } from "./TrackRow"
 import type { MusicCatalog } from "../services/catalog"
-import type { Track, PlaylistResult, LibraryPlaylistResult, QueueItem } from "../types"
+import type { Track, PlaylistResult, LibraryPlaylistResult, AlbumResult, QueueItem } from "../types"
 
 type Tab = "related" | "charts" | "mfy" | "playlists"
 
@@ -21,15 +21,14 @@ interface Props {
 export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
   const [tab, setTab] = useState<Tab>("related")
 
-  const allChartTracks = useRef<Track[]>([])
   const [chartTracks, setChartTracks] = useState<Track[]>([])
   const [chartsLoading, setChartsLoading] = useState(true)
 
-  const allPlaylists = useRef<PlaylistResult[]>([])
-  const [playlists, setPlaylists] = useState<PlaylistResult[]>([])
+  const allPlaylists = useRef<(PlaylistResult | AlbumResult)[]>([])
+  const [playlists, setPlaylists] = useState<(PlaylistResult | AlbumResult)[]>([])
   const [mfyLoading, setMfyLoading] = useState(true)
 
-  const [browsing, setBrowsing] = useState<{ playlist: PlaylistResult | LibraryPlaylistResult; tracks: Track[] | null } | null>(null)
+  const [browsing, setBrowsing] = useState<{ playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult; tracks: Track[] | null } | null>(null)
 
   // Related tab state
   const [relatedLoading, setRelatedLoading] = useState(false)
@@ -47,9 +46,8 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
   const savedPlaylistScroll = useRef(0)
 
   useEffect(() => {
-    catalog.getChartSongs().then(tracks => {
-      allChartTracks.current = tracks
-      setChartTracks(pickRandom(tracks, 3))
+    catalog.getCharts().then(c => {
+      setChartTracks(c[0]?.tracks ?? [])
       setChartsLoading(false)
     })
     catalog.getRecommendedPlaylists().then(p => {
@@ -59,16 +57,17 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
     })
   }, [catalog])
 
-  const refreshCharts = () => setChartTracks(pickRandom(allChartTracks.current, 3))
   const refreshMfy = () => { setBrowsing(null); setPlaylists(pickRandom(allPlaylists.current, 3)) }
 
-  const handleSelectPlaylist = async (playlist: PlaylistResult | LibraryPlaylistResult) => {
+  const handleSelectPlaylist = async (playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult) => {
     if (playlist.kind === "library-playlist") {
       savedPlaylistScroll.current = playlistScrollRef.current?.scrollTop ?? 0
     }
     setBrowsing({ playlist, tracks: null })
     const tracks = playlist.kind === "library-playlist"
       ? await catalog.getLibraryPlaylistTracks(playlist.id)
+      : playlist.kind === "album"
+      ? await catalog.getAlbumTracks(playlist.id)
       : await catalog.getPlaylistTracks(playlist.id)
     setBrowsing({ playlist, tracks })
   }
@@ -118,20 +117,28 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
     loadRelated(true)
   }
 
-  // Auto-load Related once when queue first has items
+  // Reload Related whenever the queue content changes (debounced)
   const relatedLoadedRef = useRef(false)
+  const relatedDebounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const queueKey = queue.map(t => t.platformIds?.apple ?? t.isrc ?? t.key).join(",")
   useEffect(() => {
-    if (tab !== "related" || relatedLoadedRef.current || queue.length === 0) return
-    relatedLoadedRef.current = true
-    loadRelated(true)
+    if (tab !== "related" || queue.length === 0) return
+    clearTimeout(relatedDebounceRef.current)
+    relatedDebounceRef.current = setTimeout(() => {
+      relatedLoadedRef.current = true
+      allRelatedPlaylists.current = []
+      loadRelated(true)
+    }, relatedLoadedRef.current ? 2000 : 0)
+    return () => clearTimeout(relatedDebounceRef.current)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, queue.length])
+  }, [queueKey, tab])
 
   const handleTabChange = (t: Tab) => {
     setTab(t)
     setBrowsing(null)
     if (t === "related" && !relatedLoadedRef.current && queue.length > 0) {
       relatedLoadedRef.current = true
+      allRelatedPlaylists.current = []
       loadRelated(true)
     }
     if (t === "playlists" && libraryPlaylists === null && !loadingLibrary) {
@@ -143,7 +150,7 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
     }
   }
 
-  const TAB_LABELS: Record<Tab, string> = { related: "Related", charts: "Charts", mfy: "Made For You", playlists: "Playlists" }
+  const TAB_LABELS: Record<Tab, string> = { related: "Related", charts: "Top 20", mfy: "Top Picks for You", playlists: "Your Playlists" }
 
   const isBrowsing = (tab === "mfy" || tab === "related" || tab === "playlists") && browsing
 
@@ -157,7 +164,7 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
               ← {TAB_LABELS[tab]}
             </button>
             <span className="text-border">·</span>
-            <span className="text-white normal-case font-normal truncate">{browsing.playlist.name}</span>
+            <span className="text-white normal-case font-normal truncate">{browsing!.playlist.name}</span>
           </div>
         ) : (
           <div className="flex items-center">
@@ -178,37 +185,37 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
 
       {/* Content */}
       {tab === "charts" ? (
-        chartsLoading ? (
-          <div className="p-6 text-center text-muted text-sm animate-pulse">Loading…</div>
-        ) : chartTracks.length === 0 ? (
-          <div className="p-6 text-center text-muted text-sm">No chart data available</div>
-        ) : (
-          <>
+        <div className="h-[360px] overflow-y-auto">
+          {chartsLoading ? (
+            <div className="p-6 text-center text-muted text-sm animate-pulse">Loading…</div>
+          ) : chartTracks.length === 0 ? (
+            <div className="p-6 text-center text-muted text-sm">No chart data available</div>
+          ) : (
             <ul>
-              {chartTracks.map(track => (
+              {chartTracks.map((track, i) => (
                 <TrackRow
                   key={track.platformIds?.apple ?? track.isrc}
                   track={track}
+                  rankNumber={i + 1}
                   added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
                   onAdd={() => onAddTrack(track)}
                 />
               ))}
             </ul>
-            <div className="px-4 py-2.5 border-t border-border/50 flex justify-end">
-              <button onClick={refreshCharts} className="text-muted hover:text-white transition-colors" title="Shuffle">↻</button>
-            </div>
-          </>
-        )
+          )}
+        </div>
       ) : tab === "mfy" ? (
         isBrowsing ? (
-          <DrilldownView browsing={browsing!} queuedIsrcs={queuedIsrcs} onAddTrack={onAddTrack} />
+          <div className="h-[360px] overflow-y-auto">
+            <DrilldownView browsing={browsing!} queuedIsrcs={queuedIsrcs} onAddTrack={onAddTrack} />
+          </div>
         ) : mfyLoading ? (
-          <div className="p-6 text-center text-muted text-sm animate-pulse">Loading…</div>
+          <div className="h-[360px] flex items-center justify-center text-muted text-sm animate-pulse">Loading…</div>
         ) : playlists.length === 0 ? (
-          <div className="p-6 text-center text-muted text-sm">No recommendations available</div>
+          <div className="h-[360px] flex items-center justify-center text-muted text-sm">No recommendations available</div>
         ) : (
           <>
-            <ul>
+            <ul className="overflow-y-auto h-[360px]">
               {playlists.map(playlist => (
                 <PlaylistRow key={playlist.id} playlist={playlist} onSelect={() => handleSelectPlaylist(playlist)} />
               ))}
@@ -220,14 +227,16 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
         )
       ) : tab === "playlists" ? (
         isBrowsing ? (
-          <DrilldownView browsing={browsing!} queuedIsrcs={queuedIsrcs} onAddTrack={onAddTrack} />
+          <div className="h-[360px] overflow-y-auto">
+            <DrilldownView browsing={browsing!} queuedIsrcs={queuedIsrcs} onAddTrack={onAddTrack} />
+          </div>
         ) : loadingLibrary ? (
-          <div className="p-6 text-center text-muted text-sm animate-pulse">Loading…</div>
+          <div className="h-[360px] flex items-center justify-center text-muted text-sm animate-pulse">Loading…</div>
         ) : !libraryPlaylists || libraryPlaylists.length === 0 ? (
-          <div className="p-6 text-center text-muted text-sm">No playlists found</div>
+          <div className="h-[360px] flex items-center justify-center text-muted text-sm">No playlists found</div>
         ) : (
-          <>
-            <div className="px-3 py-2 border-b border-border/50">
+          <div className="h-[360px] flex flex-col">
+            <div className="px-3 py-2 border-b border-border/50 flex-shrink-0">
               <div className="relative">
                 <input
                   type="text"
@@ -246,7 +255,7 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
                 )}
               </div>
             </div>
-            <div ref={playlistScrollRef} className="overflow-y-auto max-h-96">
+            <div ref={playlistScrollRef} className="flex-1 overflow-y-auto">
               <ul>
                 {libraryPlaylists
                   .filter(pl => pl.name.toLowerCase().includes(playlistFilter.toLowerCase()))
@@ -255,19 +264,27 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
                   ))}
               </ul>
             </div>
-          </>
+          </div>
         )
       ) : /* related tab */ (
         isBrowsing ? (
           <DrilldownView browsing={browsing!} queuedIsrcs={queuedIsrcs} onAddTrack={onAddTrack} />
-        ) : relatedLoading ? (
-          <div className="p-6 text-center text-muted text-sm animate-pulse">Finding related tracks…</div>
-        ) : relatedError || relatedTracks.length === 0 ? (
-          <div className="p-6 text-center text-muted text-sm">
-            {queue.length === 0
-              ? "Add tracks to the queue to get related suggestions."
-              : "No related playlists found. Try shuffling ↻"}
-          </div>
+        ) : relatedLoading || relatedError || relatedTracks.length === 0 ? (
+          <>
+            <ul>
+              <TrackRowSkeleton />
+              <TrackRowSkeleton />
+              <TrackRowSkeleton />
+            </ul>
+            <div className="px-4 py-2.5 border-t border-border/50 flex items-center justify-between gap-3">
+              {(relatedError || relatedTracks.length === 0) && !relatedLoading ? (
+                <p className="text-xs text-muted">
+                  {queue.length === 0 ? "Add tracks to the queue to get suggestions." : "None found."}
+                </p>
+              ) : <span />}
+              <button onClick={refreshRelated} disabled={relatedLoading} className="text-muted hover:text-white transition-colors flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed" title="Shuffle">↻</button>
+            </div>
+          </>
         ) : (
           <>
             <ul>
@@ -306,8 +323,21 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
+function TrackRowSkeleton() {
+  return (
+    <li className="flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 animate-pulse">
+      <div className="w-24 h-24 rounded flex-shrink-0 bg-surface" />
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="h-2.5 bg-surface rounded w-1/3" />
+        <div className="h-4 bg-surface rounded w-3/4" />
+        <div className="h-2.5 bg-surface rounded w-1/2" />
+      </div>
+    </li>
+  )
+}
+
 function DrilldownView({ browsing, queuedIsrcs, onAddTrack }: {
-  browsing: { playlist: PlaylistResult | LibraryPlaylistResult; tracks: Track[] | null }
+  browsing: { playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult; tracks: Track[] | null }
   queuedIsrcs: Set<string>
   onAddTrack: (track: Track) => void
 }) {
@@ -330,10 +360,11 @@ function DrilldownView({ browsing, queuedIsrcs, onAddTrack }: {
         <div className="p-6 text-center text-muted text-sm">No tracks found</div>
       ) : (
         <ul>
-          {browsing.tracks.map(track => (
+          {browsing.tracks.map((track, i) => (
             <TrackRow
               key={track.platformIds?.apple ?? track.isrc}
               track={track}
+              trackNumber={browsing.playlist.kind === "album" ? i + 1 : undefined}
               added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
               onAdd={() => onAddTrack(track)}
             />
@@ -345,7 +376,7 @@ function DrilldownView({ browsing, queuedIsrcs, onAddTrack }: {
 }
 
 function PlaylistRow({ playlist, onSelect }: {
-  playlist: PlaylistResult | LibraryPlaylistResult
+  playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult
   onSelect: () => void
 }) {
   const trackCount = 'trackCount' in playlist && playlist.trackCount != null

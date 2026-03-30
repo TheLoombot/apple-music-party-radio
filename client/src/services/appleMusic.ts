@@ -1,5 +1,5 @@
 import { getMusicUserToken, artworkUrl } from "./musickit"
-import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult } from "../types"
+import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult, AlbumResult } from "../types"
 
 function headers(): HeadersInit {
   return {
@@ -150,15 +150,25 @@ export async function getLibraryPlaylistTracks(playlistId: string): Promise<Trac
   return tracks.filter((t: Track | null): t is Track => t !== null)
 }
 
-export async function getChartSongs(storefront = "us"): Promise<Track[]> {
-  const params = new URLSearchParams({ types: "songs", chart: "most-played", limit: "20" })
+export interface ChartResult {
+  id: string
+  name: string
+  tracks: Track[]
+}
+
+export async function getCharts(storefront = "us"): Promise<ChartResult[]> {
+  const params = new URLSearchParams({ types: "songs", limit: "20" })
   const res = await fetch(
     `https://api.music.apple.com/v1/catalog/${storefront}/charts?${params}`,
     { headers: headers() }
   )
   if (!res.ok) return []
   const data = await res.json()
-  return (data.results?.songs?.[0]?.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null)
+  return (data.results?.songs ?? []).map((chart: any) => ({
+    id: chart.chart as string,
+    name: chart.name as string,
+    tracks: (chart.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null)
+  }))
 }
 
 export async function getRelatedPlaylistsForSong(songId: string, storefront = "us"): Promise<PlaylistResult[]> {
@@ -188,7 +198,7 @@ export async function getRelatedPlaylistsForSong(songId: string, storefront = "u
   }))
 }
 
-export async function getRecommendedPlaylists(): Promise<PlaylistResult[]> {
+export async function getRecommendedPlaylists(): Promise<(PlaylistResult | AlbumResult)[]> {
   const res = await fetch(
     "https://api.music.apple.com/v1/me/recommendations",
     { headers: headers() }
@@ -197,24 +207,34 @@ export async function getRecommendedPlaylists(): Promise<PlaylistResult[]> {
   const data = await res.json()
 
   const seen = new Set<string>()
-  const playlists: PlaylistResult[] = []
+  const results: (PlaylistResult | AlbumResult)[] = []
 
   for (const rec of data.data ?? []) {
     if (rec.attributes?.kind !== "music-recommendations") continue
     for (const item of rec.relationships?.contents?.data ?? []) {
-      if (item.type !== "playlists" || seen.has(item.id)) continue
+      if (!["playlists", "albums"].includes(item.type) || seen.has(item.id)) continue
       seen.add(item.id)
       const a = item.attributes
-      playlists.push({
-        kind: "playlist",
-        id: item.id,
-        name: a?.name ?? "",
-        subtitle: a?.curatorName ?? a?.description?.short ?? "",
-        artworkUrl: a?.artwork?.url ?? "",
-      })
+      if (item.type === "albums") {
+        results.push({
+          kind: "album",
+          id: item.id,
+          name: a?.name ?? "",
+          subtitle: a?.artistName ?? "",
+          artworkUrl: a?.artwork?.url ?? "",
+        })
+      } else {
+        results.push({
+          kind: "playlist",
+          id: item.id,
+          name: a?.name ?? "",
+          subtitle: a?.curatorName ?? a?.description?.short ?? "",
+          artworkUrl: a?.artwork?.url ?? "",
+        })
+      }
     }
   }
-  return playlists
+  return results
 }
 
 export { artworkUrl }

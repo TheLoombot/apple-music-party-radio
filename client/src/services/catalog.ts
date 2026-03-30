@@ -4,11 +4,12 @@ import {
   getPlaylistTracks,
   getLibraryPlaylists,
   getLibraryPlaylistTracks,
-  getChartSongs,
+  getCharts,
   getRecommendedPlaylists,
   getRelatedPlaylistsForSong,
 } from "./appleMusic"
-import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult } from "../types"
+import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult, AlbumResult } from "../types"
+export type { ChartResult } from "./appleMusic"
 
 export interface MusicCatalog {
   search(term: string): Promise<SearchItem[]>
@@ -16,8 +17,8 @@ export interface MusicCatalog {
   getPlaylistTracks(playlistId: string): Promise<Track[]>
   getLibraryPlaylists(): Promise<LibraryPlaylistResult[]>
   getLibraryPlaylistTracks(playlistId: string): Promise<Track[]>
-  getChartSongs(): Promise<Track[]>
-  getRecommendedPlaylists(): Promise<PlaylistResult[]>
+  getCharts(): Promise<import("./appleMusic").ChartResult[]>
+  getRecommendedPlaylists(): Promise<(PlaylistResult | AlbumResult)[]>
   getRelatedPlaylists(songId: string): Promise<PlaylistResult[]>
 }
 
@@ -29,7 +30,7 @@ export class AppleMusicCatalog implements MusicCatalog {
   getPlaylistTracks(id: string) { return getPlaylistTracks(id, this.storefront) }
   getLibraryPlaylists() { return getLibraryPlaylists() }
   getLibraryPlaylistTracks(id: string) { return getLibraryPlaylistTracks(id) }
-  getChartSongs() { return getChartSongs(this.storefront) }
+  getCharts() { return getCharts(this.storefront) }
   getRecommendedPlaylists() { return getRecommendedPlaylists() }
   getRelatedPlaylists(songId: string) { return getRelatedPlaylistsForSong(songId, this.storefront) }
 }

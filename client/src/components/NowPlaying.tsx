@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { AnimatePresence, motion } from "framer-motion"
+import { Volume2, VolumeX, SkipForward } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import type { QueueItem, AppUser } from "../types"
@@ -214,20 +215,27 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               </div>
               <button
                 onClick={isBlocked ? onResume : onMuteToggle}
-                className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide transition-all hover:opacity-80"
+                className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide transition-all hover:opacity-80 flex items-center justify-center gap-2"
               >
                 {quiet ? (
-                  <span className="shimmer-text">UNMUTE</span>
+                  <>
+                    <VolumeX size={18} className="shimmer-text" />
+                    <span className="shimmer-text">UNMUTE</span>
+                  </>
                 ) : (
-                  <span className="text-white">MUTE</span>
+                  <>
+                    <Volume2 size={18} className="text-white" />
+                    <span className="text-white">MUTE</span>
+                  </>
                 )}
               </button>
               {canSkip && (
                 <button
                   onClick={onSkip}
-                  className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide text-white transition-all hover:opacity-80"
+                  className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide text-white transition-all hover:opacity-80 flex items-center justify-center gap-2"
                 >
-                  SKIP
+                  <SkipForward size={18} />
+                  <span>SKIP</span>
                 </button>
               )}
             </div>
