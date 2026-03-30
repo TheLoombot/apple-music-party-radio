@@ -213,7 +213,7 @@ export function StationPool({ currentUser, stationOwner, pool, onAddTrack, onRem
       <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
         Station Pool
       </div>
-      <div className="overflow-y-auto max-h-96">
+      <div className="overflow-y-auto h-[360px]">
         {pool.length === 0 ? (
           <div className="p-6 text-center text-muted text-sm">
             <p>Nothing in the pool yet.</p>

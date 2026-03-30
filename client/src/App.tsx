@@ -313,17 +313,17 @@ export default function App() {
             onSelect={handleSelectStation}
             onRemove={handleRemoveStation}
           />
-          <SearchTracks
-            currentUser={user}
-            catalog={catalog.current}
-            onAddTrack={handleAddTrack}
-            queuedIsrcs={queuedIsrcs}
-          />
           <Discovery
             catalog={catalog.current}
             queuedIsrcs={queuedIsrcs}
             queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
             onAddTrack={handleAddTrack}
+          />
+          <SearchTracks
+            currentUser={user}
+            catalog={catalog.current}
+            onAddTrack={handleAddTrack}
+            queuedIsrcs={queuedIsrcs}
           />
         </div>
       </div>

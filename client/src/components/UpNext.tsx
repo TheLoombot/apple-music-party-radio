@@ -43,6 +43,7 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove }: Props) {
         </AnimatePresence>
       </div>
 
+      <div className="h-[360px] overflow-y-auto">
       {queue.length === 0 ? (
         <div className="p-6 text-center text-muted text-sm">Queue is empty, robot DJ will take over from the station pool</div>
       ) : (
@@ -100,6 +101,7 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove }: Props) {
           </AnimatePresence>
         </ul>
       )}
+      </div>
     </div>
   )
 }
