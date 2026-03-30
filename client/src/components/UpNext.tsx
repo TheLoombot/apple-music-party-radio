@@ -20,9 +20,10 @@ interface Props {
   stationOwner: string
   onRemove: (item: QueueItem) => void
   onReorder?: (keys: string[]) => void
+  onAlbumClick?: (item: QueueItem) => void
 }
 
-export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder }: Props) {
+export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, onAlbumClick }: Props) {
   const canRemove = currentUser.uid === stationOwner
   const canReorder = canRemove && !!onReorder && queue.length > 1
   const totalMs = queue.reduce((sum, item) => sum + item.durationMs, 0)
@@ -98,6 +99,7 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder }
                   }}
                   className={[
                     "flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 group transition-colors",
+                    canReorder ? "cursor-grab active:cursor-grabbing" : "",
                     draggedKey === item.key ? "opacity-30" : "opacity-100",
                     dragOverKey === item.key && draggedKey !== item.key ? "bg-accent/10 border-t-2 border-t-accent" : "hover:bg-surface/50",
                   ].join(" ")}
@@ -122,7 +124,9 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder }
                   <div className="flex-1 min-w-0">
                     <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
                     <p className="text-white text-base font-semibold truncate">{item.name}</p>
-                    <p className="text-muted/50 text-xs truncate">{item.albumName}</p>
+                    {onAlbumClick
+                      ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-muted/80 transition-colors text-left w-full">{item.albumName}</button>
+                      : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
                     <p className="text-muted text-sm mt-2">
                       queued by{" "}
                       <span className="text-white/60">

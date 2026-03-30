@@ -44,6 +44,7 @@ interface Props {
   isMuted: boolean
   isBlocked: boolean
   onResume: () => void
+  onAlbumClick?: () => void
 }
 
 function useProgress(track: QueueItem | null) {
@@ -126,7 +127,7 @@ function useMediaSession(
   }, [track?.key, isPlaying, canSkip])
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick }: Props) {
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
   const quiet = isMuted || isBlocked
@@ -197,7 +198,9 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             >
               <p className="text-muted/70 text-sm">{track.artistName}</p>
               <p className="text-white text-xl font-bold">{track.name}</p>
-              <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>
+              {onAlbumClick
+                ? <button onClick={onAlbumClick} className="text-muted/50 text-sm mt-0.5 hover:text-muted/80 transition-colors text-left">{track.albumName}</button>
+                : <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>}
               <p className="text-muted text-sm mt-2">
                 spun by{" "}
                 <span className="text-white/60">

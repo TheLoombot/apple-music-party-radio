@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react"
+import { AnimatePresence } from "framer-motion"
 import { SetupScreen } from "./components/SetupScreen"
 import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
 import { SearchTracks, StationPool } from "./components/AddTracks"
 import { Discovery } from "./components/Discovery"
 import { StationList } from "./components/StationList"
+import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized } from "./services/musickit"
 import { getUserStorefront } from "./services/appleMusic"
 import { getUserId, getDisplayName, setDisplayName } from "./services/identity"
@@ -12,7 +14,7 @@ import { stationSocket, indexSocket } from "./services/partykit"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
 import { AppleMusicCatalog } from "./services/catalog"
-import type { AppUser, Station, QueueItem, Track } from "./types"
+import type { AppUser, Station, QueueItem, Track, AlbumResult } from "./types"
 
 type AppState = "loading" | "setup" | "naming" | "auth" | "ready"
 
@@ -32,7 +34,9 @@ export default function App() {
   const [playbackBlocked, setPlaybackBlocked] = useState(false)
   const [renamingDJ, setRenamingDJ] = useState(false)
   const [renameInput, setRenameInput] = useState("")
+  const [albumModal, setAlbumModal] = useState<{ playlist: AlbumResult; tracks: Track[] | null } | null>(null)
   const renameRef = useRef<HTMLInputElement>(null)
+  const albumModalOpRef = useRef(0)
   const playbackLoop = useRef(new PlaybackLoop(new AppleMusicPlayer()))
   const catalog = useRef(new AppleMusicCatalog("us"))
 
@@ -175,6 +179,18 @@ export default function App() {
     if (stationId === currentStationId) handleSelectStation(user!.uid)
   }, [currentStationId])
 
+  const handleAlbumClick = useCallback(async (songId: string) => {
+    const op = ++albumModalOpRef.current
+    const placeholder: AlbumResult = { kind: "album", id: "_loading", name: "", subtitle: "", artworkUrl: "" }
+    setAlbumModal({ playlist: placeholder, tracks: null })
+    const album = await catalog.current.getAlbumForTrack(songId)
+    if (albumModalOpRef.current !== op) return
+    if (!album) { setAlbumModal(null); return }
+    setAlbumModal({ playlist: album, tracks: null })
+    const tracks = await catalog.current.getAlbumTracks(album.id)
+    if (albumModalOpRef.current === op) setAlbumModal({ playlist: album, tracks })
+  }, [])
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   if (appState === "setup") return <SetupScreen error={setupError} />
@@ -275,6 +291,19 @@ export default function App() {
         </div>
       </header>
 
+      <AnimatePresence>
+        {albumModal && (
+          <PlaylistModal
+            playlist={albumModal.playlist}
+            tracks={albumModal.tracks}
+            queuedIsrcs={queuedIsrcs}
+            onAddTrack={handleAddTrack}
+            onClose={() => { albumModalOpRef.current++; setAlbumModal(null) }}
+            catalog={catalog.current}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Main layout */}
       <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-4">
@@ -288,6 +317,7 @@ export default function App() {
             onMuteToggle={handleMuteToggle}
             isBlocked={playbackBlocked}
             onResume={handleResume}
+            onAlbumClick={nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
           />
           <UpNext
             queue={upNext}
@@ -295,6 +325,7 @@ export default function App() {
             stationOwner={currentStationId}
             onRemove={handleRemoveTrack}
             onReorder={isOwnStation ? (keys) => stationSocket.reorderQueue(keys) : undefined}
+            onAlbumClick={(item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) }}
           />
           <StationPool
             currentUser={user}

@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Trash2, ChevronRight, ChevronLeft, Disc3, ListMusic } from "lucide-react"
+import { Trash2, ChevronRight, Disc3, ListMusic } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { TrackRow } from "./TrackRow"
+import { PlaylistModal } from "./PlaylistModal"
+import { LoadingDots } from "./LoadingDots"
 import type { MusicCatalog } from "../services/catalog"
 import type { Track, SearchItem, AlbumResult, PlaylistResult, LibraryPlaylistResult, AppUser } from "../types"
 
-type BrowseTarget = (AlbumResult | PlaylistResult | LibraryPlaylistResult) & { tracks: Track[] | null }
+type ModalState = (AlbumResult | PlaylistResult | LibraryPlaylistResult) & { tracks: Track[] | null }
 
 // ─── Search panel ─────────────────────────────────────────────────────────────
 
@@ -21,14 +23,14 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
   const [query, setQuery] = useState("")
   const [searchResults, setSearchResults] = useState<SearchItem[]>([])
   const [searching, setSearching] = useState(false)
-  const [browseTarget, setBrowseTarget] = useState<BrowseTarget | null>(null)
+  const [modal, setModal] = useState<ModalState | null>(null)
+  const modalOpRef = useRef(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
 
   const isSearching = query.trim().length > 0
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
-    setBrowseTarget(null)
     if (!isSearching) { setSearchResults([]); return }
 
     debounceRef.current = setTimeout(async () => {
@@ -44,152 +46,117 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
   }, [query, catalog])
 
   async function handleBrowse(item: AlbumResult | PlaylistResult | LibraryPlaylistResult) {
-    setBrowseTarget({ ...item, tracks: null })
-    let tracks: Track[]
-    if (item.kind === "album") {
-      tracks = await catalog.getAlbumTracks(item.id)
-    } else if (item.kind === "library-playlist") {
-      tracks = await catalog.getLibraryPlaylistTracks(item.id)
-    } else {
-      tracks = await catalog.getPlaylistTracks(item.id)
-    }
-    setBrowseTarget({ ...item, tracks })
+    const op = ++modalOpRef.current
+    setModal({ ...item, tracks: null })
+    const tracks = item.kind === "album"
+      ? await catalog.getAlbumTracks(item.id)
+      : item.kind === "library-playlist"
+      ? await catalog.getLibraryPlaylistTracks(item.id)
+      : await catalog.getPlaylistTracks(item.id)
+    if (modalOpRef.current === op) setModal({ ...item, tracks })
+  }
+
+  async function handleAlbumClick(track: Track) {
+    if (!track.platformIds?.apple) return
+    const op = ++modalOpRef.current
+    const placeholder: AlbumResult = { kind: "album", id: "_loading", name: track.albumName, subtitle: track.artistName, artworkUrl: track.artworkUrl }
+    setModal({ ...placeholder, tracks: null })
+    const album = await catalog.getAlbumForTrack(track.platformIds.apple)
+    if (modalOpRef.current !== op) return
+    if (!album) { setModal(null); return }
+    setModal({ ...album, tracks: null })
+    const tracks = await catalog.getAlbumTracks(album.id)
+    if (modalOpRef.current === op) setModal({ ...album, tracks })
   }
 
   return (
-    <div className="bg-panel rounded-xl overflow-hidden flex flex-col">
+    <>
+      <div className="bg-panel rounded-xl overflow-hidden flex flex-col">
 
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider flex items-center gap-2">
-        {browseTarget ? (
-          <>
-            <button
-              onClick={() => setBrowseTarget(null)}
-              className="text-muted hover:text-white transition-colors flex items-center gap-1"
-            >
-              <ChevronLeft size={13} />
-              Back
-            </button>
-            <span className="text-border">·</span>
-            <span className="text-white normal-case font-normal truncate">{browseTarget.name}</span>
-          </>
-        ) : (
-          <span>Search</span>
-        )}
-      </div>
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
+          Search
+        </div>
 
-      {/* Search input */}
-      <div className="p-3 border-b border-border">
-        <div className="relative">
-          <input
-            type="text"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Search music…"
-            className="w-full bg-surface text-white placeholder-muted rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent pr-8"
-          />
-          {(query || browseTarget) && (
-            <button
-              onClick={() => { setQuery(""); setBrowseTarget(null) }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white text-lg leading-none"
-            >
-              ×
-            </button>
-          )}
+        {/* Search input */}
+        <div className="p-3 border-b border-border">
+          <div className="relative">
+            <input
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search music…"
+              className="w-full bg-surface text-white placeholder-muted rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent pr-8"
+            />
+            {query && (
+              <button
+                onClick={() => setQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white text-lg leading-none"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Results */}
+        <div className="overflow-y-auto max-h-96">
+          <AnimatePresence mode="wait">
+            {isSearching && (
+              <motion.div
+                key="search"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                {searching ? (
+                  <div className="p-6 text-center text-muted text-sm"><LoadingDots /></div>
+                ) : searchResults.length === 0 ? (
+                  <div className="p-6 text-center text-muted text-sm">No results</div>
+                ) : (
+                  <ul>
+                    {searchResults.filter((item, i, arr) => {
+                      if (item.kind !== "song") return true
+                      return arr.findIndex(x => x.kind === "song" && (x.track.isrc || x.track.platformIds?.apple) === (item.track.isrc || item.track.platformIds?.apple)) === i
+                    }).map((item) =>
+                      item.kind === "song" ? (
+                        <TrackRow
+                          key={item.track.platformIds?.apple || item.track.isrc || item.track.name}
+                          track={item.track}
+                          added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.platformIds?.apple ?? "")}
+                          onAdd={() => onAddTrack(item.track)}
+                          onAlbumClick={item.track.platformIds?.apple ? () => handleAlbumClick(item.track) : undefined}
+                        />
+                      ) : (
+                        <BrowsableRow
+                          key={item.id}
+                          item={item}
+                          onBrowse={() => handleBrowse(item)}
+                        />
+                      )
+                    )}
+                  </ul>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
-      {/* Results */}
-      <div className="overflow-y-auto max-h-96">
-        <AnimatePresence mode="wait">
-
-          {/* Drilldown */}
-          {browseTarget && (
-            <motion.div
-              key={`drilldown-${browseTarget.id}`}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.18 }}
-            >
-              <div className="flex items-center gap-4 px-4 py-4 border-b border-border bg-surface/40">
-                <div className="w-32 h-32 rounded-lg flex-shrink-0 overflow-hidden bg-surface shadow-md">
-                  {browseTarget.artworkUrl
-                    ? <img src={artworkUrl(browseTarget.artworkUrl, 128)} alt="" className="w-full h-full object-cover" />
-                    : <div className="w-full h-full flex items-center justify-center text-muted">
-                        {browseTarget.kind === "album" ? <Disc3 size={24} /> : <ListMusic size={24} />}
-                      </div>
-                  }
-                </div>
-                <div className="min-w-0">
-                  <p className="text-white text-base font-bold truncate">{browseTarget.name}</p>
-                  {browseTarget.subtitle && <p className="text-muted text-sm truncate mt-0.5">{browseTarget.subtitle}</p>}
-                </div>
-              </div>
-
-              {browseTarget.tracks === null ? (
-                <div className="p-6 text-center text-muted text-sm">Loading…</div>
-              ) : browseTarget.tracks.length === 0 ? (
-                <div className="p-6 text-center text-muted text-sm">No tracks found</div>
-              ) : (
-                <ul>
-                  {browseTarget.tracks.map((track, i) => (
-                    <TrackRow
-                      key={track.platformIds?.apple || track.isrc || track.name}
-                      track={track}
-                      trackNumber={browseTarget.kind === "album" ? i + 1 : undefined}
-                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
-                      onAdd={() => onAddTrack(track)}
-                    />
-                  ))}
-                </ul>
-              )}
-            </motion.div>
-          )}
-
-          {/* Search results */}
-          {isSearching && !browseTarget && (
-            <motion.div
-              key="search"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              {searching ? (
-                <div className="p-6 text-center text-muted text-sm">Searching…</div>
-              ) : searchResults.length === 0 ? (
-                <div className="p-6 text-center text-muted text-sm">No results</div>
-              ) : (
-                <ul>
-                  {searchResults.filter((item, i, arr) => {
-                    if (item.kind !== "song") return true
-                    return arr.findIndex(x => x.kind === "song" && (x.track.isrc || x.track.platformIds?.apple) === (item.track.isrc || item.track.platformIds?.apple)) === i
-                  }).map((item) =>
-                    item.kind === "song" ? (
-                      <TrackRow
-                        key={item.track.platformIds?.apple || item.track.isrc || item.track.name}
-                        track={item.track}
-                        added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.platformIds?.apple ?? "")}
-                        onAdd={() => onAddTrack(item.track)}
-                      />
-                    ) : (
-                      <BrowsableRow
-                        key={item.id}
-                        item={item}
-                        onBrowse={() => handleBrowse(item)}
-                      />
-                    )
-                  )}
-                </ul>
-              )}
-            </motion.div>
-          )}
-
-
-        </AnimatePresence>
-      </div>
-    </div>
+      <AnimatePresence>
+        {modal && (
+          <PlaylistModal
+            playlist={modal}
+            tracks={modal.tracks}
+            queuedIsrcs={queuedIsrcs}
+            onAddTrack={onAddTrack}
+            onClose={() => { modalOpRef.current++; setModal(null) }}
+            catalog={catalog}
+          />
+        )}
+      </AnimatePresence>
+    </>
   )
 }
 

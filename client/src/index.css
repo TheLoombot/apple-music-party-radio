@@ -45,3 +45,23 @@ body {
   animation: sound-bar 0.8s ease-in-out infinite;
   will-change: clip-path;
 }
+
+@keyframes loading-dot-1 {
+  0%, 9%   { opacity: 0; }
+  10%, 88% { opacity: 1; }
+  89%, 100% { opacity: 0; }
+}
+@keyframes loading-dot-2 {
+  0%, 42%  { opacity: 0; }
+  43%, 88% { opacity: 1; }
+  89%, 100% { opacity: 0; }
+}
+@keyframes loading-dot-3 {
+  0%, 75%  { opacity: 0; }
+  76%, 88% { opacity: 1; }
+  89%, 100% { opacity: 0; }
+}
+
+.loading-dot-1 { opacity: 0; animation: loading-dot-1 1s steps(1, end) infinite; }
+.loading-dot-2 { opacity: 0; animation: loading-dot-2 1s steps(1, end) infinite; }
+.loading-dot-3 { opacity: 0; animation: loading-dot-3 1s steps(1, end) infinite; }

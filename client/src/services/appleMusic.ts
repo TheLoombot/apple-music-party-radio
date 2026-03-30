@@ -198,6 +198,24 @@ export async function getRelatedPlaylistsForSong(songId: string, storefront = "u
   }))
 }
 
+export async function getAlbumForSong(songId: string, storefront = "us"): Promise<AlbumResult | null> {
+  const res = await fetch(
+    `https://api.music.apple.com/v1/catalog/${storefront}/songs/${songId}?include=albums`,
+    { headers: headers() }
+  )
+  if (!res.ok) return null
+  const data = await res.json()
+  const album = data.data?.[0]?.relationships?.albums?.data?.[0]
+  if (!album) return null
+  return {
+    kind: "album",
+    id: album.id,
+    name: album.attributes?.name ?? "",
+    subtitle: album.attributes?.artistName ?? "",
+    artworkUrl: album.attributes?.artwork?.url ?? "",
+  }
+}
+
 export async function getRecommendedPlaylists(): Promise<(PlaylistResult | AlbumResult)[]> {
   const res = await fetch(
     "https://api.music.apple.com/v1/me/recommendations",
