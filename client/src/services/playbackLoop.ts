@@ -3,24 +3,26 @@
  *
  * Listens for queue updates from the station socket and drives a MusicPlayer
  * so all listeners hear the same track at the same position.
+ *
+ * The server is authoritative on queue advancement — its Durable Object alarm
+ * fires at each track's expirationTime and broadcasts the updated queue.
+ * The client never tells the server to expire a track; it just reacts.
  */
 import { stationSocket } from "./partykit"
 import { UnavailableError } from "./player"
 import { startAudioSession, resumeAudioSession } from "./audioSession"
-import { onPlaybackStateChange } from "./musickit"
 import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
 
 export class PlaybackLoop {
   private stationId = ""
-  private expirationTimer: ReturnType<typeof setTimeout> | null = null
-  private currentTrackKey: string | null = null
   private currentTrack: QueueItem | null = null
+  private currentTrackKey: string | null = null
   private pendingPlay: { track: QueueItem; offsetSeconds: number } | null = null
   private autoplayEnabled = false   // stays true once user has tapped "Tap to listen"
   private robotDJPending = false    // prevent duplicate triggerRobotDJ for the same empty-queue event
-  private removePlaybackListener: (() => void) | null = null
   private muted = false
+  private expirationTimer: ReturnType<typeof setTimeout> | null = null
 
   onNowPlayingChange?: (item: QueueItem | null) => void
   onQueueChange?: (upNext: QueueItem[]) => void
@@ -37,20 +39,17 @@ export class PlaybackLoop {
     stationSocket.onQueueUpdate = this.handleQueueUpdate
     stationSocket.connect(stationId)
     document.addEventListener("visibilitychange", this.handleVisibilityChange)
-    this.removePlaybackListener = onPlaybackStateChange(this.handlePlaybackState)
   }
 
   stop() {
     document.removeEventListener("visibilitychange", this.handleVisibilityChange)
-    this.removePlaybackListener?.()
-    this.removePlaybackListener = null
     stationSocket.onQueueUpdate = undefined
     stationSocket.disconnect()
-    if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
-    this.currentTrackKey = null
     this.currentTrack = null
+    this.currentTrackKey = null
     this.pendingPlay = null
     this.robotDJPending = false
+    if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
     // intentionally keep autoplayEnabled — once the user has tapped, don't ask again
   }
 
@@ -82,37 +81,39 @@ export class PlaybackLoop {
     this.onMutedChange?.(muted)
   }
 
-  // MusicKit fires `completed` when the audio track ends naturally (driven by the
-  // audio engine, not the JS timer). This fires reliably even in backgrounded tabs
-  // where setTimeout is throttled, so we use it to trigger expireTrack immediately
-  // rather than waiting for the (potentially delayed) expirationTimer.
-  private handlePlaybackState = (state: number) => {
-    // MusicKit.PlaybackStates.completed = 10
-    if (state !== 10) return
-    if (!this.currentTrack) return
-    if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
-    stationSocket.expireTrack(this.currentTrack.key, true)
-  }
-
-  private handleVisibilityChange = () => {
+  private handleVisibilityChange = async () => {
     if (document.hidden) return
     resumeAudioSession()
-    if (!this.currentTrack) return
-    if (Date.now() >= this.currentTrack.expirationTime) {
-      stationSocket.expireTrack(this.currentTrack.key, true)
+
+    // Re-sync playback position when returning to the tab.
+    // While backgrounded, play() calls may have been blocked by Safari; the track may
+    // have advanced (or not started at all). Seek to wherever we should be right now.
+    if (!this.autoplayEnabled || !this.currentTrack) return
+    const track = this.currentTrack
+    const now = Date.now()
+    if (now >= track.expirationTime) return  // already expired — wait for the next queue_update
+    const startTime = track.expirationTime - track.durationMs
+    const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+    try {
+      await this.player.playAtOffset(track, offsetSeconds)
+    } catch (err) {
+      if (err instanceof UnavailableError) {
+        console.warn("[PlaybackLoop] track unavailable on tab focus:", track.name)
+      } else {
+        console.error("[PlaybackLoop] tab focus restore error:", err)
+      }
     }
   }
 
   private handleQueueUpdate = async (queue: QueueItem[]) => {
     this.onQueueChange?.(queue.slice(1))
 
-    if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
-
     if (queue.length === 0) {
       this.onNowPlayingChange?.(null)
-      this.currentTrackKey = null
       this.currentTrack = null
+      this.currentTrackKey = null
       this.pendingPlay = null
+      if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
       this.player.stop()
       if (!this.robotDJPending) {
         this.robotDJPending = true
@@ -126,26 +127,24 @@ export class PlaybackLoop {
     const track0 = queue[0]
     const now = Date.now()
 
-    // Track has passed its expiration — tell the server to expire it
-    if (now >= track0.expirationTime) {
-      stationSocket.expireTrack(track0.key, /* addToPool */ true)
-      return
-    }
-
-    // Schedule expiration check
-    const delay = track0.expirationTime - now + 500
-    this.expirationTimer = setTimeout(() => {
-      stationSocket.expireTrack(track0.key, true)
-    }, delay)
-
     this.onNowPlayingChange?.(track0)
 
     if (track0.key === this.currentTrackKey) return  // already playing
 
-    this.currentTrackKey = track0.key
     this.currentTrack = track0
+    this.currentTrackKey = track0.key
     const startTime = track0.expirationTime - track0.durationMs
     const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+
+    // Schedule a fallback expiration on the client — the server DO alarm is authoritative
+    // in production, but this ensures advancement works in local dev and in the foreground.
+    // The server ignores duplicate expire_track messages for already-advanced keys.
+    if (this.expirationTimer) clearTimeout(this.expirationTimer)
+    const msUntilExpiry = track0.expirationTime - Date.now()
+    this.expirationTimer = setTimeout(
+      () => stationSocket.expireTrack(track0.key, true),
+      Math.max(0, msUntilExpiry)
+    )
 
     // Never call play() without a prior user gesture — browser/MusicKit will show
     // a dialog and throw an opaque internal error before we can catch NotAllowedError.
@@ -160,7 +159,6 @@ export class PlaybackLoop {
     } catch (err) {
       if (err instanceof UnavailableError) {
         console.warn("[PlaybackLoop] track unavailable:", track0.name)
-        // Expiration timer will still fire and advance the queue for this listener
       } else {
         console.error("[PlaybackLoop] playback error:", err)
       }
