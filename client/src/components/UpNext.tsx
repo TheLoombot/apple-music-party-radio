@@ -62,19 +62,20 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove }: Props) {
                   {i + 1}
                 </span>
 
-                <div className="w-10 h-10 rounded flex-shrink-0 overflow-hidden bg-surface">
+                <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
                   {item.artworkUrl ? (
-                    <img src={artworkUrl(item.artworkUrl, 40)} alt="" className="w-full h-full object-cover" />
+                    <img src={artworkUrl(item.artworkUrl, 96)} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>
                   )}
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm truncate">{item.name}</p>
-                  <p className="text-muted text-xs truncate">{item.artistName}</p>
-                  <p className="text-muted text-xs mt-2">
-                    via{" "}
+                  <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
+                  <p className="text-white text-base font-semibold truncate">{item.name}</p>
+                  <p className="text-muted/50 text-xs truncate">{item.albumName}</p>
+                  <p className="text-muted text-sm mt-2">
+                    queued by{" "}
                     <span className="text-white/60">
                       {item.addedBy === "robot" ? "🤖"
                         : item.addedBy === currentUser.uid ? "you"
@@ -83,7 +84,7 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove }: Props) {
                   </p>
                 </div>
 
-                <span className="text-xs text-muted tabular-nums flex-shrink-0">{formatDuration(item.durationMs)}</span>
+                <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(item.durationMs)}</span>
 
                 {canRemove && (
                   <button

@@ -121,7 +121,8 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
 }
 
 export function artworkUrl(template: string, size = 300): string {
-  return template.replace("{w}", String(size)).replace("{h}", String(size))
+  const px = Math.ceil(size * (window.devicePixelRatio || 2))
+  return template.replace("{w}", String(px)).replace("{h}", String(px))
 }
 
 export function onPlaybackStateChange(cb: (state: MusicKit.PlaybackStates) => void) {

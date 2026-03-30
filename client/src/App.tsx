@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { SetupScreen } from "./components/SetupScreen"
 import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
-import { SearchTracks, PoolLibrary } from "./components/AddTracks"
+import { SearchTracks, StationPool } from "./components/AddTracks"
 import { Discovery } from "./components/Discovery"
 import { StationList } from "./components/StationList"
 import { initMusicKit, authorize, isAuthorized } from "./services/musickit"
@@ -295,11 +295,14 @@ export default function App() {
             stationOwner={currentStationId}
             onRemove={handleRemoveTrack}
           />
-          <Discovery
-            catalog={catalog.current}
-            queuedIsrcs={queuedIsrcs}
-            queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
+          <StationPool
+            currentUser={user}
+            stationOwner={currentStationId}
+            pool={pool}
             onAddTrack={handleAddTrack}
+            onRemoveFromPool={handleRemoveFromPool}
+            onClearPool={handleClearPool}
+            queuedIsrcs={queuedIsrcs}
           />
         </div>
         <div className="space-y-4">
@@ -316,15 +319,11 @@ export default function App() {
             onAddTrack={handleAddTrack}
             queuedIsrcs={queuedIsrcs}
           />
-          <PoolLibrary
-            currentUser={user}
+          <Discovery
             catalog={catalog.current}
-            stationOwner={currentStationId}
-            pool={pool}
-            onAddTrack={handleAddTrack}
-            onRemoveFromPool={handleRemoveFromPool}
-            onClearPool={handleClearPool}
             queuedIsrcs={queuedIsrcs}
+            queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
+            onAddTrack={handleAddTrack}
           />
         </div>
       </div>

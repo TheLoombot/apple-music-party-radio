@@ -18,9 +18,9 @@ export function TrackRow({ track, trackNumber, added, onAdd, onRemove, unavailab
       {trackNumber != null ? (
         <span className="text-xs text-muted w-5 text-right flex-shrink-0 tabular-nums">{trackNumber}</span>
       ) : (
-        <div className="relative w-10 h-10 rounded flex-shrink-0 overflow-hidden bg-surface">
+        <div className="relative w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
           {track.artworkUrl
-            ? <img src={artworkUrl(track.artworkUrl, 40)} alt="" className="w-full h-full object-cover" />
+            ? <img src={artworkUrl(track.artworkUrl, 96)} alt="" className="w-full h-full object-cover" />
             : <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>
           }
           {unavailable && (
@@ -30,15 +30,14 @@ export function TrackRow({ track, trackNumber, added, onAdd, onRemove, unavailab
       )}
 
       <div className="flex-1 min-w-0">
-        <p className={`text-sm truncate ${unavailable ? "text-muted line-through" : "text-white"}`}>{track.name}</p>
-        <p className="text-muted text-xs truncate">
-          {unavailable
-            ? "No longer available"
-            : trackNumber != null ? track.artistName : `${track.artistName} — ${track.albumName}`}
-        </p>
+        {unavailable
+          ? <p className="text-muted text-xs truncate">No longer available</p>
+          : <p className="text-muted/70 text-xs truncate">{track.artistName}</p>}
+        <p className={`text-base font-semibold truncate ${unavailable ? "text-muted/50 line-through" : "text-white"}`}>{track.name}</p>
+        {!unavailable && trackNumber == null && <p className="text-muted/50 text-xs truncate">{track.albumName}</p>}
       </div>
 
-      <span className="text-xs text-muted tabular-nums flex-shrink-0">{formatDuration(track.durationMs)}</span>
+      <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(track.durationMs)}</span>
 
       <div className="flex items-center gap-1 flex-shrink-0">
         {onRemove && (

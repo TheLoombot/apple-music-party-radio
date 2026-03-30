@@ -1,11 +1,11 @@
-import { useEffect, useState, useRef } from "react"
-import { ChevronRight } from "lucide-react"
+import { useEffect, useState, useRef, useCallback } from "react"
+import { ChevronRight, ListMusic } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { TrackRow } from "./TrackRow"
 import type { MusicCatalog } from "../services/catalog"
-import type { Track, PlaylistResult, QueueItem } from "../types"
+import type { Track, PlaylistResult, LibraryPlaylistResult, QueueItem } from "../types"
 
-type Tab = "charts" | "mfy" | "related"
+type Tab = "related" | "charts" | "mfy" | "playlists"
 
 function pickRandom<T>(arr: T[], n: number): T[] {
   return [...arr].sort(() => Math.random() - 0.5).slice(0, n)
@@ -19,7 +19,7 @@ interface Props {
 }
 
 export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
-  const [tab, setTab] = useState<Tab>("charts")
+  const [tab, setTab] = useState<Tab>("related")
 
   const allChartTracks = useRef<Track[]>([])
   const [chartTracks, setChartTracks] = useState<Track[]>([])
@@ -28,7 +28,8 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
   const allPlaylists = useRef<PlaylistResult[]>([])
   const [playlists, setPlaylists] = useState<PlaylistResult[]>([])
   const [mfyLoading, setMfyLoading] = useState(true)
-  const [browsing, setBrowsing] = useState<{ playlist: PlaylistResult; tracks: Track[] | null } | null>(null)
+
+  const [browsing, setBrowsing] = useState<{ playlist: PlaylistResult | LibraryPlaylistResult; tracks: Track[] | null } | null>(null)
 
   // Related tab state
   const [relatedLoading, setRelatedLoading] = useState(false)
@@ -37,6 +38,13 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
   const [relatedPlaylist, setRelatedPlaylist] = useState<PlaylistResult | null>(null)
   const [relatedError, setRelatedError] = useState(false)
   const allRelatedPlaylists = useRef<PlaylistResult[]>([])
+
+  // Playlists tab state
+  const [libraryPlaylists, setLibraryPlaylists] = useState<LibraryPlaylistResult[] | null>(null)
+  const [loadingLibrary, setLoadingLibrary] = useState(false)
+  const [playlistFilter, setPlaylistFilter] = useState("")
+  const playlistScrollRef = useRef<HTMLDivElement>(null)
+  const savedPlaylistScroll = useRef(0)
 
   useEffect(() => {
     catalog.getChartSongs().then(tracks => {
@@ -54,11 +62,28 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
   const refreshCharts = () => setChartTracks(pickRandom(allChartTracks.current, 3))
   const refreshMfy = () => { setBrowsing(null); setPlaylists(pickRandom(allPlaylists.current, 3)) }
 
-  const handleSelectPlaylist = async (playlist: PlaylistResult) => {
+  const handleSelectPlaylist = async (playlist: PlaylistResult | LibraryPlaylistResult) => {
+    if (playlist.kind === "library-playlist") {
+      savedPlaylistScroll.current = playlistScrollRef.current?.scrollTop ?? 0
+    }
     setBrowsing({ playlist, tracks: null })
-    const tracks = await catalog.getPlaylistTracks(playlist.id)
+    const tracks = playlist.kind === "library-playlist"
+      ? await catalog.getLibraryPlaylistTracks(playlist.id)
+      : await catalog.getPlaylistTracks(playlist.id)
     setBrowsing({ playlist, tracks })
   }
+
+  const handleBack = useCallback(() => {
+    const wasLibrary = browsing?.playlist.kind === "library-playlist"
+    setBrowsing(null)
+    if (wasLibrary) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (playlistScrollRef.current) playlistScrollRef.current.scrollTop = savedPlaylistScroll.current
+        })
+      })
+    }
+  }, [browsing])
 
   async function loadRelated(forceNew = false) {
     const candidates = queue.filter(t => t.platformIds?.apple)
@@ -71,7 +96,6 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
     setRelatedTracks([])
 
     try {
-      // Fetch (or reuse) the appears-on playlists for this seed track
       if (forceNew || allRelatedPlaylists.current.length === 0) {
         const pls = await catalog.getRelatedPlaylists(seed.platformIds.apple!)
         allRelatedPlaylists.current = pls
@@ -94,20 +118,34 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
     loadRelated(true)
   }
 
-  // Load related tab on first switch to it
+  // Auto-load Related once when queue first has items
   const relatedLoadedRef = useRef(false)
+  useEffect(() => {
+    if (tab !== "related" || relatedLoadedRef.current || queue.length === 0) return
+    relatedLoadedRef.current = true
+    loadRelated(true)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, queue.length])
+
   const handleTabChange = (t: Tab) => {
     setTab(t)
     setBrowsing(null)
-    if (t === "related" && !relatedLoadedRef.current) {
+    if (t === "related" && !relatedLoadedRef.current && queue.length > 0) {
       relatedLoadedRef.current = true
       loadRelated(true)
     }
+    if (t === "playlists" && libraryPlaylists === null && !loadingLibrary) {
+      setLoadingLibrary(true)
+      catalog.getLibraryPlaylists().then(p => {
+        setLibraryPlaylists(p)
+        setLoadingLibrary(false)
+      })
+    }
   }
 
-  const TAB_LABELS: Record<Tab, string> = { charts: "Charts", mfy: "Made for You", related: "Related" }
+  const TAB_LABELS: Record<Tab, string> = { related: "Related", charts: "Charts", mfy: "Made For You", playlists: "Playlists" }
 
-  const isBrowsing = (tab === "mfy" || tab === "related") && browsing
+  const isBrowsing = (tab === "mfy" || tab === "related" || tab === "playlists") && browsing
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
@@ -115,7 +153,7 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
       <div className="border-b border-border">
         {isBrowsing ? (
           <div className="px-4 py-3 text-xs text-muted font-medium uppercase tracking-wider flex items-center gap-2">
-            <button onClick={() => setBrowsing(null)} className="text-accent hover:text-white transition-colors">
+            <button onClick={handleBack} className="text-accent hover:text-white transition-colors">
               ← {TAB_LABELS[tab]}
             </button>
             <span className="text-border">·</span>
@@ -123,24 +161,17 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
           </div>
         ) : (
           <div className="flex items-center">
-            {(["charts", "mfy", "related"] as Tab[]).map(t => (
+            {(["related", "charts", "mfy", "playlists"] as Tab[]).map(t => (
               <button
                 key={t}
                 onClick={() => handleTabChange(t)}
-                className={`flex-1 px-3 py-3 text-xs font-medium transition-colors border-b-2 -mb-px ${
+                className={`flex-1 px-2 py-3 text-xs font-medium transition-colors border-b-2 -mb-px ${
                   tab === t ? "text-white border-accent" : "text-muted hover:text-white border-transparent"
                 }`}
               >
                 {TAB_LABELS[t]}
               </button>
             ))}
-            <button
-              onClick={tab === "charts" ? refreshCharts : tab === "mfy" ? refreshMfy : refreshRelated}
-              className="px-4 py-3 text-muted hover:text-white transition-colors"
-              title="Shuffle"
-            >
-              ↻
-            </button>
           </div>
         )}
       </div>
@@ -152,109 +183,83 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
         ) : chartTracks.length === 0 ? (
           <div className="p-6 text-center text-muted text-sm">No chart data available</div>
         ) : (
-          <ul>
-            {chartTracks.map(track => (
-              <TrackRow
-                key={track.platformIds?.apple ?? track.isrc}
-                track={track}
-                added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
-                onAdd={() => onAddTrack(track)}
-              />
-            ))}
-          </ul>
+          <>
+            <ul>
+              {chartTracks.map(track => (
+                <TrackRow
+                  key={track.platformIds?.apple ?? track.isrc}
+                  track={track}
+                  added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
+                  onAdd={() => onAddTrack(track)}
+                />
+              ))}
+            </ul>
+            <div className="px-4 py-2.5 border-t border-border/50 flex justify-end">
+              <button onClick={refreshCharts} className="text-muted hover:text-white transition-colors" title="Shuffle">↻</button>
+            </div>
+          </>
         )
       ) : tab === "mfy" ? (
         isBrowsing ? (
-          <>
-            <div className="flex items-center gap-4 px-4 py-4 border-b border-border bg-surface/40">
-              <div className="w-16 h-16 rounded-lg flex-shrink-0 overflow-hidden bg-surface shadow-md">
-                {browsing!.playlist.artworkUrl
-                  ? <img src={artworkUrl(browsing!.playlist.artworkUrl, 64)} alt="" className="w-full h-full object-cover" />
-                  : <div className="w-full h-full flex items-center justify-center text-muted text-xl">♫</div>}
-              </div>
-              <div className="min-w-0">
-                <p className="text-white text-base font-bold truncate">{browsing!.playlist.name}</p>
-                {browsing!.playlist.subtitle && <p className="text-muted text-sm truncate mt-0.5">{browsing!.playlist.subtitle}</p>}
-              </div>
-            </div>
-            {browsing!.tracks === null ? (
-              <div className="p-6 text-center text-muted text-sm animate-pulse">Loading tracks…</div>
-            ) : browsing!.tracks.length === 0 ? (
-              <div className="p-6 text-center text-muted text-sm">No tracks found</div>
-            ) : (
-              <ul>
-                {browsing!.tracks.map(track => (
-                  <TrackRow
-                    key={track.platformIds?.apple ?? track.isrc}
-                    track={track}
-                    added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
-                    onAdd={() => onAddTrack(track)}
-                  />
-                ))}
-              </ul>
-            )}
-          </>
+          <DrilldownView browsing={browsing!} queuedIsrcs={queuedIsrcs} onAddTrack={onAddTrack} />
         ) : mfyLoading ? (
           <div className="p-6 text-center text-muted text-sm animate-pulse">Loading…</div>
         ) : playlists.length === 0 ? (
           <div className="p-6 text-center text-muted text-sm">No recommendations available</div>
         ) : (
-          <ul>
-            {playlists.map(playlist => (
-              <li key={playlist.id}>
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleSelectPlaylist(playlist)}
-                  onKeyDown={e => e.key === "Enter" && handleSelectPlaylist(playlist)}
-                  className="flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer"
-                >
-                  <div className="w-10 h-10 rounded flex-shrink-0 overflow-hidden bg-surface">
-                    {playlist.artworkUrl
-                      ? <img src={artworkUrl(playlist.artworkUrl, 40)} alt="" className="w-full h-full object-cover" />
-                      : <div className="w-full h-full flex items-center justify-center text-muted text-sm">♫</div>}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm truncate">{playlist.name}</p>
-                    {playlist.subtitle && <p className="text-muted text-xs truncate">{playlist.subtitle}</p>}
-                  </div>
-                  <ChevronRight size={14} className="text-muted flex-shrink-0" />
-                </div>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul>
+              {playlists.map(playlist => (
+                <PlaylistRow key={playlist.id} playlist={playlist} onSelect={() => handleSelectPlaylist(playlist)} />
+              ))}
+            </ul>
+            <div className="px-4 py-2.5 border-t border-border/50 flex justify-end">
+              <button onClick={refreshMfy} className="text-muted hover:text-white transition-colors" title="Shuffle">↻</button>
+            </div>
+          </>
+        )
+      ) : tab === "playlists" ? (
+        isBrowsing ? (
+          <DrilldownView browsing={browsing!} queuedIsrcs={queuedIsrcs} onAddTrack={onAddTrack} />
+        ) : loadingLibrary ? (
+          <div className="p-6 text-center text-muted text-sm animate-pulse">Loading…</div>
+        ) : !libraryPlaylists || libraryPlaylists.length === 0 ? (
+          <div className="p-6 text-center text-muted text-sm">No playlists found</div>
+        ) : (
+          <>
+            <div className="px-3 py-2 border-b border-border/50">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={playlistFilter}
+                  onChange={e => setPlaylistFilter(e.target.value)}
+                  placeholder="Filter playlists…"
+                  className="w-full bg-surface text-white placeholder-muted rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-accent pr-6"
+                />
+                {playlistFilter && (
+                  <button
+                    onClick={() => setPlaylistFilter("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white transition-colors text-sm leading-none"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+            <div ref={playlistScrollRef} className="overflow-y-auto max-h-96">
+              <ul>
+                {libraryPlaylists
+                  .filter(pl => pl.name.toLowerCase().includes(playlistFilter.toLowerCase()))
+                  .map(pl => (
+                    <PlaylistRow key={pl.id} playlist={pl} onSelect={() => handleSelectPlaylist(pl)} />
+                  ))}
+              </ul>
+            </div>
+          </>
         )
       ) : /* related tab */ (
         isBrowsing ? (
-          <>
-            <div className="flex items-center gap-4 px-4 py-4 border-b border-border bg-surface/40">
-              <div className="w-16 h-16 rounded-lg flex-shrink-0 overflow-hidden bg-surface shadow-md">
-                {browsing!.playlist.artworkUrl
-                  ? <img src={artworkUrl(browsing!.playlist.artworkUrl, 64)} alt="" className="w-full h-full object-cover" />
-                  : <div className="w-full h-full flex items-center justify-center text-muted text-xl">♫</div>}
-              </div>
-              <div className="min-w-0">
-                <p className="text-white text-base font-bold truncate">{browsing!.playlist.name}</p>
-                {browsing!.playlist.subtitle && <p className="text-muted text-sm truncate mt-0.5">{browsing!.playlist.subtitle}</p>}
-              </div>
-            </div>
-            {browsing!.tracks === null ? (
-              <div className="p-6 text-center text-muted text-sm animate-pulse">Loading tracks…</div>
-            ) : browsing!.tracks.length === 0 ? (
-              <div className="p-6 text-center text-muted text-sm">No tracks found</div>
-            ) : (
-              <ul>
-                {browsing!.tracks.map(track => (
-                  <TrackRow
-                    key={track.platformIds?.apple ?? track.isrc}
-                    track={track}
-                    added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
-                    onAdd={() => onAddTrack(track)}
-                  />
-                ))}
-              </ul>
-            )}
-          </>
+          <DrilldownView browsing={browsing!} queuedIsrcs={queuedIsrcs} onAddTrack={onAddTrack} />
         ) : relatedLoading ? (
           <div className="p-6 text-center text-muted text-sm animate-pulse">Finding related tracks…</div>
         ) : relatedError || relatedTracks.length === 0 ? (
@@ -265,24 +270,6 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
           </div>
         ) : (
           <>
-            {(relatedSeed || relatedPlaylist) && (
-              <div className="px-4 py-2.5 border-b border-border/50 text-xs text-muted space-y-0.5">
-                {relatedSeed && (
-                  <p className="truncate">
-                    <span className="text-muted/60">track  </span>
-                    <span className="text-white/70">{relatedSeed.name}</span>
-                    <span className="text-muted/40"> · {relatedSeed.artistName}</span>
-                  </p>
-                )}
-                {relatedPlaylist && (
-                  <p className="truncate">
-                    <span className="text-muted/60">playlist  </span>
-                    <span className="text-white/70">{relatedPlaylist.name}</span>
-                    {relatedPlaylist.subtitle && <span className="text-muted/40"> · {relatedPlaylist.subtitle}</span>}
-                  </p>
-                )}
-              </div>
-            )}
             <ul>
               {relatedTracks.map(track => (
                 <TrackRow
@@ -293,9 +280,100 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
                 />
               ))}
             </ul>
+            {relatedSeed && relatedPlaylist && (
+              <div className="px-4 py-2.5 border-t border-border/50 flex items-center justify-between gap-3">
+                <p className="text-xs text-muted truncate">
+                  <span className="text-white/70">{relatedSeed.name}</span>
+                  <span className="text-muted/60"> appears on </span>
+                  <span className="text-white/70">{relatedPlaylist.name}</span>
+                  <span className="text-muted/60"> alongside these tracks</span>
+                </p>
+                <button
+                  onClick={refreshRelated}
+                  className="text-muted hover:text-white transition-colors flex-shrink-0"
+                  title="Shuffle"
+                >
+                  ↻
+                </button>
+              </div>
+            )}
           </>
         )
       )}
     </div>
+  )
+}
+
+// ─── Internal helpers ─────────────────────────────────────────────────────────
+
+function DrilldownView({ browsing, queuedIsrcs, onAddTrack }: {
+  browsing: { playlist: PlaylistResult | LibraryPlaylistResult; tracks: Track[] | null }
+  queuedIsrcs: Set<string>
+  onAddTrack: (track: Track) => void
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-4 px-4 py-4 border-b border-border bg-surface/40">
+        <div className="w-32 h-32 rounded-lg flex-shrink-0 overflow-hidden bg-surface shadow-md">
+          {browsing.playlist.artworkUrl
+            ? <img src={artworkUrl(browsing.playlist.artworkUrl, 128)} alt="" className="w-full h-full object-cover" />
+            : <div className="w-full h-full flex items-center justify-center text-muted text-xl"><ListMusic size={24} /></div>}
+        </div>
+        <div className="min-w-0">
+          <p className="text-white text-base font-bold truncate">{browsing.playlist.name}</p>
+          {browsing.playlist.subtitle && <p className="text-muted text-sm truncate mt-0.5">{browsing.playlist.subtitle}</p>}
+        </div>
+      </div>
+      {browsing.tracks === null ? (
+        <div className="p-6 text-center text-muted text-sm animate-pulse">Loading tracks…</div>
+      ) : browsing.tracks.length === 0 ? (
+        <div className="p-6 text-center text-muted text-sm">No tracks found</div>
+      ) : (
+        <ul>
+          {browsing.tracks.map(track => (
+            <TrackRow
+              key={track.platformIds?.apple ?? track.isrc}
+              track={track}
+              added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
+              onAdd={() => onAddTrack(track)}
+            />
+          ))}
+        </ul>
+      )}
+    </>
+  )
+}
+
+function PlaylistRow({ playlist, onSelect }: {
+  playlist: PlaylistResult | LibraryPlaylistResult
+  onSelect: () => void
+}) {
+  const trackCount = 'trackCount' in playlist && playlist.trackCount != null
+    ? `${playlist.trackCount} track${playlist.trackCount !== 1 ? "s" : ""}`
+    : null
+  const subtitle = playlist.subtitle && trackCount ? `${playlist.subtitle} — ${trackCount}`
+    : playlist.subtitle || trackCount || null
+
+  return (
+    <li className="border-b border-border/50 last:border-0">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onSelect}
+        onKeyDown={e => e.key === "Enter" && onSelect()}
+        className="flex items-center gap-3 px-4 py-3 hover:bg-surface/50 transition-colors cursor-pointer"
+      >
+        <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
+          {playlist.artworkUrl
+            ? <img src={artworkUrl(playlist.artworkUrl, 96)} alt="" className="w-full h-full object-cover" />
+            : <div className="w-full h-full flex items-center justify-center text-muted text-sm"><ListMusic size={14} /></div>}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-base truncate">{playlist.name}</p>
+          {subtitle && <p className="text-muted text-sm truncate">{subtitle}</p>}
+        </div>
+        <ChevronRight size={14} className="text-muted flex-shrink-0" />
+      </div>
+    </li>
   )
 }

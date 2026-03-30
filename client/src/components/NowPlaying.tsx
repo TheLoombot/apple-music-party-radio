@@ -181,11 +181,11 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 initial={{ scale: 0.92, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ duration: 0.3, ease: "easeOut" }}
-                className="flex-shrink-0 w-28 h-28 rounded-lg overflow-hidden bg-surface"
+                className="flex-shrink-0 w-64 h-64 rounded-lg overflow-hidden bg-surface"
               >
                 {track.artworkUrl ? (
                   <button onClick={() => setArtworkOpen(true)} className="block w-full h-full cursor-zoom-in">
-                    <img src={artworkUrl(track.artworkUrl, 112)} alt={track.albumName} className="w-full h-full object-cover" />
+                    <img src={artworkUrl(track.artworkUrl, 256)} alt={track.albumName} className="w-full h-full object-cover" />
                   </button>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-muted text-3xl">♪</div>
@@ -200,12 +200,12 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 transition={{ duration: 0.25, delay: 0.05 }}
                 className="flex-1 min-w-0"
               >
-                <p className="text-white font-semibold truncate">{track.name}</p>
-                <p className="text-muted text-sm truncate">{track.artistName}</p>
-                <p className="text-muted text-xs truncate mt-0.5">{track.albumName}</p>
+                <p className="text-muted/70 text-sm">{track.artistName}</p>
+                <p className="text-white text-xl font-bold">{track.name}</p>
+                <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>
 
-                <p className="text-muted text-xs mt-3">
-                  via{" "}
+                <p className="text-muted text-sm mt-3">
+                  spun by{" "}
                   <span className="text-white/60">
                     {track.addedBy === "robot" ? "🤖"
                       : track.addedBy === currentUser.uid ? "you"
@@ -240,7 +240,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 />
               </div>
               <div className="flex justify-end mt-1.5">
-                <span className="text-xs text-muted tabular-nums">−{formatDuration(track.durationMs - elapsed)}</span>
+                <span className="text-sm text-muted tabular-nums">−{formatDuration(track.durationMs - elapsed)}</span>
               </div>
             </div>
           </motion.div>
