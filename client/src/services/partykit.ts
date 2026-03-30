@@ -84,6 +84,10 @@ export class StationSocket {
     this.send({ type: "expire_track", key, addToPool })
   }
 
+  reorderQueue(keys: string[]) {
+    this.send({ type: "reorder_queue", keys })
+  }
+
   removeFromPool(isrc: string) {
     this.send({ type: "remove_from_pool", isrc })
   }

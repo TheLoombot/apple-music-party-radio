@@ -1,4 +1,6 @@
+import { useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
+import { GripVertical } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import type { QueueItem, AppUser } from "../types"
@@ -17,11 +19,27 @@ interface Props {
   currentUser: AppUser
   stationOwner: string
   onRemove: (item: QueueItem) => void
+  onReorder?: (keys: string[]) => void
 }
 
-export function UpNext({ queue, currentUser, stationOwner, onRemove }: Props) {
+export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder }: Props) {
   const canRemove = currentUser.uid === stationOwner
+  const canReorder = canRemove && !!onReorder && queue.length > 1
   const totalMs = queue.reduce((sum, item) => sum + item.durationMs, 0)
+
+  const [draggedKey, setDraggedKey] = useState<string | null>(null)
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
+
+  const handleDrop = (targetKey: string) => {
+    if (!draggedKey || draggedKey === targetKey) return
+    const keys = queue.map(i => i.key)
+    const from = keys.indexOf(draggedKey)
+    const to = keys.indexOf(targetKey)
+    const reordered = [...keys]
+    reordered.splice(from, 1)
+    reordered.splice(to, 0, draggedKey)
+    onReorder!(reordered)
+  }
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
@@ -44,63 +62,93 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove }: Props) {
       </div>
 
       <div className="h-[360px] overflow-y-auto">
-      {queue.length === 0 ? (
-        <div className="p-6 text-center text-muted text-sm">Queue is empty, robot DJ will take over from the station pool</div>
-      ) : (
-        <ul>
-          <AnimatePresence initial={false}>
-            {queue.map((item, i) => (
-              <motion.li
-                key={item.key}
-                layout
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, x: 40, transition: { duration: 0.18 } }}
-                transition={{ duration: 0.22, ease: "easeOut" }}
-                className="flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 group"
-              >
-                <span className="text-xs text-muted w-4 text-center flex-shrink-0 tabular-nums">
-                  {i + 1}
-                </span>
-
-                <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
-                  {item.artworkUrl ? (
-                    <img src={artworkUrl(item.artworkUrl, 96)} alt="" className="w-full h-full object-cover" />
+        {queue.length === 0 ? (
+          <div className="p-6 text-center text-muted text-sm">Queue is empty, robot DJ will take over from the station pool</div>
+        ) : (
+          <ul>
+            <AnimatePresence initial={false}>
+              {queue.map((item, i) => (
+                <motion.li
+                  key={item.key}
+                  layout
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, x: 40, transition: { duration: 0.18 } }}
+                  transition={{ duration: 0.22, ease: "easeOut" }}
+                  draggable={canReorder}
+                  onDragStart={(e) => {
+                    setDraggedKey(item.key)
+                    ;(e as any).dataTransfer.effectAllowed = "move"
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    ;(e as any).dataTransfer.dropEffect = "move"
+                    if (dragOverKey !== item.key) setDragOverKey(item.key)
+                  }}
+                  onDragLeave={() => setDragOverKey(null)}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    handleDrop(item.key)
+                    setDraggedKey(null)
+                    setDragOverKey(null)
+                  }}
+                  onDragEnd={() => {
+                    setDraggedKey(null)
+                    setDragOverKey(null)
+                  }}
+                  className={[
+                    "flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 group transition-colors",
+                    draggedKey === item.key ? "opacity-30" : "opacity-100",
+                    dragOverKey === item.key && draggedKey !== item.key ? "bg-accent/10 border-t-2 border-t-accent" : "hover:bg-surface/50",
+                  ].join(" ")}
+                >
+                  {canReorder ? (
+                    <GripVertical
+                      size={14}
+                      className="text-muted/40 group-hover:text-muted/70 flex-shrink-0 cursor-grab active:cursor-grabbing"
+                    />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>
+                    <span className="text-xs text-muted w-4 text-center flex-shrink-0 tabular-nums">{i + 1}</span>
                   )}
-                </div>
 
-                <div className="flex-1 min-w-0">
-                  <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
-                  <p className="text-white text-base font-semibold truncate">{item.name}</p>
-                  <p className="text-muted/50 text-xs truncate">{item.albumName}</p>
-                  <p className="text-muted text-sm mt-2">
-                    queued by{" "}
-                    <span className="text-white/60">
-                      {item.addedBy === "robot" ? "🤖"
-                        : item.addedBy === currentUser.uid ? "you"
-                        : item.addedBy}
-                    </span>
-                  </p>
-                </div>
+                  <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
+                    {item.artworkUrl ? (
+                      <img src={artworkUrl(item.artworkUrl, 96)} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>
+                    )}
+                  </div>
 
-                <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(item.durationMs)}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
+                    <p className="text-white text-base font-semibold truncate">{item.name}</p>
+                    <p className="text-muted/50 text-xs truncate">{item.albumName}</p>
+                    <p className="text-muted text-sm mt-2">
+                      queued by{" "}
+                      <span className="text-white/60">
+                        {item.addedBy === "robot" ? "🤖"
+                          : item.addedBy === currentUser.uid ? "you"
+                          : item.addedBy}
+                      </span>
+                    </p>
+                  </div>
 
-                {canRemove && (
-                  <button
-                    onClick={() => onRemove(item)}
-                    className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all text-lg leading-none flex-shrink-0"
-                    title="Remove from queue"
-                  >
-                    ×
-                  </button>
-                )}
-              </motion.li>
-            ))}
-          </AnimatePresence>
-        </ul>
-      )}
+                  <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(item.durationMs)}</span>
+
+                  {canRemove && (
+                    <button
+                      onClick={() => onRemove(item)}
+                      className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all text-lg leading-none flex-shrink-0"
+                      title="Remove from queue"
+                    >
+                      ×
+                    </button>
+                  )}
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+        )}
       </div>
     </div>
   )

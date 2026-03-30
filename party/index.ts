@@ -190,6 +190,7 @@ export default class RadioParty implements Party.Server {
       case "remove_from_pool": return this.removeFromPool(msg.isrc)
       case "clear_pool":       return this.clearPool()
       case "robot_dj":         return this.robotDJ()
+      case "reorder_queue":    return this.reorderQueue(msg.keys)
     }
   }
 
@@ -217,6 +218,24 @@ export default class RadioParty implements Party.Server {
     queue = queue.filter(i => i.key !== key)
     await this.room.storage.put("queue", queue)
     this.broadcastQueue(queue)
+  }
+
+  private async reorderQueue(keys: string[]) {
+    const queue = await this.storage<QueueItem[]>("queue", [])
+    if (queue.length <= 1) return
+    const nowPlaying = queue[0]
+    const rest = queue.slice(1)
+    const keySet = new Set(keys)
+    const reordered = keys.map(k => rest.find(i => i.key === k)).filter((i): i is QueueItem => i != null)
+    const missing = rest.filter(i => !keySet.has(i.key))
+    let cursor = nowPlaying.expirationTime
+    const newUpNext = [...reordered, ...missing].map(item => {
+      cursor += item.durationMs
+      return { ...item, expirationTime: cursor }
+    })
+    const newQueue = [nowPlaying, ...newUpNext]
+    await this.room.storage.put("queue", newQueue)
+    this.broadcastQueue(newQueue)
   }
 
   private async skipTrack() {

@@ -294,6 +294,7 @@ export default function App() {
             currentUser={user}
             stationOwner={currentStationId}
             onRemove={handleRemoveTrack}
+            onReorder={isOwnStation ? (keys) => stationSocket.reorderQueue(keys) : undefined}
           />
           <StationPool
             currentUser={user}
