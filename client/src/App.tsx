@@ -346,7 +346,7 @@ export default function App() {
             onMuteToggle={handleMuteToggle}
             isBlocked={playbackBlocked}
             onResume={handleResume}
-            onAlbumClick={nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
+            onAlbumClick={isOwnStation && nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
             onOpenPool={isOwnStation ? () => setPoolModalOpen(true) : undefined}
           />
           <UpNext
@@ -355,7 +355,7 @@ export default function App() {
             stationOwner={currentStationId}
             onRemove={handleRemoveTrack}
             onReorder={isOwnStation ? (keys) => stationSocket.reorderQueue(keys) : undefined}
-            onAlbumClick={(item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) }}
+            onAlbumClick={isOwnStation ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
           />
         </div>
         <div className="space-y-4">
