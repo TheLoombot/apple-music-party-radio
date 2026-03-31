@@ -37,6 +37,7 @@ export interface AlbumResult extends BrowsableResult {
 
 export interface PlaylistResult extends BrowsableResult {
   kind: "playlist"
+  lastModifiedAt?: number  // Unix ms
 }
 
 export interface LibraryPlaylistResult extends BrowsableResult {

@@ -108,7 +108,7 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
             {displayPlaylist.kind === "album" && displayPlaylist.releaseYear && (
               <p className="text-muted text-xs mt-0.5 opacity-60">{displayPlaylist.releaseYear}</p>
             )}
-            {displayPlaylist.kind === "library-playlist" && displayPlaylist.lastModifiedAt && (
+            {(displayPlaylist.kind === "playlist" || displayPlaylist.kind === "library-playlist") && displayPlaylist.lastModifiedAt && (
               <p className="text-muted text-xs mt-0.5 opacity-60">Updated {relativeTime(displayPlaylist.lastModifiedAt)}</p>
             )}
           </div>

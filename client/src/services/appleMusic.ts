@@ -56,13 +56,17 @@ export async function searchCatalog(term: string, storefront = "us"): Promise<Se
     }
   })
 
-  const playlists: SearchItem[] = (data.results?.playlists?.data ?? []).map((item: any) => ({
-    kind: "playlist" as const,
-    id: item.id,
-    name: item.attributes?.name ?? "",
-    subtitle: item.attributes?.curatorName ?? item.attributes?.artistName ?? "",
-    artworkUrl: item.attributes?.artwork?.url ?? ""
-  }))
+  const playlists: SearchItem[] = (data.results?.playlists?.data ?? []).map((item: any) => {
+    const lmd: string | undefined = item.attributes?.lastModifiedDate
+    return {
+      kind: "playlist" as const,
+      id: item.id,
+      name: item.attributes?.name ?? "",
+      subtitle: item.attributes?.curatorName ?? item.attributes?.artistName ?? "",
+      artworkUrl: item.attributes?.artwork?.url ?? "",
+      lastModifiedAt: lmd ? new Date(lmd).getTime() : undefined,
+    }
+  })
 
   // Interleave songs first, then albums and playlists together
   const containers = albums.flatMap((a, i) => playlists[i] ? [a, playlists[i]] : [a])
@@ -195,13 +199,17 @@ export async function getRelatedPlaylistsForSong(songId: string, storefront = "u
   )
   if (!res.ok) return []
   const data = await res.json()
-  return (data.data?.[0]?.views?.["appears-on"]?.data ?? []).map((item: any) => ({
-    kind: "playlist" as const,
-    id: item.id,
-    name: item.attributes?.name ?? "",
-    subtitle: item.attributes?.curatorName ?? "",
-    artworkUrl: item.attributes?.artwork?.url ?? ""
-  }))
+  return (data.data?.[0]?.views?.["appears-on"]?.data ?? []).map((item: any) => {
+    const lmd: string | undefined = item.attributes?.lastModifiedDate
+    return {
+      kind: "playlist" as const,
+      id: item.id,
+      name: item.attributes?.name ?? "",
+      subtitle: item.attributes?.curatorName ?? "",
+      artworkUrl: item.attributes?.artwork?.url ?? "",
+      lastModifiedAt: lmd ? new Date(lmd).getTime() : undefined,
+    }
+  })
 }
 
 export async function getAlbumForSong(songId: string, storefront = "us"): Promise<AlbumResult | null> {
@@ -252,12 +260,14 @@ export async function getRecommendedPlaylists(): Promise<(PlaylistResult | Album
           releaseYear: rd ? new Date(rd).getFullYear() : undefined,
         })
       } else {
+        const plmd: string | undefined = a?.lastModifiedDate
         results.push({
           kind: "playlist",
           id: item.id,
           name: a?.name ?? "",
           subtitle: a?.curatorName ?? a?.description?.short ?? "",
           artworkUrl: a?.artwork?.url ?? "",
+          lastModifiedAt: plmd ? new Date(plmd).getTime() : undefined,
         })
       }
     }
