@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react"
-import { motion } from "framer-motion"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { X, ListMusic, Disc3, ChevronLeft } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { TrackRow } from "./TrackRow"
 import { LoadingDots } from "./LoadingDots"
+import { ArtworkModal } from "./ArtworkModal"
 import { relativeTime } from "../utils"
 import type { Track, PlaylistResult, LibraryPlaylistResult, AlbumResult } from "../types"
 import type { MusicCatalog } from "../services/catalog"
@@ -22,6 +23,8 @@ interface Props {
 export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClose, catalog }: Props) {
   const [navStack, setNavStack] = useState<NavEntry[]>([])
   const [navCurrent, setNavCurrent] = useState<NavEntry | null>(null)
+  const [artworkOpen, setArtworkOpen] = useState(false)
+  const closeArtwork = useCallback(() => setArtworkOpen(false), [])
   const navOpRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement>(null)
   const restoreScrollRef = useRef<number | null>(null)
@@ -39,10 +42,10 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
   })
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && !artworkOpen) onClose() }
     document.addEventListener("keydown", handler)
     return () => document.removeEventListener("keydown", handler)
-  }, [onClose])
+  }, [onClose, artworkOpen])
 
   async function handleTrackAlbumClick(track: Track) {
     if (!catalog || !track.platformIds?.apple) return
@@ -96,7 +99,9 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
           )}
           <div className="w-16 h-16 rounded-lg flex-shrink-0 overflow-hidden bg-surface">
             {displayPlaylist.artworkUrl
-              ? <img src={artworkUrl(displayPlaylist.artworkUrl, 64)} alt="" className="w-full h-full object-cover" />
+              ? <button onClick={() => setArtworkOpen(true)} className="block w-full h-full cursor-zoom-in">
+                  <img src={artworkUrl(displayPlaylist.artworkUrl, 64)} alt="" className="w-full h-full object-cover" />
+                </button>
               : <div className="w-full h-full flex items-center justify-center text-muted">
                   {displayPlaylist.kind === "album" ? <Disc3 size={20} /> : <ListMusic size={20} />}
                 </div>
@@ -142,6 +147,16 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
           )}
         </div>
       </motion.div>
+
+      <AnimatePresence>
+        {artworkOpen && displayPlaylist.artworkUrl && (
+          <ArtworkModal
+            src={artworkUrl(displayPlaylist.artworkUrl, 1500)}
+            alt={displayPlaylist.name}
+            onClose={closeArtwork}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }
