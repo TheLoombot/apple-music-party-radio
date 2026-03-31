@@ -100,7 +100,7 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
         </div>
 
         {/* Results */}
-        <div className="overflow-y-auto max-h-96">
+        <div className="overflow-y-auto h-96">
           <AnimatePresence mode="wait">
             {isSearching && (
               <motion.div

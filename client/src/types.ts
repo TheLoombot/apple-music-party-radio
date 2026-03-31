@@ -32,6 +32,7 @@ export interface BrowsableResult {
 
 export interface AlbumResult extends BrowsableResult {
   kind: "album"
+  releaseYear?: number
 }
 
 export interface PlaylistResult extends BrowsableResult {
@@ -41,6 +42,7 @@ export interface PlaylistResult extends BrowsableResult {
 export interface LibraryPlaylistResult extends BrowsableResult {
   kind: "library-playlist"
   trackCount?: number
+  lastModifiedAt?: number  // Unix ms
 }
 
 export type SearchItem =
@@ -59,6 +61,8 @@ export interface Station {
   storefront: string
   liveUntil: number    // Unix ms; station is live if liveUntil > Date.now()
   nowPlayingAddedBy?: string
+  nowPlayingTrackName?: string
+  nowPlayingArtistName?: string
   listeners?: Listener[]
 }
 

@@ -72,6 +72,11 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
                       {station.displayName}
                       {isOwn && <span className="text-muted text-xs font-normal ml-1.5">(you)</span>}
                     </p>
+                    {station.liveUntil > now && station.nowPlayingTrackName && (
+                      <p className="text-xs text-muted truncate mt-0.5">
+                        {station.nowPlayingArtistName && `${station.nowPlayingArtistName} — `}{station.nowPlayingTrackName}
+                      </p>
+                    )}
                     {station.listeners && station.listeners.length > 0 && (
                       <p className="text-xs text-muted truncate mt-0.5">
                         {station.listeners.map(l => l.displayName).join(", ")}

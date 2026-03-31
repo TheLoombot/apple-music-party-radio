@@ -44,13 +44,17 @@ export async function searchCatalog(term: string, storefront = "us"): Promise<Se
     .map((item: any) => { const t = normalizeTrack(item); return t ? { kind: "song" as const, track: t } : null })
     .filter((x: SearchItem | null): x is SearchItem => x !== null)
 
-  const albums: SearchItem[] = (data.results?.albums?.data ?? []).map((item: any) => ({
-    kind: "album" as const,
-    id: item.id,
-    name: item.attributes?.name ?? "",
-    subtitle: item.attributes?.artistName ?? "",
-    artworkUrl: item.attributes?.artwork?.url ?? ""
-  }))
+  const albums: SearchItem[] = (data.results?.albums?.data ?? []).map((item: any) => {
+    const rd: string | undefined = item.attributes?.releaseDate
+    return {
+      kind: "album" as const,
+      id: item.id,
+      name: item.attributes?.name ?? "",
+      subtitle: item.attributes?.artistName ?? "",
+      artworkUrl: item.attributes?.artwork?.url ?? "",
+      releaseYear: rd ? new Date(rd).getFullYear() : undefined,
+    }
+  })
 
   const playlists: SearchItem[] = (data.results?.playlists?.data ?? []).map((item: any) => ({
     kind: "playlist" as const,
@@ -123,13 +127,15 @@ export async function getLibraryPlaylists(): Promise<LibraryPlaylistResult[]> {
     for (const item of data.data ?? []) {
       const catalogAttrs = item.relationships?.catalog?.data?.[0]?.attributes
       const curator = catalogAttrs?.curatorName ?? item.attributes?.description?.standard ?? ""
+      const lmd: string | undefined = catalogAttrs?.lastModifiedDate ?? item.attributes?.lastModifiedDate
       results.push({
         kind: "library-playlist" as const,
         id: item.id,
         name: item.attributes?.name ?? "",
         subtitle: curator,
         artworkUrl: item.attributes?.artwork?.url ?? catalogAttrs?.artwork?.url ?? "",
-        trackCount: item.attributes?.trackCount ?? catalogAttrs?.trackCount ?? undefined
+        trackCount: item.attributes?.trackCount ?? catalogAttrs?.trackCount ?? undefined,
+        lastModifiedAt: lmd ? new Date(lmd).getTime() : undefined,
       })
     }
 
@@ -207,12 +213,14 @@ export async function getAlbumForSong(songId: string, storefront = "us"): Promis
   const data = await res.json()
   const album = data.data?.[0]?.relationships?.albums?.data?.[0]
   if (!album) return null
+  const releaseDate: string | undefined = album.attributes?.releaseDate
   return {
     kind: "album",
     id: album.id,
     name: album.attributes?.name ?? "",
     subtitle: album.attributes?.artistName ?? "",
     artworkUrl: album.attributes?.artwork?.url ?? "",
+    releaseYear: releaseDate ? new Date(releaseDate).getFullYear() : undefined,
   }
 }
 
@@ -234,12 +242,14 @@ export async function getRecommendedPlaylists(): Promise<(PlaylistResult | Album
       seen.add(item.id)
       const a = item.attributes
       if (item.type === "albums") {
+        const rd: string | undefined = a?.releaseDate
         results.push({
           kind: "album",
           id: item.id,
           name: a?.name ?? "",
           subtitle: a?.artistName ?? "",
           artworkUrl: a?.artwork?.url ?? "",
+          releaseYear: rd ? new Date(rd).getFullYear() : undefined,
         })
       } else {
         results.push({

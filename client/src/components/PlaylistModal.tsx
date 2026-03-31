@@ -4,6 +4,7 @@ import { X, ListMusic, Disc3, ChevronLeft } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { TrackRow } from "./TrackRow"
 import { LoadingDots } from "./LoadingDots"
+import { relativeTime } from "../utils"
 import type { Track, PlaylistResult, LibraryPlaylistResult, AlbumResult } from "../types"
 import type { MusicCatalog } from "../services/catalog"
 
@@ -104,6 +105,12 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
           <div className="flex-1 min-w-0">
             <p className="text-white text-base font-bold">{displayPlaylist.name}</p>
             {displayPlaylist.subtitle && <p className="text-muted text-sm truncate mt-0.5">{displayPlaylist.subtitle}</p>}
+            {displayPlaylist.kind === "album" && displayPlaylist.releaseYear && (
+              <p className="text-muted text-xs mt-0.5 opacity-60">{displayPlaylist.releaseYear}</p>
+            )}
+            {displayPlaylist.kind === "library-playlist" && displayPlaylist.lastModifiedAt && (
+              <p className="text-muted text-xs mt-0.5 opacity-60">Updated {relativeTime(displayPlaylist.lastModifiedAt)}</p>
+            )}
           </div>
           <button onClick={onClose} className="text-muted hover:text-white transition-colors flex-shrink-0 p-1">
             <X size={18} />

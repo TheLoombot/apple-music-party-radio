@@ -64,6 +64,8 @@ interface StationMeta {
   storefront: string
   liveUntil: number   // Unix ms; 0 = not live; client computes isLive as liveUntil > Date.now()
   nowPlayingAddedBy?: string
+  nowPlayingTrackName?: string
+  nowPlayingArtistName?: string
   listeners?: Listener[]
 }
 
@@ -88,7 +90,7 @@ export default class RadioParty implements Party.Server {
       const chat = await this.storage<ChatMessage[]>("chat", [])
       conn.send(json({ type: "state", queue, pool, chat }))
       // Sync live status to index on every connect so stale flags get corrected
-      void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy)
+      void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.name, queue[0]?.artistName)
       // Re-arm expiration alarm in case the DO restarted and lost it
       if (queue.length > 0) {
         void this.room.storage.setAlarm(queue[0].expirationTime)
@@ -144,6 +146,8 @@ export default class RadioParty implements Party.Server {
             ...stations[idx],
             liveUntil: msg.liveUntil ?? 0,
             nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
+            nowPlayingTrackName: msg.nowPlayingTrackName ?? stations[idx].nowPlayingTrackName,
+            nowPlayingArtistName: msg.nowPlayingArtistName ?? stations[idx].nowPlayingArtistName,
           }
           await this.room.storage.put("stations", stations)
           this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
@@ -173,6 +177,7 @@ export default class RadioParty implements Party.Server {
     const idx = stations.findIndex(s => s.id === msg.id)
     const existing = idx >= 0 ? stations[idx] : null
     const meta: StationMeta = {
+      ...existing,
       id: msg.id,
       displayName: msg.displayName,
       storefront: msg.storefront,
@@ -415,13 +420,13 @@ export default class RadioParty implements Party.Server {
     return stations.map(s => ({ ...s, listeners: this.presenceMap.get(s.id) ?? [] }))
   }
 
-  private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string) {
+  private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string) {
     try {
       const indexRoom = this.room.context.parties.main.get("index")
       await indexRoom.fetch("/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "station_status", id: this.room.id, liveUntil, nowPlayingAddedBy }),
+        body: JSON.stringify({ type: "station_status", id: this.room.id, liveUntil, nowPlayingAddedBy, nowPlayingTrackName, nowPlayingArtistName }),
       })
     } catch (e) {
       console.error("[notifyIndex] failed", e)
@@ -439,7 +444,7 @@ export default class RadioParty implements Party.Server {
 
   private broadcastQueue(queue: QueueItem[]) {
     this.room.broadcast(json({ type: "queue_update", queue }))
-    void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy)
+    void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.name, queue[0]?.artistName)
     if (queue.length > 0) {
       void this.room.storage.setAlarm(queue[0].expirationTime)
     }
