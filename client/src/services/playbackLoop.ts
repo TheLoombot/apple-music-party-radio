@@ -9,12 +9,15 @@
  * The client also keeps a fallback expiration timer (belt-and-suspenders for
  * local dev and foreground reliability).
  *
- * On visibility restore (tab re-focused), playback is re-synced to the correct
- * offset in the current track, recovering from any blocked play() calls that
- * occurred while the tab was in the background.
+ * Native queue: we keep the full MusicKit queue in sync with the app queue so
+ * that track transitions happen natively without JS needing to fire. On
+ * auto-advance, nowPlayingItemDidChange fires and we tell the server.
+ * Hard switches (new track[0]) use setQueue + seek. Queue tail changes are
+ * synced non-destructively via syncQueueTail (remove stale items, append new).
  */
 import { stationSocket } from "./partykit"
 import { UnavailableError } from "./player"
+import { onNowPlayingItemChange } from "./musickit"
 import { startAudioSession, resumeAudioSession } from "./audioSession"
 import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
@@ -22,11 +25,15 @@ import type { QueueItem } from "../types"
 export class PlaybackLoop {
   private currentTrack: QueueItem | null = null
   private currentTrackKey: string | null = null
-  private pendingPlay: { track: QueueItem; offsetSeconds: number } | null = null
-  private autoplayEnabled = false   // stays true once user has tapped "Tap to listen"
-  private robotDJPending = false    // prevent duplicate triggerRobotDJ for the same empty-queue event
+  private nativeCurrentId: string | null = null  // Apple ID we last set as queue[0]
+  private playSequence = 0                        // guards against stale async writes
+  private pendingPlay: { track: QueueItem; offsetSeconds: number; tail: QueueItem[] } | null = null
+  private lastKnownQueue: QueueItem[] = []
+  private autoplayEnabled = false
+  private robotDJPending = false
   private muted = false
   private expirationTimer: ReturnType<typeof setTimeout> | null = null
+  private nowPlayingItemTeardown: (() => void) | null = null
 
   onNowPlayingChange?: (item: QueueItem | null) => void
   onQueueChange?: (upNext: QueueItem[]) => void
@@ -41,14 +48,19 @@ export class PlaybackLoop {
     stationSocket.onQueueUpdate = this.handleQueueUpdate
     stationSocket.connect(stationId)
     document.addEventListener("visibilitychange", this.handleVisibilityChange)
+    this.nowPlayingItemTeardown = onNowPlayingItemChange(this.handleNowPlayingItemChange)
   }
 
   stop() {
     document.removeEventListener("visibilitychange", this.handleVisibilityChange)
+    this.nowPlayingItemTeardown?.()
+    this.nowPlayingItemTeardown = null
     stationSocket.onQueueUpdate = undefined
     stationSocket.disconnect()
     this.currentTrack = null
     this.currentTrackKey = null
+    this.nativeCurrentId = null
+    this.lastKnownQueue = []
     this.pendingPlay = null
     this.robotDJPending = false
     if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
@@ -60,10 +72,14 @@ export class PlaybackLoop {
     this.setMuted(false)
     startAudioSession()
     if (!this.pendingPlay) return
-    const { track, offsetSeconds } = this.pendingPlay
+    const { track, offsetSeconds, tail } = this.pendingPlay
     this.pendingPlay = null
+    const seq = ++this.playSequence
+    this.nativeCurrentId = null
     try {
-      await this.player.playAtOffset(track, offsetSeconds)
+      await this.player.playAtOffset(track, offsetSeconds, tail)
+      if (this.playSequence !== seq) return
+      this.nativeCurrentId = track.platformIds.apple ?? null
     } catch (err) {
       if (err instanceof UnavailableError) {
         console.warn("[PlaybackLoop] track unavailable on resume:", track.name)
@@ -83,22 +99,53 @@ export class PlaybackLoop {
     this.onMutedChange?.(muted)
   }
 
+  // MusicKit auto-advanced to the next track natively.
+  private handleNowPlayingItemChange = (item: MusicKit.MediaItem | null) => {
+    const itemId = item ? String(item.id) : null
+    console.debug("[PlaybackLoop] nowPlayingItemDidChange", {
+      itemId,
+      nativeCurrentId: this.nativeCurrentId,
+      expectedNextId: this.lastKnownQueue[1]?.platformIds?.apple ?? null,
+      currentTrackKey: this.currentTrackKey,
+    })
+
+    if (!itemId || !this.currentTrackKey) return
+    if (itemId === this.nativeCurrentId) return  // same track reloaded (e.g. after setQueue)
+
+    const expectedNextId = this.lastKnownQueue[1]?.platformIds?.apple
+    if (!expectedNextId || itemId !== expectedNextId) return
+
+    // MusicKit moved forward on its own — tell the server
+    this.nativeCurrentId = itemId
+    if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
+    stationSocket.expireTrack(this.currentTrackKey, true)
+  }
+
   private handleVisibilityChange = async () => {
     if (document.hidden) return
     resumeAudioSession()
 
-    // Re-sync playback position when returning to the tab.
-    // While backgrounded, play() calls may have been blocked by Safari; the track may
-    // have advanced (or not started at all). Seek to wherever we should be right now.
     if (!this.autoplayEnabled || !this.currentTrack) return
     if (this.player.isPlaying()) return  // still going — no need to rehydrate
+
+    // Also skip if MusicKit is already on the right track (loading/waiting after natural advance)
+    const liveId = this.player.getLiveCurrentId()
+    const wantedId = this.currentTrack.platformIds.apple
+    if (wantedId && liveId === wantedId) return
+
     const track = this.currentTrack
     const now = Date.now()
     if (now >= track.expirationTime) return  // already expired — wait for next queue_update
+
     const startTime = track.expirationTime - track.durationMs
     const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+    const tail = this.lastKnownQueue.slice(1)
+    const seq = ++this.playSequence
+    this.nativeCurrentId = null
     try {
-      await this.player.playAtOffset(track, offsetSeconds)
+      await this.player.playAtOffset(track, offsetSeconds, tail)
+      if (this.playSequence !== seq) return
+      this.nativeCurrentId = track.platformIds.apple ?? null
     } catch (err) {
       if (err instanceof UnavailableError) {
         console.warn("[PlaybackLoop] track unavailable on tab focus:", track.name)
@@ -110,11 +157,13 @@ export class PlaybackLoop {
 
   private handleQueueUpdate = async (queue: QueueItem[]) => {
     this.onQueueChange?.(queue.slice(1))
+    this.lastKnownQueue = queue
 
     if (queue.length === 0) {
       this.onNowPlayingChange?.(null)
       this.currentTrack = null
       this.currentTrackKey = null
+      this.nativeCurrentId = null
       this.pendingPlay = null
       if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
       this.player.stop()
@@ -128,42 +177,83 @@ export class PlaybackLoop {
     this.robotDJPending = false
 
     const track0 = queue[0]
+    const tail = queue.slice(1)
     const now = Date.now()
 
     this.onNowPlayingChange?.(track0)
 
-    if (track0.key === this.currentTrackKey) return  // already playing
+    // ── HARD SWITCH: track[0] changed ─────────────────────────────────────
+    if (track0.key !== this.currentTrackKey) {
+      this.currentTrack = track0
+      this.currentTrackKey = track0.key
 
-    this.currentTrack = track0
-    this.currentTrackKey = track0.key
-    const startTime = track0.expirationTime - track0.durationMs
-    const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+      // Track is already past its end — skip it immediately without playing.
+      // This handles the "catch-up storm" after a long background session where
+      // multiple tracks expire while JS is throttled.
+      if (now >= track0.expirationTime) {
+        if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
+        stationSocket.expireTrack(track0.key, true)
+        return
+      }
 
-    // Schedule a fallback expiration on the client — the server DO alarm is authoritative
-    // in production, but this ensures advancement works in local dev and in the foreground.
-    // The server ignores duplicate expire_track messages for already-advanced keys.
-    if (this.expirationTimer) clearTimeout(this.expirationTimer)
-    this.expirationTimer = setTimeout(
-      () => stationSocket.expireTrack(track0.key, true),
-      Math.max(0, track0.expirationTime - Date.now())
-    )
+      if (this.expirationTimer) clearTimeout(this.expirationTimer)
+      // +3s grace: lets MusicKit's nowPlayingItemDidChange fire first (which cancels this timer).
+      // This prevents our setQueue from racing with MusicKit's natural auto-advance.
+      this.expirationTimer = setTimeout(
+        () => stationSocket.expireTrack(track0.key, true),
+        Math.max(0, track0.expirationTime - Date.now() + 3000)
+      )
 
-    // Never call play() without a prior user gesture — browser/MusicKit will show
-    // a dialog and throw an opaque internal error before we can catch NotAllowedError.
-    if (!this.autoplayEnabled) {
-      this.pendingPlay = { track: track0, offsetSeconds }
-      this.onPlaybackBlocked?.()
+      const wantedId = track0.platformIds.apple ?? null
+
+      // MusicKit already auto-advanced to this track natively — don't call play() again.
+      // Either nativeCurrentId was set by handleNowPlayingItemChange (fast path),
+      // or we check the live native queue directly (catches the race where expirationTimer
+      // fires and handleQueueUpdate runs before nowPlayingItemDidChange fires).
+      const liveId = this.player.getLiveCurrentId()
+      if (wantedId && (wantedId === this.nativeCurrentId || wantedId === liveId)) {
+        this.nativeCurrentId = wantedId
+        console.debug("[PlaybackLoop] native auto-advance detected, skipping setQueue", { wantedId, liveId, nativeCurrentId: this.nativeCurrentId })
+        try {
+          await this.player.syncQueueTail(tail)
+        } catch (err) {
+          console.error("[PlaybackLoop] syncQueueTail after auto-advance error:", err)
+        }
+        return
+      }
+
+      const startTime = track0.expirationTime - track0.durationMs
+      const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+
+      if (!this.autoplayEnabled) {
+        this.pendingPlay = { track: track0, offsetSeconds, tail }
+        this.onPlaybackBlocked?.()
+        return
+      }
+
+      const seq = ++this.playSequence
+      this.nativeCurrentId = null
+      try {
+        // Pass full tail so setQueue loads the complete queue atomically —
+        // this is what enables native background auto-advance without JS timers.
+        await this.player.playAtOffset(track0, offsetSeconds, tail)
+        if (this.playSequence !== seq) return
+        this.nativeCurrentId = wantedId
+      } catch (err) {
+        if (err instanceof UnavailableError) {
+          console.warn("[PlaybackLoop] track unavailable:", track0.name)
+        } else {
+          console.error("[PlaybackLoop] playback error:", err)
+        }
+      }
       return
     }
 
+    // ── SOFT UPDATE: same track[0], sync the tail ─────────────────────────
     try {
-      await this.player.playAtOffset(track0, offsetSeconds)
+      await this.player.syncQueueTail(tail)
     } catch (err) {
-      if (err instanceof UnavailableError) {
-        console.warn("[PlaybackLoop] track unavailable:", track0.name)
-      } else {
-        console.error("[PlaybackLoop] playback error:", err)
-      }
+      console.error("[PlaybackLoop] syncQueueTail error:", err)
     }
   }
 }

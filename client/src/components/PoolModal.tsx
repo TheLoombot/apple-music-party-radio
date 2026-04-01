@@ -197,9 +197,9 @@ export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddT
                         transition={{ duration: 0.2 }}
                         className={`flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 group ${unavailable ? "opacity-50" : ""}`}
                       >
-                        <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden bg-surface">
+                        <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
                           {track.artworkUrl
-                            ? <img src={artworkUrl(track.artworkUrl, 48)} alt="" className="w-full h-full object-cover" />
+                            ? <img src={artworkUrl(track.artworkUrl, 96)} alt="" className="w-full h-full object-cover" />
                             : <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>}
                         </div>
                         <div className="flex-1 min-w-0">

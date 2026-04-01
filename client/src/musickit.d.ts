@@ -44,17 +44,27 @@ declare namespace MusicKit {
     authorizationStatusDidChange: string
   }
 
+  interface Queue {
+    readonly items: MediaItem[]
+    readonly position: number
+    remove(index: number): Promise<void>
+  }
+
   interface MusicKitInstance {
     authorize(): Promise<string>
     unauthorize(): Promise<void>
-    setQueue(options: { song?: string; songs?: string[] }): Promise<void>
+    setQueue(options: { song?: string; songs?: string[]; startPlaying?: boolean }): Promise<void>
     play(): Promise<void>
     pause(): void
+    stop(): Promise<void>
     seekToTime(time: number): Promise<void>
+    playNext(options: { song: string }): Promise<void>
+    playLater(options: { song: string }): Promise<void>
     addEventListener(event: string, callback: (event: any) => void): void
     removeEventListener(event: string, callback: (event: any) => void): void
     readonly isAuthorized: boolean
     readonly nowPlayingItem: MediaItem | null
+    readonly queue: Queue
     readonly playbackState: PlaybackStates
     readonly currentPlaybackTime: number
     readonly currentPlaybackDuration: number

@@ -110,14 +110,93 @@ export function isAuthorized(): boolean {
   try { return getMusicKit().isAuthorized } catch { return false }
 }
 
-export async function playTrackAtOffset(catalogId: string, offsetSeconds: number): Promise<void> {
+export async function playTrackAtOffset(catalogId: string, offsetSeconds: number, tailIds?: string[]): Promise<void> {
   const music = getMusicKit()
-  await music.setQueue({ song: catalogId })
+  if (tailIds && tailIds.length > 0) {
+    await music.setQueue({ songs: [catalogId, ...tailIds] })
+  } else {
+    await music.setQueue({ song: catalogId })
+  }
   await music.play()
   if (offsetSeconds > 1) {
     await new Promise(r => setTimeout(r, 300))
     await music.seekToTime(offsetSeconds)
   }
+}
+
+export async function syncQueueTail(tailIds: string[]): Promise<void> {
+  const music = getMusicKit()
+  const nativeQueue = music.queue
+  const items = nativeQueue.items
+  const position = nativeQueue.position
+
+  // What's currently in the native queue after the playing track
+  const nativeTailIds = items.slice(position + 1).map(item => item.id)
+
+  if (nativeTailIds.join(",") === tailIds.join(",")) return  // already in sync
+
+  console.debug("[MusicKit queue] syncQueueTail", {
+    position,
+    nativeTail: nativeTailIds,
+    wantedTail: tailIds,
+  })
+
+  // Remove all items after current position (backwards to preserve indices)
+  for (let i = items.length - 1; i > position; i--) {
+    await nativeQueue.remove(i)
+  }
+
+  // Append wanted items in order
+  for (const id of tailIds) {
+    await music.playLater({ song: id })
+  }
+
+  console.debug("[MusicKit queue] syncQueueTail done — new tail:", tailIds)
+}
+
+/** Call once from the browser console to enable verbose MusicKit queue logging. */
+export function debugMusicKit() {
+  const music = getMusicKit()
+
+  const logQueue = (label: string) => {
+    const q = music.queue
+    console.log(`[MusicKit] ${label}`, {
+      position: q.position,
+      items: q.items.map((item, i) => `${i === q.position ? "▶" : " "} [${item.id}] ${item.attributes?.name} — ${item.attributes?.artistName}`),
+      nowPlaying: music.nowPlayingItem ? `[${music.nowPlayingItem.id}] ${music.nowPlayingItem.attributes?.name}` : null,
+      playbackState: MusicKit.PlaybackStates[music.playbackState] ?? music.playbackState,
+    })
+  }
+
+  const events = [
+    "nowPlayingItemDidChange",
+    "queueItemsDidChange",
+    "queuePositionDidChange",
+    "playbackStateDidChange",
+  ]
+
+  const handlers: Record<string, (e: any) => void> = {}
+  for (const event of events) {
+    handlers[event] = (e: any) => {
+      console.log(`[MusicKit event] ${event}`, e)
+      logQueue("after " + event)
+    }
+    music.addEventListener(event, handlers[event])
+  }
+
+  logQueue("initial state")
+
+  console.log("[MusicKit] debug enabled — call window.__stopMusicKitDebug() to remove listeners")
+  ;(window as any).__stopMusicKitDebug = () => {
+    for (const event of events) music.removeEventListener(event, handlers[event])
+    console.log("[MusicKit] debug listeners removed")
+  }
+}
+
+export function onNowPlayingItemChange(cb: (item: MusicKit.MediaItem | null) => void): () => void {
+  const handler = (e: any) => cb(e.item ?? null)
+  getMusicKit().addEventListener(MusicKit.Events.nowPlayingItemDidChange, handler)
+  return () => getMusicKit().removeEventListener(MusicKit.Events.nowPlayingItemDidChange, handler)
 }
 
 export function artworkUrl(template: string, size = 300): string {
