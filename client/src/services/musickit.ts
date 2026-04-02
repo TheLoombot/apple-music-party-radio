@@ -119,9 +119,31 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
   }
   await music.play()
   if (offsetSeconds > 1) {
-    await new Promise(r => setTimeout(r, 300))
+    await waitForPlaybackState(music, 2, 2000)
     await music.seekToTime(offsetSeconds)
   }
+}
+
+// Wait for MusicKit to reach a given playbackState value, with a timeout fallback.
+// Used to ensure seekToTime is called only once the audio element is actually playing,
+// not on a fixed timer (which is unreliable across devices and network conditions).
+function waitForPlaybackState(music: MusicKit.MusicKitInstance, targetState: number, timeoutMs: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if ((music as any).playbackState === targetState) { resolve(); return }
+    let timer: ReturnType<typeof setTimeout>
+    const handler = (e: any) => {
+      if (e.state === targetState) {
+        clearTimeout(timer)
+        music.removeEventListener(MusicKit.Events.playbackStateDidChange, handler)
+        resolve()
+      }
+    }
+    music.addEventListener(MusicKit.Events.playbackStateDidChange, handler)
+    timer = setTimeout(() => {
+      music.removeEventListener(MusicKit.Events.playbackStateDidChange, handler)
+      resolve()
+    }, timeoutMs)
+  })
 }
 
 export async function syncQueueTail(tailIds: string[]): Promise<void> {

@@ -80,6 +80,14 @@ function useMediaSession(
     if (!track) {
       navigator.mediaSession.metadata = null
       navigator.mediaSession.playbackState = "none"
+      try { navigator.mediaSession.setPositionState() } catch {}
+      navigator.mediaSession.setActionHandler("play", null)
+      navigator.mediaSession.setActionHandler("pause", null)
+      navigator.mediaSession.setActionHandler("nexttrack", null)
+      navigator.mediaSession.setActionHandler("previoustrack", null)
+      navigator.mediaSession.setActionHandler("seekto", null)
+      navigator.mediaSession.setActionHandler("seekbackward", null)
+      navigator.mediaSession.setActionHandler("seekforward", null)
       return
     }
 
@@ -94,9 +102,23 @@ function useMediaSession(
 
     navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused"
 
+    const startTime = track.expirationTime - track.durationMs
+    const position = Math.max(0, Math.min(track.durationMs / 1000, (Date.now() - startTime) / 1000))
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: track.durationMs / 1000,
+        playbackRate: isPlaying ? 1 : 0,
+        position,
+      })
+    } catch {}
+
     navigator.mediaSession.setActionHandler("play", onPlay)
     navigator.mediaSession.setActionHandler("pause", onPause)
     navigator.mediaSession.setActionHandler("nexttrack", canSkip ? onSkip : null)
+    navigator.mediaSession.setActionHandler("previoustrack", null)
+    navigator.mediaSession.setActionHandler("seekto", () => {})
+    navigator.mediaSession.setActionHandler("seekbackward", () => {})
+    navigator.mediaSession.setActionHandler("seekforward", () => {})
   }, [track?.key, isPlaying, canSkip])
 }
 
