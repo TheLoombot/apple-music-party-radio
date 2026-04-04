@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, useMemo } from "react"
+import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, Trash2, ChevronLeft, Disc3 } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration, relativeTime } from "../utils"
 import { TrackRow } from "./TrackRow"
 import { LoadingDots } from "./LoadingDots"
+import { ArtworkModal } from "./ArtworkModal"
 import type { PoolTrack, AppUser, Track, AlbumResult } from "../types"
 import type { MusicCatalog } from "../services/catalog"
 
@@ -35,6 +36,8 @@ export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddT
   // Album drill-down
   const [album, setAlbum] = useState<AlbumResult | null>(null)
   const [albumTracks, setAlbumTracks] = useState<Track[] | null>(null)
+  const [artworkOpen, setArtworkOpen] = useState(false)
+  const closeArtwork = useCallback(() => setArtworkOpen(false), [])
   const navOpRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScrollRef = useRef(0)
@@ -49,10 +52,10 @@ export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddT
   })
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && !artworkOpen) onClose() }
     document.addEventListener("keydown", handler)
     return () => document.removeEventListener("keydown", handler)
-  }, [onClose])
+  }, [onClose, artworkOpen])
 
   async function handleAlbumClick(songId: string) {
     if (!catalog) return
@@ -75,6 +78,7 @@ export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddT
     restoreScrollRef.current = savedScrollRef.current
     setAlbum(null)
     setAlbumTracks(null)
+    setArtworkOpen(false)
   }
 
   const inAlbum = album !== null
@@ -104,7 +108,9 @@ export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddT
             </button>
             <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden bg-surface">
               {album.artworkUrl
-                ? <img src={artworkUrl(album.artworkUrl, 48)} alt="" className="w-full h-full object-cover" />
+                ? <button onClick={() => setArtworkOpen(true)} className="block w-full h-full cursor-zoom-in">
+                    <img src={artworkUrl(album.artworkUrl, 48)} alt="" className="w-full h-full object-cover" />
+                  </button>
                 : <div className="w-full h-full flex items-center justify-center text-muted"><Disc3 size={16} /></div>}
             </div>
             <div className="flex-1 min-w-0">
@@ -269,6 +275,15 @@ export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddT
           )}
         </div>
       </motion.div>
+      <AnimatePresence>
+        {artworkOpen && album?.artworkUrl && (
+          <ArtworkModal
+            src={artworkUrl(album.artworkUrl, 1500)}
+            alt={album.name}
+            onClose={closeArtwork}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }

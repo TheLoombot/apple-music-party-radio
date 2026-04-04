@@ -248,9 +248,9 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
           relatedLoading || relatedError || relatedTracks.length === 0 ? (
             <>
               <ul>
-                <TrackRowSkeleton />
-                <TrackRowSkeleton />
-                <TrackRowSkeleton />
+                <TrackRowSkeleton animate={relatedLoading} />
+                <TrackRowSkeleton animate={relatedLoading} />
+                <TrackRowSkeleton animate={relatedLoading} />
               </ul>
               <div className="px-4 py-2.5 border-t border-border/50 flex items-center justify-between gap-3">
                 {relatedLoading ? (
@@ -310,9 +310,9 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-function TrackRowSkeleton() {
+function TrackRowSkeleton({ animate }: { animate: boolean }) {
   return (
-    <li className="flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 animate-pulse">
+    <li className={`flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0${animate ? " animate-pulse" : ""}`}>
       <div className="w-24 h-24 rounded flex-shrink-0 bg-surface" />
       <div className="flex-1 min-w-0 space-y-2">
         <div className="h-2.5 bg-surface rounded w-1/3" />
