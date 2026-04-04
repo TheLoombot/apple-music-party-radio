@@ -8,6 +8,7 @@ import { PoolModal } from "./components/PoolModal"
 import { StationChat } from "./components/StationChat"
 import { Discovery } from "./components/Discovery"
 import { StationList } from "./components/StationList"
+import { FaceGenerator } from "./components/FaceGenerator"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized } from "./services/musickit"
 import { getUserStorefront } from "./services/appleMusic"
@@ -385,6 +386,7 @@ export default function App() {
                 onAddTrack={handleAddTrack}
                 queuedIsrcs={queuedIsrcs}
               />
+              <FaceGenerator />
             </>
           )}
         </div>
