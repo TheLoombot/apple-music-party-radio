@@ -154,6 +154,11 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
             src={artworkUrl(displayPlaylist.artworkUrl, 1500)}
             alt={displayPlaylist.name}
             onClose={closeArtwork}
+            catalog={catalog}
+            albumId={displayPlaylist.kind === "album" ? displayPlaylist.id : undefined}
+            playlistId={displayPlaylist.kind === "playlist" ? displayPlaylist.id : undefined}
+            albumName={displayPlaylist.name}
+            releaseYear={displayPlaylist.kind === "album" ? displayPlaylist.releaseYear : undefined}
           />
         )}
       </AnimatePresence>

@@ -275,4 +275,45 @@ export async function getRecommendedPlaylists(): Promise<(PlaylistResult | Album
   return results
 }
 
+export interface AlbumEditorialInfo {
+  notes?: string    // editorial/description text
+  bgColor?: string  // hex without #, e.g. "1a1a2e"
+  textColor1?: string
+}
+
+export async function getAlbumEditorial(albumId: string, storefront = "us"): Promise<AlbumEditorialInfo> {
+  const res = await fetch(
+    `https://api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}`,
+    { headers: headers() }
+  )
+  if (!res.ok) return {}
+  const data = await res.json()
+  const attrs = data.data?.[0]?.attributes
+  if (!attrs) return {}
+  const raw = attrs.editorialNotes?.standard ?? attrs.editorialNotes?.short
+  return {
+    notes: raw ? raw.replace(/<[^>]+>/g, "").trim() : undefined,
+    bgColor: attrs.artwork?.bgColor,
+    textColor1: attrs.artwork?.textColor1,
+  }
+}
+
+export async function getPlaylistEditorial(playlistId: string, storefront = "us"): Promise<AlbumEditorialInfo> {
+  const res = await fetch(
+    `https://api.music.apple.com/v1/catalog/${storefront}/playlists/${playlistId}`,
+    { headers: headers() }
+  )
+  if (!res.ok) return {}
+  const data = await res.json()
+  const attrs = data.data?.[0]?.attributes
+  if (!attrs) return {}
+  const raw = attrs.description?.standard ?? attrs.description?.short
+    ?? attrs.editorialNotes?.standard ?? attrs.editorialNotes?.short
+  return {
+    notes: raw ? raw.replace(/<[^>]+>/g, "").trim() : undefined,
+    bgColor: attrs.artwork?.bgColor,
+    textColor1: attrs.artwork?.textColor1,
+  }
+}
+
 export { artworkUrl }

@@ -8,9 +8,11 @@ import {
   getRecommendedPlaylists,
   getRelatedPlaylistsForSong,
   getAlbumForSong,
+  getAlbumEditorial,
+  getPlaylistEditorial,
 } from "./appleMusic"
 import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult, AlbumResult } from "../types"
-export type { ChartResult } from "./appleMusic"
+export type { ChartResult, AlbumEditorialInfo } from "./appleMusic"
 
 export interface MusicCatalog {
   search(term: string): Promise<SearchItem[]>
@@ -22,6 +24,8 @@ export interface MusicCatalog {
   getRecommendedPlaylists(): Promise<(PlaylistResult | AlbumResult)[]>
   getRelatedPlaylists(songId: string): Promise<PlaylistResult[]>
   getAlbumForTrack(songId: string): Promise<AlbumResult | null>
+  getAlbumEditorial(albumId: string): Promise<import("./appleMusic").AlbumEditorialInfo>
+  getPlaylistEditorial(playlistId: string): Promise<import("./appleMusic").AlbumEditorialInfo>
 }
 
 export class AppleMusicCatalog implements MusicCatalog {
@@ -36,4 +40,6 @@ export class AppleMusicCatalog implements MusicCatalog {
   getRecommendedPlaylists() { return getRecommendedPlaylists() }
   getRelatedPlaylists(songId: string) { return getRelatedPlaylistsForSong(songId, this.storefront) }
   getAlbumForTrack(songId: string) { return getAlbumForSong(songId, this.storefront) }
+  getAlbumEditorial(albumId: string) { return getAlbumEditorial(albumId, this.storefront) }
+  getPlaylistEditorial(playlistId: string) { return getPlaylistEditorial(playlistId, this.storefront) }
 }

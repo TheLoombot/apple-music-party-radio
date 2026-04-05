@@ -348,6 +348,7 @@ export default function App() {
             onResume={handleResume}
             onAlbumClick={isOwnStation && nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
             onOpenPool={isOwnStation ? () => setPoolModalOpen(true) : undefined}
+            catalog={catalog.current}
           />
           <UpNext
             queue={isOwnStation ? upNext : upNext.slice(0, 1)}

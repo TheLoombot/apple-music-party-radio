@@ -281,6 +281,10 @@ export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddT
             src={artworkUrl(album.artworkUrl, 1500)}
             alt={album.name}
             onClose={closeArtwork}
+            catalog={catalog}
+            albumId={album.id !== "_loading" ? album.id : undefined}
+            albumName={album.name}
+            releaseYear={album.releaseYear}
           />
         )}
       </AnimatePresence>

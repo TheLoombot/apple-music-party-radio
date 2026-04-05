@@ -5,6 +5,7 @@ import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { ArtworkModal } from "./ArtworkModal"
 import type { QueueItem, AppUser } from "../types"
+import type { MusicCatalog } from "../services/catalog"
 
 interface Props {
   track: QueueItem | null
@@ -18,6 +19,7 @@ interface Props {
   onResume: () => void
   onAlbumClick?: () => void
   onOpenPool?: () => void
+  catalog?: MusicCatalog
 }
 
 function useProgress(track: QueueItem | null) {
@@ -122,7 +124,7 @@ function useMediaSession(
   }, [track?.key, isPlaying, canSkip])
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog }: Props) {
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
   const quiet = isMuted || isBlocked
@@ -269,6 +271,9 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             src={artworkUrl(track.artworkUrl, 1500)}
             alt={track.albumName}
             onClose={closeArtwork}
+            catalog={catalog}
+            songId={track.platformIds?.apple}
+            albumName={track.albumName}
           />
         )}
       </AnimatePresence>
