@@ -132,7 +132,7 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                       <span className="text-white/60">
                         {item.addedBy === "robot" ? "🤖"
                           : item.addedBy === currentUser.uid ? "you"
-                          : item.addedBy}
+                          : item.addedByName ?? item.addedBy}
                       </span>
                     </p>
                   </div>
