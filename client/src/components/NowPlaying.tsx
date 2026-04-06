@@ -203,7 +203,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 <span className="text-white/60">
                   {track.addedBy === "robot" ? "🤖"
                     : track.addedBy === currentUser.uid ? "you"
-                    : track.addedBy}
+                    : track.addedByName ?? track.addedBy}
                 </span>
               </p>
             </motion.div>

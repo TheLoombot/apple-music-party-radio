@@ -36,6 +36,7 @@ interface QueueItem extends Track {
   key: string
   expirationTime: number
   addedBy: string
+  addedByName?: string   // display name resolved server-side from connListeners
   addedAt: number
 }
 
@@ -64,6 +65,7 @@ interface StationMeta {
   storefront: string
   liveUntil: number   // Unix ms; 0 = not live; client computes isLive as liveUntil > Date.now()
   nowPlayingAddedBy?: string
+  nowPlayingAddedByName?: string
   nowPlayingTrackName?: string
   nowPlayingArtistName?: string
   listeners?: Listener[]
@@ -90,7 +92,7 @@ export default class RadioParty implements Party.Server {
       const chat = await this.storage<ChatMessage[]>("chat", [])
       conn.send(json({ type: "state", queue, pool, chat }))
       // Sync live status to index on every connect so stale flags get corrected
-      void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.name, queue[0]?.artistName)
+      void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName)
       // Re-arm expiration alarm in case the DO restarted and lost it
       if (queue.length > 0) {
         void this.room.storage.setAlarm(queue[0].expirationTime)
@@ -146,6 +148,7 @@ export default class RadioParty implements Party.Server {
             ...stations[idx],
             liveUntil: msg.liveUntil ?? 0,
             nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
+            nowPlayingAddedByName: msg.nowPlayingAddedByName ?? undefined,
             nowPlayingTrackName: msg.nowPlayingTrackName ?? stations[idx].nowPlayingTrackName,
             nowPlayingArtistName: msg.nowPlayingArtistName ?? stations[idx].nowPlayingArtistName,
           }
@@ -199,7 +202,10 @@ export default class RadioParty implements Party.Server {
         this.connListeners.set(sender.id, { userId: msg.userId, displayName: msg.displayName })
         void this.notifyIndexPresence()
         return
-      case "add_track":        return this.addTrack(msg.track, msg.addedBy)
+      case "add_track": {
+        const addedByName = this.connListeners.get(sender.id)?.displayName
+        return this.addTrack(msg.track, msg.addedBy, addedByName)
+      }
       case "remove_track":     return this.removeTrack(msg.key)
       case "skip_track":       return this.skipTrack()
       case "expire_track":     return this.expireTrack(msg.key, msg.addToPool)
@@ -211,7 +217,7 @@ export default class RadioParty implements Party.Server {
     }
   }
 
-  private async addTrack(track: Track, addedBy: string) {
+  private async addTrack(track: Track, addedBy: string, addedByName?: string) {
     const queue = await this.storage<QueueItem[]>("queue", [])
     const last = queue[queue.length - 1]
     const expirationTime = last
@@ -222,19 +228,20 @@ export default class RadioParty implements Party.Server {
       ...track,
       key: crypto.randomUUID(),
       expirationTime,
+      addedByName,
       addedBy,
       addedAt: Date.now()
     })
 
     await this.room.storage.put("queue", queue)
-    this.broadcastQueue(queue)
+    await this.broadcastQueue(queue)
   }
 
   private async removeTrack(key: string) {
     let queue = await this.storage<QueueItem[]>("queue", [])
     queue = queue.filter(i => i.key !== key)
     await this.room.storage.put("queue", queue)
-    this.broadcastQueue(queue)
+    await this.broadcastQueue(queue)
   }
 
   private async reorderQueue(keys: string[]) {
@@ -252,7 +259,7 @@ export default class RadioParty implements Party.Server {
     })
     const newQueue = [nowPlaying, ...newUpNext]
     await this.room.storage.put("queue", newQueue)
-    this.broadcastQueue(newQueue)
+    await this.broadcastQueue(newQueue)
   }
 
   private async skipTrack() {
@@ -267,7 +274,7 @@ export default class RadioParty implements Party.Server {
     })
 
     await this.room.storage.put("queue", newQueue)
-    this.broadcastQueue(newQueue)
+    await this.broadcastQueue(newQueue)
 
     if (newQueue.length === 0) {
       await this.robotDJ()
@@ -300,7 +307,7 @@ export default class RadioParty implements Party.Server {
       this.room.broadcast(json({ type: "pool_update", pool }))
     }
 
-    this.broadcastQueue(queue)
+    await this.broadcastQueue(queue)
 
     console.log(`[expireTrack] queue length: ${queue.length}, first addedBy: "${queue[0]?.addedBy}"`)
     if (queue.length === 1 && queue[0].addedBy === "robot") {
@@ -420,16 +427,19 @@ export default class RadioParty implements Party.Server {
     return stations.map(s => ({ ...s, listeners: this.presenceMap.get(s.id) ?? [] }))
   }
 
-  private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string) {
-    try {
-      const indexRoom = this.room.context.parties.main.get("index")
-      await indexRoom.fetch("/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "station_status", id: this.room.id, liveUntil, nowPlayingAddedBy, nowPlayingTrackName, nowPlayingArtistName }),
-      })
-    } catch (e) {
-      console.error("[notifyIndex] failed", e)
+  private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingAddedByName?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const indexRoom = this.room.context.parties.main.get("index")
+        await indexRoom.fetch("/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "station_status", id: this.room.id, liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName }),
+        })
+        return
+      } catch (e) {
+        if (attempt === 2) console.error("[notifyIndex] failed after 3 attempts", e)
+      }
     }
   }
 
@@ -442,11 +452,11 @@ export default class RadioParty implements Party.Server {
     return raw as T
   }
 
-  private broadcastQueue(queue: QueueItem[]) {
+  private async broadcastQueue(queue: QueueItem[]) {
     this.room.broadcast(json({ type: "queue_update", queue }))
-    void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.name, queue[0]?.artistName)
+    await this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName)
     if (queue.length > 0) {
-      void this.room.storage.setAlarm(queue[0].expirationTime)
+      await this.room.storage.setAlarm(queue[0].expirationTime)
     }
   }
 }

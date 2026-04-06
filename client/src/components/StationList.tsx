@@ -92,7 +92,7 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
                             ? "🤖"
                             : station.nowPlayingAddedBy === ownStationId
                             ? "you"
-                            : station.nowPlayingAddedBy
+                            : station.nowPlayingAddedByName ?? station.nowPlayingAddedBy
                           : "live"}
                       </span>
                     </span>

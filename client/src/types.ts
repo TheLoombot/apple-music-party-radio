@@ -20,6 +20,7 @@ export interface QueueItem extends Track {
   key: string
   expirationTime: number
   addedBy: string
+  addedByName?: string
   addedAt: number
 }
 
@@ -62,6 +63,7 @@ export interface Station {
   storefront: string
   liveUntil: number    // Unix ms; station is live if liveUntil > Date.now()
   nowPlayingAddedBy?: string
+  nowPlayingAddedByName?: string
   nowPlayingTrackName?: string
   nowPlayingArtistName?: string
   listeners?: Listener[]
