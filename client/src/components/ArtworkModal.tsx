@@ -23,6 +23,8 @@ export function ArtworkModal({ src, alt, onClose, catalog, albumId, playlistId, 
   const [textColor, setTextColor] = useState("#ffffff")
   // undefined = not yet fetched, null = fetched but empty
   const [notes, setNotes] = useState<string | null | undefined>(undefined)
+  const [fetchedAlbumName, setFetchedAlbumName] = useState<string | undefined>(undefined)
+  const [fetchedReleaseYear, setFetchedReleaseYear] = useState<number | undefined>(undefined)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
@@ -44,6 +46,7 @@ export function ArtworkModal({ src, alt, onClose, catalog, albumId, playlistId, 
       } else if (songId) {
         const album = await catalog!.getAlbumForTrack(songId)
         if (!active || !album) return
+        if (active) { setFetchedAlbumName(album.name); setFetchedReleaseYear(album.releaseYear) }
         info = await catalog!.getAlbumEditorial(album.id)
       } else {
         return
@@ -59,8 +62,9 @@ export function ArtworkModal({ src, alt, onClose, catalog, albumId, playlistId, 
   }, [albumId, playlistId, songId, catalog])
 
   const canFlip = !!catalog && !!(albumId || playlistId || songId)
-  const fallback = [albumName, releaseYear].filter(Boolean).join("  ·  ")
-  const backText = (notes != null ? notes : null) ?? fallback
+  const displayAlbumName = fetchedAlbumName ?? albumName
+  const displayReleaseYear = fetchedReleaseYear ?? releaseYear
+  const header = [displayAlbumName, displayReleaseYear].filter(Boolean).join("  ·  ")
 
   return (
     <motion.div
@@ -112,12 +116,14 @@ export function ArtworkModal({ src, alt, onClose, catalog, albumId, playlistId, 
               }}
               onClick={e => { e.stopPropagation(); setFlipped(false) }}
             >
-              <p
-                className="p-7 text-2xl font-semibold leading-snug whitespace-pre-line"
-                style={{ color: textColor }}
-              >
-                {backText}
-              </p>
+              <div className="p-7" style={{ color: textColor }}>
+                {header && (
+                  <p className="text-base font-bold uppercase tracking-widest opacity-70 mb-4">{header}</p>
+                )}
+                {notes && (
+                  <p className="text-2xl font-semibold leading-snug whitespace-pre-line">{notes}</p>
+                )}
+              </div>
             </div>
           </div>
         </div>

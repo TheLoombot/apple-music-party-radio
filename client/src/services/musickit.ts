@@ -120,7 +120,10 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
   await music.play()
   if (offsetSeconds > 1) {
     await waitForPlaybackState(music, 2, 2000)
-    await music.seekToTime(offsetSeconds)
+    const currentPos = (music as any).currentPlaybackTime ?? 0
+    if (Math.abs(offsetSeconds - currentPos) > 3) {
+      await music.seekToTime(offsetSeconds)
+    }
   }
 }
 
