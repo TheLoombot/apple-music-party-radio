@@ -1,8 +1,8 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type FaceConfig = {
+export type FaceConfig = {
   hair:       number  // 0-5
   eyes:       number  // 0-2
   brows:      number  // 0-2
@@ -330,7 +330,7 @@ function renderGlasses(style: number): React.ReactNode {
 
 // ─── Face SVG ─────────────────────────────────────────────────────────────────
 
-function FaceSVG({ config }: { config: FaceConfig }) {
+export function FaceSVG({ config }: { config: FaceConfig }) {
   const bg    = BG_PALETTE[config.bgColor].color
   const skin  = SKIN_PALETTES[config.skinTone]
   const hair  = HAIR_PALETTE[config.hairColor].color
@@ -418,6 +418,46 @@ const COLOR_ROWS = [
 ]
 
 const HAIR_OPTS = ["Buzz", "Bob", "Long", "Afro", "Mohawk", "Bun"]
+
+// ─── Deterministic face from UID ──────────────────────────────────────────────
+
+function hashUID(uid: string): number {
+  let h = 5381
+  for (let i = 0; i < uid.length; i++) {
+    h = (((h << 5) + h) ^ uid.charCodeAt(i)) >>> 0
+  }
+  return h
+}
+
+export function faceConfigFromUID(uid: string): FaceConfig {
+  let s = hashUID(uid)
+  const seeded = (n: number) => { s = (s * 1664525 + 1013904223) >>> 0; return s % n }
+  const palette = COORD_PALETTES[seeded(COORD_PALETTES.length)]
+  const c: [number, number, number, number] = [...palette.c] as [number, number, number, number]
+  for (let i = 3; i > 0; i--) { const j = seeded(i + 1); [c[i], c[j]] = [c[j], c[i]] }
+  return {
+    hair:       seeded(6),
+    eyes:       seeded(3),
+    brows:      seeded(3),
+    nose:       seeded(3),
+    mouth:      seeded(3),
+    glasses:    seeded(10) < 7 ? 0 : seeded(3) + 1,
+    bgColor:    c[0],
+    skinTone:   palette.skin,
+    hairColor:  c[1],
+    eyeColor:   c[2],
+    shirtColor: c[3],
+  }
+}
+
+export function DJFace({ uid, size = 32 }: { uid: string; size?: number }) {
+  const config = useMemo(() => faceConfigFromUID(uid), [uid])
+  return (
+    <div style={{ width: size, height: size }} className="rounded-full overflow-hidden flex-shrink-0">
+      <FaceSVG config={config} />
+    </div>
+  )
+}
 
 export function FaceGenerator() {
   const [config, setConfig] = useState<FaceConfig>(randomFace)

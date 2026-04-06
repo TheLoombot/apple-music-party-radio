@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Trash2 } from "lucide-react"
 import type { Station } from "../types"
+import { DJFace } from "./FaceGenerator"
 
 function LiveDot() {
   const pingRef = useRef<HTMLSpanElement>(null)
@@ -64,9 +65,7 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
                   onKeyDown={e => e.key === "Enter" && onSelect(station.id)}
                   className={`group w-full text-left flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
                 >
-                  <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-sm text-accent font-bold flex-shrink-0">
-                    {station.displayName?.[0]?.toUpperCase() ?? "?"}
-                  </div>
+                  <DJFace uid={station.id} size={32} />
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm truncate ${active ? "text-accent" : "text-white"}`}>
                       {station.displayName}
