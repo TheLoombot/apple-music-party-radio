@@ -32,6 +32,7 @@ interface Props {
 
 export function StationList({ stations, currentStationId, ownStationId, onSelect, onRemove }: Props) {
   const [now, setNow] = useState(Date.now())
+  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
     const next = stations
@@ -43,6 +44,11 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
     return () => clearTimeout(timer)
   }, [stations])
 
+  const visibleStations = showAll
+    ? stations
+    : stations.filter(s => s.liveUntil > now || s.id === currentStationId || s.id === ownStationId)
+  const hiddenCount = stations.length - visibleStations.length
+
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
@@ -53,7 +59,7 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
         <div className="p-6 text-center text-muted text-sm">No stations yet</div>
       ) : (
         <ul>
-          {stations.map(station => {
+          {visibleStations.map(station => {
             const active = station.id === currentStationId
             const isOwn = station.id === ownStationId
             return (
@@ -108,6 +114,14 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
             )
           })}
         </ul>
+      )}
+      {(hiddenCount > 0 || showAll) && (
+        <button
+          onClick={() => setShowAll(v => !v)}
+          className="w-full px-4 py-2.5 text-xs text-muted hover:text-white transition-colors border-t border-border/50"
+        >
+          {showAll ? "Hide offline stations" : `Show ${hiddenCount} offline station${hiddenCount !== 1 ? "s" : ""}`}
+        </button>
       )}
     </div>
   )
