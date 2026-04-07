@@ -12,7 +12,7 @@ import { FaceGenerator } from "./components/FaceGenerator"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized } from "./services/musickit"
 import { getUserStorefront } from "./services/appleMusic"
-import { getUserId, getDisplayName, setDisplayName } from "./services/identity"
+import { getUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId } from "./services/identity"
 import { stationSocket, indexSocket } from "./services/partykit"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
@@ -37,6 +37,11 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [isMuted, setIsMuted] = useState(false)
   const [playbackBlocked, setPlaybackBlocked] = useState(false)
+  const [ownedStationIds, setOwnedStationIds] = useState<string[]>(() => getOwnedStationIds())
+  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [newSlug, setNewSlug] = useState("")
+  const [slugStatus, setSlugStatus] = useState<"idle" | "checking" | "available" | "taken">("idle")
+  const [isCreatingStation, setIsCreatingStation] = useState(false)
   const [renamingDJ, setRenamingDJ] = useState(false)
   const [renameInput, setRenameInput] = useState("")
   const [albumModal, setAlbumModal] = useState<{ playlist: AlbumResult; tracks: Track[] | null } | null>(null)
@@ -75,9 +80,28 @@ export default function App() {
   // Once ready, wire up PartyKit
   useEffect(() => {
     if (appState !== "ready" || !user) return
-    indexSocket.onStationsUpdate = setStations
+    let didSetInitialStation = false
+    indexSocket.onStationsUpdate = (newStations) => {
+      setStations(newStations)
+      // On first update, auto-select a station if none is set
+      if (!didSetInitialStation) {
+        didSetInitialStation = true
+        setCurrentStationId(prev => {
+          if (prev) return prev
+          // Prefer own station (if live), then first live station, then first in list
+          const owned = getOwnedStationIds()
+          const ownLive = newStations.find(s => owned.includes(s.id) && s.liveUntil > Date.now())
+          const firstLive = newStations.find(s => s.liveUntil > Date.now())
+          return ownLive?.id ?? firstLive?.id ?? newStations[0]?.id ?? ""
+        })
+      }
+    }
     indexSocket.connect()
-    indexSocket.register(user.uid, user.displayName, user.storefront)
+    // Register all owned stations with the index
+    const owned = getOwnedStationIds()
+    for (const stationId of owned) {
+      indexSocket.register(stationId, user.displayName, user.storefront, user.uid)
+    }
     return () => indexSocket.disconnect()
   }, [appState, user])
 
@@ -109,8 +133,12 @@ export default function App() {
     const uid = getUserId()
     const displayName = getDisplayName() ?? `DJ ${uid.slice(0, 6)}`
     catalog.current = new AppleMusicCatalog(storefront)
+    // Legacy migration: if user has no owned stations recorded, assume their UID-based station exists
+    if (getOwnedStationIds().length === 0) {
+      addOwnedStationId(uid)
+      setOwnedStationIds([uid])
+    }
     setUser({ uid, storefront, displayName })
-    setCurrentStationId(uid)
     setAppState("ready")
   }
 
@@ -174,7 +202,10 @@ export default function App() {
     const name = renameInput.trim() || user.displayName
     setDisplayName(name)
     setUser(prev => prev ? { ...prev, displayName: name } : prev)
-    indexSocket.register(user.uid, name, user.storefront)
+    // Update all owned stations with the new display name
+    for (const stationId of getOwnedStationIds()) {
+      indexSocket.register(stationId, name, user.storefront, user.uid)
+    }
     setRenamingDJ(false)
   }, [user, renameInput])
 
@@ -190,8 +221,44 @@ export default function App() {
 
   const handleRemoveStation = useCallback((stationId: string) => {
     indexSocket.removeStation(stationId)
-    if (stationId === currentStationId) handleSelectStation(user!.uid)
-  }, [currentStationId])
+    if (stationId === currentStationId) {
+      const nextStation = stations.find(s => s.id !== stationId && s.liveUntil > Date.now())
+      handleSelectStation(nextStation?.id ?? stations.find(s => s.id !== stationId)?.id ?? "")
+    }
+  }, [currentStationId, stations])
+
+  // Debounce slug availability check
+  useEffect(() => {
+    const slug = newSlug.trim().toLowerCase()
+    if (!slug || slug.length < 2) { setSlugStatus("idle"); return }
+    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug) && slug.length > 1) { setSlugStatus("idle"); return }
+    setSlugStatus("checking")
+    const timer = setTimeout(async () => {
+      const available = await indexSocket.checkSlugAvailable(slug)
+      setSlugStatus(available ? "available" : "taken")
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [newSlug])
+
+  const handleCreateStation = useCallback(async () => {
+    if (!user || slugStatus !== "available") return
+    const slug = newSlug.trim().toLowerCase()
+    setIsCreatingStation(true)
+    const result = await indexSocket.createStation(slug, user.uid, user.displayName, user.storefront)
+    if (result === "taken") {
+      setSlugStatus("taken")
+      setIsCreatingStation(false)
+      return
+    }
+    addOwnedStationId(slug)
+    setOwnedStationIds(getOwnedStationIds())
+    indexSocket.register(slug, user.displayName, user.storefront, user.uid)
+    setCreateModalOpen(false)
+    setNewSlug("")
+    setSlugStatus("idle")
+    setIsCreatingStation(false)
+    handleSelectStation(slug)
+  }, [user, newSlug, slugStatus])
 
   const handleAlbumClick = useCallback(async (songId: string) => {
     const op = ++albumModalOpRef.current
@@ -266,7 +333,8 @@ export default function App() {
 
   if (!user) return null
 
-  const isOwnStation = currentStationId === user.uid
+  const isOwnStation = ownedStationIds.includes(currentStationId)
+    || stations.find(s => s.id === currentStationId)?.ownerUid === user.uid
   // Include both ISRCs and Apple catalog IDs — library tracks often have no ISRC
   const queuedIsrcs = new Set(
     [...(nowPlaying ? [nowPlaying] : []), ...upNext]
@@ -304,6 +372,47 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {createModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" onClick={() => setCreateModalOpen(false)}>
+          <div className="bg-panel rounded-2xl p-8 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h2 className="text-white font-bold text-lg mb-1">Create a station</h2>
+            <p className="text-muted text-sm mb-6">Pick a unique slug for your station's URL.</p>
+            <div className="relative mb-2">
+              <input
+                autoFocus
+                type="text"
+                value={newSlug}
+                onChange={e => setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30))}
+                onKeyDown={e => { if (e.key === "Enter") handleCreateStation(); if (e.key === "Escape") setCreateModalOpen(false) }}
+                placeholder="my-cool-station"
+                className="w-full bg-surface text-white placeholder-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-accent pr-24"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs">
+                {slugStatus === "checking" && <span className="text-muted">checking…</span>}
+                {slugStatus === "available" && <span className="text-green-400">available</span>}
+                {slugStatus === "taken" && <span className="text-red-400">taken</span>}
+              </span>
+            </div>
+            <p className="text-muted/60 text-xs mb-6">Lowercase letters, numbers, and hyphens only.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCreateModalOpen(false)}
+                className="flex-1 py-3 rounded-xl bg-surface text-muted font-semibold text-sm transition-colors hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateStation}
+                disabled={slugStatus !== "available" || isCreatingStation}
+                className="flex-1 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white font-semibold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isCreatingStation ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {albumModal && (
@@ -364,9 +473,11 @@ export default function App() {
           <StationList
             stations={stations}
             currentStationId={currentStationId}
-            ownStationId={user.uid}
+            userId={user.uid}
+            ownedStationIds={ownedStationIds}
             onSelect={handleSelectStation}
             onRemove={handleRemoveStation}
+            onCreateStation={() => setCreateModalOpen(true)}
           />
           <StationChat
             messages={chatMessages}

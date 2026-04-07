@@ -23,6 +23,11 @@ const HOST = import.meta.env.DEV
   ? `${window.location.hostname}:1999`
   : (import.meta.env.VITE_PARTYKIT_HOST as string)
 
+function partyUrl(room: string, path = ""): string {
+  const base = import.meta.env.DEV ? `http://${HOST}` : `https://${HOST}`
+  return `${base}/parties/main/${encodeURIComponent(room)}${path}`
+}
+
 // ─── Station socket ───────────────────────────────────────────────────────────
 
 export class StationSocket {
@@ -144,12 +149,36 @@ export class IndexSocket {
     this.socket = null
   }
 
-  register(id: string, displayName: string, storefront: string) {
-    this.socket?.send(JSON.stringify({ type: "register", id, displayName, storefront }))
+  register(id: string, displayName: string, storefront: string, ownerUid?: string) {
+    this.socket?.send(JSON.stringify({ type: "register", id, displayName, storefront, ownerUid }))
   }
 
   removeStation(id: string) {
     this.socket?.send(JSON.stringify({ type: "remove_station", id }))
+  }
+
+  async checkSlugAvailable(slug: string): Promise<boolean> {
+    try {
+      const res = await fetch(partyUrl("index", `?check=${encodeURIComponent(slug)}`))
+      const data = await res.json() as { taken: boolean }
+      return !data.taken
+    } catch {
+      return false
+    }
+  }
+
+  async createStation(slug: string, ownerUid: string, displayName: string, storefront: string): Promise<'ok' | 'taken'> {
+    try {
+      const res = await fetch(partyUrl(slug, "/create"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerUid, displayName, storefront }),
+      })
+      if (res.status === 409) return "taken"
+      return "ok"
+    } catch {
+      return "taken"
+    }
   }
 }
 

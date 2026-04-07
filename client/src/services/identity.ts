@@ -24,3 +24,18 @@ export function setDisplayName(name: string) {
   localStorage.setItem("ampr_display_name", name)
 }
 
+export function getOwnedStationIds(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem("ampr_owned_stations") ?? "[]")
+  } catch {
+    return []
+  }
+}
+
+export function addOwnedStationId(id: string) {
+  const ids = getOwnedStationIds()
+  if (!ids.includes(id)) {
+    localStorage.setItem("ampr_owned_stations", JSON.stringify([...ids, id]))
+  }
+}
+

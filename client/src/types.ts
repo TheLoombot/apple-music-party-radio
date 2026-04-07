@@ -58,10 +58,11 @@ export interface Listener {
 }
 
 export interface Station {
-  id: string            // owner's userId (= PartyKit room name)
+  id: string            // station slug (= PartyKit room name)
   displayName: string
   storefront: string
   liveUntil: number    // Unix ms; station is live if liveUntil > Date.now()
+  ownerUid?: string    // set at creation; undefined for legacy rooms until migrated
   nowPlayingAddedBy?: string
   nowPlayingAddedByName?: string
   nowPlayingTrackName?: string

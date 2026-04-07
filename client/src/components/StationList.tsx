@@ -25,12 +25,14 @@ function LiveDot() {
 interface Props {
   stations: Station[]
   currentStationId: string
-  ownStationId: string
+  userId: string            // current user's UID (for addedBy comparisons)
+  ownedStationIds: string[] // station slugs owned by this user
   onSelect: (stationId: string) => void
   onRemove: (stationId: string) => void
+  onCreateStation: () => void
 }
 
-export function StationList({ stations, currentStationId, ownStationId, onSelect, onRemove }: Props) {
+export function StationList({ stations, currentStationId, userId, ownedStationIds, onSelect, onRemove, onCreateStation }: Props) {
   const [now, setNow] = useState(Date.now())
   const [showAll, setShowAll] = useState(false)
 
@@ -46,7 +48,7 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
 
   const visibleStations = showAll
     ? stations
-    : stations.filter(s => s.liveUntil > now || s.id === currentStationId || s.id === ownStationId)
+    : stations.filter(s => s.liveUntil > now || s.id === currentStationId || ownedStationIds.includes(s.id))
   const hiddenCount = stations.length - visibleStations.length
 
   return (
@@ -61,7 +63,7 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
         <ul>
           {visibleStations.map(station => {
             const active = station.id === currentStationId
-            const isOwn = station.id === ownStationId
+            const isOwn = ownedStationIds.includes(station.id)
             return (
               <li key={station.id}>
                 <div
@@ -95,7 +97,7 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
                         {station.nowPlayingAddedBy
                           ? station.nowPlayingAddedBy === "robot"
                             ? "🤖"
-                            : station.nowPlayingAddedBy === ownStationId
+                            : station.nowPlayingAddedBy === userId
                             ? "you"
                             : station.nowPlayingAddedByName ?? station.nowPlayingAddedBy
                           : "live"}
@@ -123,6 +125,12 @@ export function StationList({ stations, currentStationId, ownStationId, onSelect
           {showAll ? "Hide offline stations" : `Show ${hiddenCount} offline station${hiddenCount !== 1 ? "s" : ""}`}
         </button>
       )}
+      <button
+        onClick={onCreateStation}
+        className="w-full px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors border-t border-border/50 text-left"
+      >
+        + Create a station
+      </button>
     </div>
   )
 }

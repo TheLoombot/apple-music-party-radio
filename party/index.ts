@@ -2,15 +2,20 @@
  * Apple Music Party Radio — PartyKit server
  *
  * Runs on Cloudflare Durable Objects via PartyKit.
- * Each radio station is a separate room identified by the owner's user ID.
- * A special "index" room maintains the list of all registered stations.
+ * Each radio station is a separate room identified by a human-readable slug
+ * chosen at creation time. A special "index" room maintains the list of all
+ * registered stations.
  *
  * Room: "index"
- *   Handles station registration and discovery.
+ *   Handles station registration, discovery, and slug uniqueness checks.
  *   Receives live-status pings from station rooms via HTTP POST.
  *
- * Room: "{userId}"
+ * Room: "{slug}"
  *   Handles the queue, song pool, and all playback state for one station.
+ *   Ownership is stored persistently under the "ownership" storage key.
+ *
+ * Legacy rooms: rooms where id === ownerUid (old 1:1 model) are auto-migrated
+ *   on first join — ownership is bootstrapped lazily.
  */
 import type * as Party from "partykit/server"
 
@@ -64,11 +69,17 @@ interface StationMeta {
   displayName: string
   storefront: string
   liveUntil: number   // Unix ms; 0 = not live; client computes isLive as liveUntil > Date.now()
+  ownerUid?: string   // stored at creation time; undefined for legacy rooms until migrated
   nowPlayingAddedBy?: string
   nowPlayingAddedByName?: string
   nowPlayingTrackName?: string
   nowPlayingArtistName?: string
   listeners?: Listener[]
+}
+
+interface StationOwnership {
+  ownerUid: string
+  createdAt: number
 }
 
 // ─── Server ───────────────────────────────────────────────────────────────────
@@ -81,6 +92,9 @@ export default class RadioParty implements Party.Server {
 
   // Index room: stationId → listener list (ephemeral, not persisted)
   private presenceMap = new Map<string, Listener[]>()
+
+  // Ownership cache — populated lazily from storage (survives DO instance lifetime only)
+  private cachedOwnerUid: string | null = null
 
   /** Send current state to a newly connected client */
   async onConnect(conn: Party.Connection) {
@@ -136,31 +150,59 @@ export default class RadioParty implements Party.Server {
     }
   }
 
-  /** Receive live-status pings from station rooms */
   async onRequest(req: Party.Request): Promise<Response> {
-    if (this.room.id === "index" && req.method === "POST") {
-      const msg = await req.json() as any
-      if (msg.type === "station_status") {
-        const stations = await this.storage<StationMeta[]>("stations", [])
-        const idx = stations.findIndex(s => s.id === msg.id)
-        if (idx >= 0) {
-          stations[idx] = {
-            ...stations[idx],
-            liveUntil: msg.liveUntil ?? 0,
-            nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
-            nowPlayingAddedByName: msg.nowPlayingAddedByName ?? undefined,
-            nowPlayingTrackName: msg.nowPlayingTrackName ?? stations[idx].nowPlayingTrackName,
-            nowPlayingArtistName: msg.nowPlayingArtistName ?? stations[idx].nowPlayingArtistName,
+    const url = new URL(req.url)
+
+    if (this.room.id === "index") {
+      // GET /parties/main/index?check=<slug> — slug availability check
+      if (req.method === "GET") {
+        const checkSlug = url.searchParams.get("check")
+        if (checkSlug) {
+          const stations = await this.storage<StationMeta[]>("stations", [])
+          const taken = stations.some(s => s.id === checkSlug)
+          return Response.json({ taken })
+        }
+      }
+
+      // POST /parties/main/index — station status/presence pings from station rooms
+      if (req.method === "POST") {
+        const msg = await req.json() as any
+        if (msg.type === "station_status") {
+          const stations = await this.storage<StationMeta[]>("stations", [])
+          const idx = stations.findIndex(s => s.id === msg.id)
+          if (idx >= 0) {
+            stations[idx] = {
+              ...stations[idx],
+              liveUntil: msg.liveUntil ?? 0,
+              nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
+              nowPlayingAddedByName: msg.nowPlayingAddedByName ?? undefined,
+              nowPlayingTrackName: msg.nowPlayingTrackName ?? stations[idx].nowPlayingTrackName,
+              nowPlayingArtistName: msg.nowPlayingArtistName ?? stations[idx].nowPlayingArtistName,
+            }
+            await this.room.storage.put("stations", stations)
+            this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
           }
-          await this.room.storage.put("stations", stations)
+        } else if (msg.type === "station_presence") {
+          this.presenceMap.set(msg.id, msg.listeners ?? [])
+          const stations = await this.storage<StationMeta[]>("stations", [])
           this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
         }
-      } else if (msg.type === "station_presence") {
-        this.presenceMap.set(msg.id, msg.listeners ?? [])
-        const stations = await this.storage<StationMeta[]>("stations", [])
-        this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
+      }
+    } else {
+      // POST /parties/main/<slug>/create — station creation endpoint
+      if (req.method === "POST" && url.pathname.endsWith("/create")) {
+        const existing = await this.room.storage.get<StationOwnership>("ownership")
+        if (existing) {
+          return new Response("taken", { status: 409 })
+        }
+        const body = await req.json() as { ownerUid: string; displayName: string; storefront: string }
+        const ownership: StationOwnership = { ownerUid: body.ownerUid, createdAt: Date.now() }
+        await this.room.storage.put("ownership", ownership)
+        this.cachedOwnerUid = body.ownerUid
+        return new Response("ok")
       }
     }
+
     return new Response("ok")
   }
 
@@ -185,6 +227,7 @@ export default class RadioParty implements Party.Server {
       displayName: msg.displayName,
       storefront: msg.storefront,
       liveUntil: existing?.liveUntil ?? 0,
+      ownerUid: msg.ownerUid ?? existing?.ownerUid,
     }
 
     if (idx >= 0) stations[idx] = meta
@@ -198,10 +241,19 @@ export default class RadioParty implements Party.Server {
 
   private async handleStation(msg: any, sender: Party.Connection) {
     switch (msg.type) {
-      case "join":
+      case "join": {
         this.connListeners.set(sender.id, { userId: msg.userId, displayName: msg.displayName })
         void this.notifyIndexPresence()
+        // Legacy migration: if this room has no stored ownership and the room ID
+        // equals the joining user's UID (old 1:1 model), bootstrap ownership now.
+        const ownerUid = await this.getOwnerUid()
+        if (!ownerUid && msg.userId === this.room.id) {
+          const ownership: StationOwnership = { ownerUid: msg.userId, createdAt: Date.now() }
+          await this.room.storage.put("ownership", ownership)
+          this.cachedOwnerUid = msg.userId
+        }
         return
+      }
       case "add_track": {
         const addedByName = this.connListeners.get(sender.id)?.displayName
         return this.addTrack(msg.track, msg.addedBy, addedByName)
@@ -216,6 +268,18 @@ export default class RadioParty implements Party.Server {
       case "chat_message":     return this.handleChatMessage(msg, sender)
     }
   }
+
+  // ─── Ownership helpers ───────────────────────────────────────────────────
+
+  private async getOwnerUid(): Promise<string | null> {
+    if (!this.cachedOwnerUid) {
+      const o = await this.room.storage.get<StationOwnership>("ownership")
+      this.cachedOwnerUid = o?.ownerUid ?? null
+    }
+    return this.cachedOwnerUid
+  }
+
+  // ─── Queue & pool ────────────────────────────────────────────────────────
 
   private async addTrack(track: Track, addedBy: string, addedByName?: string) {
     const queue = await this.storage<QueueItem[]>("queue", [])
