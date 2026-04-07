@@ -105,6 +105,10 @@ export default class RadioParty implements Party.Server {
   // persist it to storage so the alarm handler can recover it after hibernation.
   private cachedRoomId: string | null = null
 
+  // Index URL — derived from conn.uri on first connect, persisted to storage so
+  // the alarm handler (where room.env may be inaccessible) can recover it.
+  private cachedIndexUrl: string | null = null
+
   private getRoomId(): string {
     return this.cachedRoomId ?? this.room.id
   }
@@ -112,6 +116,17 @@ export default class RadioParty implements Party.Server {
   /** Send current state to a newly connected client */
   async onConnect(conn: Party.Connection) {
     this.cachedRoomId = this.room.id
+    // Derive and persist the index URL from the connection's WebSocket URL so it
+    // survives DO hibernation (where room.env is inaccessible in onAlarm).
+    if (!this.cachedIndexUrl && this.room.id !== "index") {
+      try {
+        const wsUrl = new URL(conn.uri)
+        const protocol = wsUrl.protocol === "wss:" ? "https" : "http"
+        const indexUrl = `${protocol}://${wsUrl.host}/parties/main/index`
+        this.cachedIndexUrl = indexUrl
+        void this.room.storage.put("indexUrl", indexUrl)
+      } catch { /* ignore — fallback to env var */ }
+    }
     if (this.room.id === "index") {
       const stations = await this.storage<StationMeta[]>("stations", [])
       conn.send(json({ type: "stations_update", stations: this.withPresence(stations) }))
@@ -549,9 +564,15 @@ export default class RadioParty implements Party.Server {
     return { queue, pool }
   }
 
-  // Derive the index room's HTTP URL from env (set in partykit.json) or localhost fallback.
-  // Using plain fetch instead of room.context.parties avoids the onAlarm restriction.
-  private getIndexUrl(): string {
+  // Derive the index room's HTTP URL. Priority:
+  //   1. In-memory cache (set from conn.uri on first connect)
+  //   2. Storage (persisted in case of DO hibernation between connect and alarm)
+  //   3. PARTYKIT_HOST env var (set in partykit.json, only available after deploy)
+  //   4. localhost fallback (dev only)
+  private async getIndexUrl(): Promise<string> {
+    if (this.cachedIndexUrl) return this.cachedIndexUrl
+    const stored = await this.room.storage.get<string>("indexUrl")
+    if (stored) { this.cachedIndexUrl = stored; return stored }
     const host = (this.room.env as any)?.PARTYKIT_HOST ?? "localhost:1999"
     const protocol = host.startsWith("localhost") ? "http" : "https"
     return `${protocol}://${host}/parties/main/index`
@@ -560,7 +581,7 @@ export default class RadioParty implements Party.Server {
   private async notifyIndexPresence() {
     const listeners: Listener[] = [...this.connListeners.values()].map(({ userId, displayName }) => ({ userId, displayName }))
     try {
-      await fetch(this.getIndexUrl(), {
+      await fetch(await this.getIndexUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "station_presence", id: this.getRoomId(), listeners }),
@@ -578,7 +599,7 @@ export default class RadioParty implements Party.Server {
   private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingAddedByName?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        await fetch(this.getIndexUrl(), {
+        await fetch(await this.getIndexUrl(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName }),
