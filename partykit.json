@@ -1,5 +1,8 @@
 {
   "name": "apple-music-party-radio",
   "main": "party/index.ts",
-  "compatibilityDate": "2026-03-26"
+  "compatibilityDate": "2026-03-26",
+  "vars": {
+    "PARTYKIT_HOST": "apple-music-party-radio.theloombot.partykit.dev"
+  }
 }

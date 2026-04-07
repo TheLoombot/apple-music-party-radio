@@ -549,11 +549,18 @@ export default class RadioParty implements Party.Server {
     return { queue, pool }
   }
 
+  // Derive the index room's HTTP URL from env (set in partykit.json) or localhost fallback.
+  // Using plain fetch instead of room.context.parties avoids the onAlarm restriction.
+  private getIndexUrl(): string {
+    const host = (this.room.env as any)?.PARTYKIT_HOST ?? "localhost:1999"
+    const protocol = host.startsWith("localhost") ? "http" : "https"
+    return `${protocol}://${host}/parties/main/index`
+  }
+
   private async notifyIndexPresence() {
     const listeners: Listener[] = [...this.connListeners.values()].map(({ userId, displayName }) => ({ userId, displayName }))
     try {
-      const indexRoom = this.room.context.parties.main.get("index")
-      await indexRoom.fetch("/", {
+      await fetch(this.getIndexUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "station_presence", id: this.getRoomId(), listeners }),
@@ -571,8 +578,7 @@ export default class RadioParty implements Party.Server {
   private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingAddedByName?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const indexRoom = this.room.context.parties.main.get("index")
-        await indexRoom.fetch("/", {
+        await fetch(this.getIndexUrl(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName }),
