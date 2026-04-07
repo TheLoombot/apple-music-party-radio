@@ -55,6 +55,7 @@ export type SearchItem =
 export interface Listener {
   userId: string
   displayName: string
+  isDJ?: boolean
 }
 
 export interface Station {

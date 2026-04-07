@@ -12,7 +12,8 @@ import type { MusicCatalog } from "../services/catalog"
 interface Props {
   pool: PoolTrack[]
   currentUser: AppUser
-  stationOwner: string
+  canManagePool: boolean   // owner or DJ: can remove individual tracks
+  canClearPool: boolean    // owner only: can clear all
   queuedIsrcs: Set<string>
   onAddTrack: (track: Track) => void
   onRemoveFromPool: (isrc: string) => void
@@ -22,8 +23,7 @@ interface Props {
 }
 
 
-export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddTrack, onRemoveFromPool, onClearPool, onClose, catalog }: Props) {
-  const isOwner = currentUser.uid === stationOwner
+export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queuedIsrcs, onAddTrack, onRemoveFromPool, onClearPool, onClose, catalog }: Props) {
   const sorted = useMemo(() => pool.slice().reverse(), [pool])
 
   const [filterQuery, setFilterQuery] = useState("")
@@ -234,7 +234,7 @@ export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddT
                         </div>
                         <span className="text-xs text-muted tabular-nums flex-shrink-0">{formatDuration(track.durationMs)}</span>
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          {isOwner && (
+                          {canManagePool && (
                             <button
                               onClick={() => onRemoveFromPool(track.isrc)}
                               className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-full flex items-center justify-center text-muted hover:text-red-400 transition-all"
@@ -260,7 +260,7 @@ export function PoolModal({ pool, currentUser, stationOwner, queuedIsrcs, onAddT
                 </AnimatePresence>
               </ul>
 
-              {isOwner && !filterQuery && (
+              {canClearPool && !filterQuery && (
                 <div className="px-4 py-4 flex justify-center border-t border-border/50">
                   <button
                     onClick={onClearPool}

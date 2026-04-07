@@ -64,6 +64,10 @@ interface Listener {
   displayName: string
 }
 
+interface ConnectedListener extends Listener {
+  isDJ: boolean
+}
+
 interface StationMeta {
   id: string
   displayName: string
@@ -88,13 +92,14 @@ export default class RadioParty implements Party.Server {
   constructor(readonly room: Party.Room) {}
 
   // Station rooms: connId → listener info (ephemeral, not persisted)
-  private connListeners = new Map<string, Listener>()
+  private connListeners = new Map<string, ConnectedListener>()
 
   // Index room: stationId → listener list (ephemeral, not persisted)
   private presenceMap = new Map<string, Listener[]>()
 
-  // Ownership cache — populated lazily from storage (survives DO instance lifetime only)
+  // Ownership + DJ cache — populated lazily from storage (not guaranteed to survive DO hibernation)
   private cachedOwnerUid: string | null = null
+  private cachedDJs: string[] | null = null  // array of userId strings
 
   /** Send current state to a newly connected client */
   async onConnect(conn: Party.Connection) {
@@ -104,7 +109,8 @@ export default class RadioParty implements Party.Server {
     } else {
       const { queue, pool } = await this.flushExpired()
       const chat = await this.storage<ChatMessage[]>("chat", [])
-      conn.send(json({ type: "state", queue, pool, chat }))
+      const djs = await this.getDJs()
+      conn.send(json({ type: "state", queue, pool, chat, djs }))
       // Sync live status to index on every connect so stale flags get corrected
       void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName)
       // Re-arm expiration alarm in case the DO restarted and lost it
@@ -242,8 +248,12 @@ export default class RadioParty implements Party.Server {
   private async handleStation(msg: any, sender: Party.Connection) {
     switch (msg.type) {
       case "join": {
-        this.connListeners.set(sender.id, { userId: msg.userId, displayName: msg.displayName })
+        const djs = await this.getDJs()
+        const isDJ = djs.includes(msg.userId)
+        this.connListeners.set(sender.id, { userId: msg.userId, displayName: msg.displayName, isDJ })
         void this.notifyIndexPresence()
+        // Send current DJ list to the joining client
+        sender.send(json({ type: "dj_update", djs }))
         // Legacy migration: if this room has no stored ownership and the room ID
         // equals the joining user's UID (old 1:1 model), bootstrap ownership now.
         const ownerUid = await this.getOwnerUid()
@@ -252,6 +262,33 @@ export default class RadioParty implements Party.Server {
           await this.room.storage.put("ownership", ownership)
           this.cachedOwnerUid = msg.userId
         }
+        return
+      }
+      case "grant_dj": {
+        if (!this.isOwnerConn(sender)) return
+        const djs = await this.getDJs()
+        if (!djs.includes(msg.userId)) {
+          const updated = [...djs, msg.userId]
+          await this.room.storage.put("djs", updated)
+          this.cachedDJs = updated
+          // Update in-memory flag for any active connections with this userId
+          for (const [id, l] of this.connListeners) {
+            if (l.userId === msg.userId) this.connListeners.set(id, { ...l, isDJ: true })
+          }
+          this.room.broadcast(json({ type: "dj_update", djs: updated }))
+        }
+        return
+      }
+      case "revoke_dj": {
+        if (!this.isOwnerConn(sender)) return
+        const djs = await this.getDJs()
+        const updated = djs.filter(id => id !== msg.userId)
+        await this.room.storage.put("djs", updated)
+        this.cachedDJs = updated
+        for (const [id, l] of this.connListeners) {
+          if (l.userId === msg.userId) this.connListeners.set(id, { ...l, isDJ: false })
+        }
+        this.room.broadcast(json({ type: "dj_update", djs: updated }))
         return
       }
       case "add_track": {
@@ -269,7 +306,7 @@ export default class RadioParty implements Party.Server {
     }
   }
 
-  // ─── Ownership helpers ───────────────────────────────────────────────────
+  // ─── Ownership + DJ helpers ──────────────────────────────────────────────
 
   private async getOwnerUid(): Promise<string | null> {
     if (!this.cachedOwnerUid) {
@@ -277,6 +314,22 @@ export default class RadioParty implements Party.Server {
       this.cachedOwnerUid = o?.ownerUid ?? null
     }
     return this.cachedOwnerUid
+  }
+
+  private async getDJs(): Promise<string[]> {
+    if (!this.cachedDJs) {
+      this.cachedDJs = await this.room.storage.get<string[]>("djs") ?? []
+    }
+    return this.cachedDJs
+  }
+
+  private isOwnerConn(sender: Party.Connection): boolean {
+    const listener = this.connListeners.get(sender.id)
+    return !!listener && listener.userId === this.cachedOwnerUid
+  }
+
+  private isDJConn(sender: Party.Connection): boolean {
+    return this.connListeners.get(sender.id)?.isDJ === true
   }
 
   // ─── Queue & pool ────────────────────────────────────────────────────────
@@ -473,7 +526,7 @@ export default class RadioParty implements Party.Server {
   }
 
   private async notifyIndexPresence() {
-    const listeners = [...this.connListeners.values()]
+    const listeners: Listener[] = [...this.connListeners.values()].map(({ userId, displayName }) => ({ userId, displayName }))
     try {
       const indexRoom = this.room.context.parties.main.get("index")
       await indexRoom.fetch("/", {

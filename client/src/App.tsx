@@ -38,6 +38,7 @@ export default function App() {
   const [isMuted, setIsMuted] = useState(false)
   const [playbackBlocked, setPlaybackBlocked] = useState(false)
   const [ownedStationIds, setOwnedStationIds] = useState<string[]>(() => getOwnedStationIds())
+  const [djUserIds, setDJUserIds] = useState<string[]>([])
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [newSlug, setNewSlug] = useState("")
   const [slugStatus, setSlugStatus] = useState<"idle" | "checking" | "available" | "taken">("idle")
@@ -114,6 +115,8 @@ export default function App() {
     playbackLoop.current.onMutedChange = setIsMuted
     stationSocket.onPoolUpdate = setPool
     stationSocket.onChatUpdate = setChatMessages
+    stationSocket.onDJUpdate = setDJUserIds
+    setDJUserIds([])
     playbackLoop.current.start(currentStationId)
     stationSocket.join(user.uid, user.displayName)
     return () => playbackLoop.current.stop()
@@ -335,6 +338,7 @@ export default function App() {
 
   const isOwnStation = ownedStationIds.includes(currentStationId)
     || stations.find(s => s.id === currentStationId)?.ownerUid === user.uid
+  const isPrivileged = isOwnStation || djUserIds.includes(user.uid)
   // Include both ISRCs and Apple catalog IDs — library tracks often have no ISRC
   const queuedIsrcs = new Set(
     [...(nowPlaying ? [nowPlaying] : []), ...upNext]
@@ -432,7 +436,8 @@ export default function App() {
           <PoolModal
             pool={pool}
             currentUser={user}
-            stationOwner={currentStationId}
+            canManagePool={isPrivileged}
+            canClearPool={isOwnStation}
             queuedIsrcs={queuedIsrcs}
             onAddTrack={handleAddTrack}
             onRemoveFromPool={handleRemoveFromPool}
@@ -450,23 +455,23 @@ export default function App() {
             track={nowPlaying}
             stationOwner={currentStationId}
             currentUser={user}
-            canSkip={isOwnStation}
+            canSkip={isPrivileged}
             onSkip={handleSkip}
             isMuted={isMuted}
             onMuteToggle={handleMuteToggle}
             isBlocked={playbackBlocked}
             onResume={handleResume}
-            onAlbumClick={isOwnStation && nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
-            onOpenPool={isOwnStation ? () => setPoolModalOpen(true) : undefined}
+            onAlbumClick={isPrivileged && nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
+            onOpenPool={isPrivileged ? () => setPoolModalOpen(true) : undefined}
             catalog={catalog.current}
           />
           <UpNext
-            queue={isOwnStation ? upNext : upNext.slice(0, 1)}
+            queue={isPrivileged ? upNext : upNext.slice(0, 1)}
             currentUser={user}
             stationOwner={currentStationId}
             onRemove={handleRemoveTrack}
-            onReorder={isOwnStation ? (keys) => stationSocket.reorderQueue(keys) : undefined}
-            onAlbumClick={isOwnStation ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
+            onReorder={isPrivileged ? (keys) => stationSocket.reorderQueue(keys) : undefined}
+            onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
           />
         </div>
         <div className="space-y-4">
@@ -479,12 +484,37 @@ export default function App() {
             onRemove={handleRemoveStation}
             onCreateStation={() => setCreateModalOpen(true)}
           />
+          {isOwnStation && (() => {
+            const currentStation = stations.find(s => s.id === currentStationId)
+            const listeners = currentStation?.listeners?.filter(l => l.userId !== user.uid) ?? []
+            if (listeners.length === 0) return null
+            return (
+              <div className="bg-panel rounded-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">Listeners</div>
+                <ul>
+                  {listeners.map(l => (
+                    <li key={l.userId} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0">
+                      <span className={`text-sm flex-1 ${djUserIds.includes(l.userId) ? "text-accent" : "text-white/70"}`}>
+                        {l.displayName}
+                        {djUserIds.includes(l.userId) && <span className="text-xs text-muted ml-1.5">DJ</span>}
+                      </span>
+                      {djUserIds.includes(l.userId) ? (
+                        <button onClick={() => stationSocket.revokeDJ(l.userId)} className="text-xs text-muted hover:text-red-400 transition-colors">Revoke DJ</button>
+                      ) : (
+                        <button onClick={() => stationSocket.grantDJ(l.userId)} className="text-xs text-muted hover:text-accent transition-colors">Make DJ</button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })()}
           <StationChat
             messages={chatMessages}
             currentUser={user}
             onSend={(text) => stationSocket.sendChatMessage(text)}
           />
-          {isOwnStation && (
+          {isPrivileged && (
             <>
               <Discovery
                 catalog={catalog.current}
