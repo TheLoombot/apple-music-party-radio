@@ -34,6 +34,7 @@ function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station[
       {shown.map((l, i) => (
         <div
           key={l.userId}
+          title={l.displayName}
           className="rounded-full ring-2 ring-panel flex-shrink-0"
           style={{ marginLeft: i === 0 ? 0 : -10, zIndex: shown.length - i }}
         >
