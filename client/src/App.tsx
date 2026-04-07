@@ -8,6 +8,7 @@ import { PoolModal } from "./components/PoolModal"
 import { StationChat } from "./components/StationChat"
 import { Discovery } from "./components/Discovery"
 import { StationList } from "./components/StationList"
+import { ListenersPanel } from "./components/ListenersPanel"
 import { FaceGenerator } from "./components/FaceGenerator"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized } from "./services/musickit"
@@ -484,29 +485,18 @@ export default function App() {
             onRemove={handleRemoveStation}
             onCreateStation={() => setCreateModalOpen(true)}
           />
-          {isOwnStation && (() => {
+          {(() => {
             const currentStation = stations.find(s => s.id === currentStationId)
-            const listeners = currentStation?.listeners?.filter(l => l.userId !== user.uid) ?? []
-            if (listeners.length === 0) return null
             return (
-              <div className="bg-panel rounded-xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">Listeners</div>
-                <ul>
-                  {listeners.map(l => (
-                    <li key={l.userId} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0">
-                      <span className={`text-sm flex-1 ${djUserIds.includes(l.userId) ? "text-accent" : "text-white/70"}`}>
-                        {l.displayName}
-                        {djUserIds.includes(l.userId) && <span className="text-xs text-muted ml-1.5">DJ</span>}
-                      </span>
-                      {djUserIds.includes(l.userId) ? (
-                        <button onClick={() => stationSocket.revokeDJ(l.userId)} className="text-xs text-muted hover:text-red-400 transition-colors">Revoke DJ</button>
-                      ) : (
-                        <button onClick={() => stationSocket.grantDJ(l.userId)} className="text-xs text-muted hover:text-accent transition-colors">Make DJ</button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <ListenersPanel
+                listeners={currentStation?.listeners ?? []}
+                ownerUid={currentStation?.ownerUid}
+                currentUserId={user.uid}
+                djUserIds={djUserIds}
+                isStationOwner={isOwnStation}
+                onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
+                onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
+              />
             )
           })()}
           <StationChat

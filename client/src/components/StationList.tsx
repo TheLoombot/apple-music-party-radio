@@ -22,6 +22,39 @@ function LiveDot() {
   )
 }
 
+/** Overlapping row of up to `max` listener faces, then a "+N" overflow badge. */
+function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station["listeners"]>; max?: number }) {
+  const shown = listeners.slice(0, max)
+  const overflow = listeners.length - max
+
+  if (shown.length === 0) {
+    // Empty placeholder keeps the column width stable
+    return <div className="w-12 flex-shrink-0" />
+  }
+
+  return (
+    <div className="flex items-center flex-shrink-0" style={{ width: shown.length === 1 ? 28 : 28 + (shown.length - 1) * 18 + (overflow > 0 ? 18 : 0) }}>
+      {shown.map((l, i) => (
+        <div
+          key={l.userId}
+          className="rounded-full ring-2 ring-panel flex-shrink-0"
+          style={{ marginLeft: i === 0 ? 0 : -10, zIndex: shown.length - i }}
+        >
+          <DJFace uid={l.userId} size={28} />
+        </div>
+      ))}
+      {overflow > 0 && (
+        <div
+          className="w-7 h-7 rounded-full ring-2 ring-panel bg-surface flex items-center justify-center flex-shrink-0"
+          style={{ marginLeft: -10, zIndex: 0 }}
+        >
+          <span className="text-[9px] text-muted font-medium">+{overflow}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface Props {
   stations: Station[]
   currentStationId: string
@@ -64,6 +97,11 @@ export function StationList({ stations, currentStationId, userId, ownedStationId
           {visibleStations.map(station => {
             const active = station.id === currentStationId
             const isOwn = ownedStationIds.includes(station.id)
+            const isLive = station.liveUntil > now
+            const listeners = station.listeners ?? []
+            const spunBy = station.nowPlayingAddedBy
+            const isRobot = spunBy === "robot"
+
             return (
               <li key={station.id}>
                 <div
@@ -73,37 +111,36 @@ export function StationList({ stations, currentStationId, userId, ownedStationId
                   onKeyDown={e => e.key === "Enter" && onSelect(station.id)}
                   className={`group w-full text-left flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
                 >
-                  <DJFace uid={station.id} size={32} />
+                  {/* Listener face cluster */}
+                  <ListenerFaces listeners={listeners} />
+
+                  {/* Station name + track info */}
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm truncate ${active ? "text-accent" : "text-white"}`}>
                       {station.displayName}
                       {isOwn && <span className="text-muted text-xs font-normal ml-1.5">(you)</span>}
                     </p>
-                    {station.liveUntil > now && station.nowPlayingTrackName && (
+                    {isLive && station.nowPlayingTrackName && (
                       <p className="text-xs text-muted truncate mt-0.5">
                         {station.nowPlayingArtistName && `${station.nowPlayingArtistName} — `}{station.nowPlayingTrackName}
                       </p>
                     )}
-                    {station.listeners && station.listeners.length > 0 && (
-                      <p className="text-xs text-muted truncate mt-0.5">
-                        {station.listeners.map(l => l.displayName).join(", ")}
-                      </p>
-                    )}
                   </div>
-                  {station.liveUntil > now && (
-                    <span className="flex items-center gap-1.5 text-xs text-accent flex-shrink-0">
+
+                  {/* Spun-by indicator */}
+                  {isLive && (
+                    <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                      {isRobot ? (
+                        <span className="text-lg leading-none opacity-50">🤖</span>
+                      ) : spunBy ? (
+                        <div className="rounded-full ring-2 ring-accent/40">
+                          <DJFace uid={spunBy} size={36} />
+                        </div>
+                      ) : null}
                       <LiveDot />
-                      <span>
-                        {station.nowPlayingAddedBy
-                          ? station.nowPlayingAddedBy === "robot"
-                            ? "🤖"
-                            : station.nowPlayingAddedBy === userId
-                            ? "you"
-                            : station.nowPlayingAddedByName ?? station.nowPlayingAddedBy
-                          : "live"}
-                      </span>
-                    </span>
+                    </div>
                   )}
+
                   <button
                     onClick={e => { e.stopPropagation(); onRemove(station.id) }}
                     className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all flex-shrink-0"
