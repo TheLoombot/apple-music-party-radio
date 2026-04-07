@@ -27,10 +27,7 @@ function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station[
   const shown = listeners.slice(0, max)
   const overflow = listeners.length - max
 
-  if (shown.length === 0) {
-    // Empty placeholder keeps the column width stable
-    return <div className="w-12 flex-shrink-0" />
-  }
+  if (shown.length === 0) return null
 
   return (
     <div className="flex items-center flex-shrink-0" style={{ width: shown.length === 1 ? 28 : 28 + (shown.length - 1) * 18 + (overflow > 0 ? 18 : 0) }}>
@@ -109,12 +106,9 @@ export function StationList({ stations, currentStationId, userId, ownedStationId
                   tabIndex={0}
                   onClick={() => onSelect(station.id)}
                   onKeyDown={e => e.key === "Enter" && onSelect(station.id)}
-                  className={`group w-full text-left flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
+                  className={`group w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
                 >
-                  {/* Listener face cluster */}
-                  <ListenerFaces listeners={listeners} />
-
-                  {/* Station name + track info */}
+                  {/* Station name + track info + listener faces */}
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm truncate ${active ? "text-accent" : "text-white"}`}>
                       {station.displayName}
@@ -125,25 +119,35 @@ export function StationList({ stations, currentStationId, userId, ownedStationId
                         {station.nowPlayingArtistName && `${station.nowPlayingArtistName} — `}{station.nowPlayingTrackName}
                       </p>
                     )}
+                    {listeners.length > 0 && (
+                      <div className="mt-2">
+                        <ListenerFaces listeners={listeners} />
+                      </div>
+                    )}
                   </div>
 
                   {/* Spun-by indicator */}
                   {isLive && (
-                    <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                    <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-0.5">
                       {isRobot ? (
-                        <span className="text-lg leading-none opacity-50">🤖</span>
+                        <span className="text-2xl leading-none opacity-40">🤖</span>
                       ) : spunBy ? (
                         <div className="rounded-full ring-2 ring-accent/40">
-                          <DJFace uid={spunBy} size={36} />
+                          <DJFace uid={spunBy} size={42} />
                         </div>
                       ) : null}
-                      <LiveDot />
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted/70 truncate max-w-[56px]">
+                          {isRobot ? "robot" : spunBy === userId ? "you" : station.nowPlayingAddedByName ?? ""}
+                        </span>
+                        <LiveDot />
+                      </div>
                     </div>
                   )}
 
                   <button
                     onClick={e => { e.stopPropagation(); onRemove(station.id) }}
-                    className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all flex-shrink-0"
+                    className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all flex-shrink-0 pt-1"
                     title="Remove station"
                   >
                     <Trash2 size={13} />
