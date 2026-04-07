@@ -158,6 +158,15 @@ export default class RadioParty implements Party.Server {
 
   async onRequest(req: Party.Request): Promise<Response> {
     const url = new URL(req.url)
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    }
+
+    if (req.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders })
+    }
 
     if (this.room.id === "index") {
       // GET /parties/main/index?check=<slug> — slug availability check
@@ -166,7 +175,9 @@ export default class RadioParty implements Party.Server {
         if (checkSlug) {
           const stations = await this.storage<StationMeta[]>("stations", [])
           const taken = stations.some(s => s.id === checkSlug)
-          return Response.json({ taken })
+          return new Response(JSON.stringify({ taken }), {
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          })
         }
       }
 
@@ -199,17 +210,17 @@ export default class RadioParty implements Party.Server {
       if (req.method === "POST" && url.pathname.endsWith("/create")) {
         const existing = await this.room.storage.get<StationOwnership>("ownership")
         if (existing) {
-          return new Response("taken", { status: 409 })
+          return new Response("taken", { status: 409, headers: corsHeaders })
         }
         const body = await req.json() as { ownerUid: string; displayName: string; storefront: string }
         const ownership: StationOwnership = { ownerUid: body.ownerUid, createdAt: Date.now() }
         await this.room.storage.put("ownership", ownership)
         this.cachedOwnerUid = body.ownerUid
-        return new Response("ok")
+        return new Response("ok", { headers: corsHeaders })
       }
     }
 
-    return new Response("ok")
+    return new Response("ok", { headers: corsHeaders })
   }
 
   // ─── Index room ─────────────────────────────────────────────────────────
