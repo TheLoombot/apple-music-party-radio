@@ -101,8 +101,17 @@ export default class RadioParty implements Party.Server {
   private cachedOwnerUid: string | null = null
   private cachedDJs: string[] | null = null  // array of userId strings
 
+  // room.id is inaccessible in onAlarm (PartyKit limitation). We cache it and
+  // persist it to storage so the alarm handler can recover it after hibernation.
+  private cachedRoomId: string | null = null
+
+  private getRoomId(): string {
+    return this.cachedRoomId ?? this.room.id
+  }
+
   /** Send current state to a newly connected client */
   async onConnect(conn: Party.Connection) {
+    this.cachedRoomId = this.room.id
     if (this.room.id === "index") {
       const stations = await this.storage<StationMeta[]>("stations", [])
       conn.send(json({ type: "stations_update", stations: this.withPresence(stations) }))
@@ -121,7 +130,11 @@ export default class RadioParty implements Party.Server {
   }
 
   async onAlarm() {
-    if (this.room.id === "index") return
+    // room.id is inaccessible in onAlarm — restore from storage
+    if (!this.cachedRoomId) {
+      this.cachedRoomId = await this.room.storage.get<string>("roomId") ?? null
+    }
+    if (!this.cachedRoomId || this.cachedRoomId === "index") return
     const queue = await this.storage<QueueItem[]>("queue", [])
     if (queue.length === 0) return
     if (Date.now() >= queue[0].expirationTime) {
@@ -130,7 +143,7 @@ export default class RadioParty implements Party.Server {
   }
 
   async onClose(conn: Party.Connection) {
-    if (this.room.id === "index") return
+    if (this.getRoomId() === "index") return
     this.connListeners.delete(conn.id)
     void this.notifyIndexPresence()
     const remaining = [...this.room.getConnections()].filter(c => c.id !== conn.id)
@@ -146,7 +159,7 @@ export default class RadioParty implements Party.Server {
   async onMessage(raw: string, sender: Party.Connection) {
     try {
       const msg = JSON.parse(raw)
-      if (this.room.id === "index") {
+      if (this.getRoomId() === "index") {
         await this.handleIndex(msg)
       } else {
         await this.handleStation(msg, sender)
@@ -168,7 +181,7 @@ export default class RadioParty implements Party.Server {
       return new Response(null, { status: 204, headers: corsHeaders })
     }
 
-    if (this.room.id === "index") {
+    if (this.getRoomId() === "index") {
       // GET /parties/main/index?check=<slug> — slug availability check
       if (req.method === "GET") {
         const checkSlug = url.searchParams.get("check")
@@ -543,7 +556,7 @@ export default class RadioParty implements Party.Server {
       await indexRoom.fetch("/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "station_presence", id: this.room.id, listeners }),
+        body: JSON.stringify({ type: "station_presence", id: this.getRoomId(), listeners }),
       })
     } catch (e) {
       console.error("[notifyIndexPresence] failed", e)
@@ -562,7 +575,7 @@ export default class RadioParty implements Party.Server {
         await indexRoom.fetch("/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "station_status", id: this.room.id, liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName }),
+          body: JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName }),
         })
         return
       } catch (e) {
@@ -584,6 +597,8 @@ export default class RadioParty implements Party.Server {
     this.room.broadcast(json({ type: "queue_update", queue }))
     await this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName)
     if (queue.length > 0) {
+      // Persist room ID alongside the alarm so onAlarm can recover it after hibernation
+      await this.room.storage.put("roomId", this.getRoomId())
       await this.room.storage.setAlarm(queue[0].expirationTime)
     }
   }
