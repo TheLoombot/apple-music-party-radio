@@ -30,22 +30,27 @@ function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station[
 
   if (shown.length === 0) return null
 
+  const size = 22
+  const overlap = 8
+  const step = size - overlap
+  const totalWidth = size + (shown.length - 1) * step + (overflow > 0 ? step : 0)
+
   return (
-    <div className="flex items-center flex-shrink-0" style={{ width: shown.length === 1 ? 28 : 28 + (shown.length - 1) * 18 + (overflow > 0 ? 18 : 0) }}>
+    <div className="flex items-center flex-shrink-0" style={{ width: totalWidth }}>
       {shown.map((l, i) => (
         <div
           key={l.userId}
           title={l.displayName}
           className="rounded-lg ring-2 ring-panel flex-shrink-0"
-          style={{ marginLeft: i === 0 ? 0 : -10, zIndex: shown.length - i }}
+          style={{ marginLeft: i === 0 ? 0 : -overlap, zIndex: shown.length - i }}
         >
-          <DJFace uid={l.userId} size={32} />
+          <DJFace uid={l.userId} size={size} />
         </div>
       ))}
       {overflow > 0 && (
         <div
-          className="w-7 h-7 rounded-lg ring-2 ring-panel bg-surface flex items-center justify-center flex-shrink-0"
-          style={{ marginLeft: -10, zIndex: 0 }}
+          className="rounded-lg ring-2 ring-panel bg-surface flex items-center justify-center flex-shrink-0"
+          style={{ width: size, height: size, marginLeft: -overlap, zIndex: 0 }}
         >
           <span className="text-[9px] text-muted font-medium">+{overflow}</span>
         </div>
@@ -111,7 +116,7 @@ function StationRow({
               <span className="text-2xl leading-none opacity-40">🤖</span>
             ) : spunBy ? (
               <div className="rounded-lg ring-2 ring-accent/40">
-                <DJFace uid={spunBy} size={48} />
+                <DJFace uid={spunBy} size={36} />
               </div>
             ) : null}
             <div className="flex items-center gap-1">

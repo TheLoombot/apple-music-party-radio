@@ -26,49 +26,47 @@ export function ListenersPanel({ listeners, ownerUid, currentUserId, djUserIds, 
       <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
         Listening now
       </div>
-      <ul>
+      <div className="px-4 py-3 flex flex-wrap gap-2">
         {sorted.map(l => {
           const isOwner = l.userId === ownerUid
           const isDJ = djUserIds.includes(l.userId)
           const isYou = l.userId === currentUserId
+          const canManage = isStationOwner && !isOwner && !isYou
+
           return (
-            <li key={l.userId} className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0">
-              <DJFace uid={l.userId} size={40} />
-              <div className="flex-1 min-w-0">
-                <span className="text-sm text-white truncate block">
-                  {l.displayName}
-                  {isYou && <span className="text-muted text-xs font-normal ml-1.5">(you)</span>}
-                </span>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  {isOwner && (
-                    <span className="text-xs text-amber-400/80 font-medium">owner</span>
-                  )}
-                  {isDJ && !isOwner && (
-                    <span className="text-xs text-accent/80 font-medium">DJ</span>
-                  )}
-                </div>
+            <div key={l.userId} className="relative group">
+              <DJFace uid={l.userId} size={36} />
+
+              {/* Hover tooltip */}
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity z-20 text-center">
+                <p className="text-white text-xs font-medium">{l.displayName}</p>
+                {(isOwner || isDJ || isYou) && (
+                  <p className="text-muted text-[10px] mt-0.5">
+                    {isOwner ? "owner" : isDJ ? "DJ" : "you"}
+                  </p>
+                )}
+                {canManage && (
+                  isDJ ? (
+                    <button
+                      onClick={() => onRevokeDJ?.(l.userId)}
+                      className="text-[10px] text-red-400 hover:text-red-300 mt-1 block w-full transition-colors"
+                    >
+                      Revoke DJ
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onGrantDJ?.(l.userId)}
+                      className="text-[10px] text-accent hover:text-white mt-1 block w-full transition-colors"
+                    >
+                      Make DJ
+                    </button>
+                  )
+                )}
               </div>
-              {isStationOwner && !isOwner && !isYou && (
-                isDJ ? (
-                  <button
-                    onClick={() => onRevokeDJ?.(l.userId)}
-                    className="text-xs text-muted hover:text-red-400 transition-colors flex-shrink-0"
-                  >
-                    Revoke DJ
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => onGrantDJ?.(l.userId)}
-                    className="text-xs text-muted hover:text-accent transition-colors flex-shrink-0"
-                  >
-                    Make DJ
-                  </button>
-                )
-              )}
-            </li>
+            </div>
           )
         })}
-      </ul>
+      </div>
     </div>
   )
 }

@@ -131,7 +131,7 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                     <p className="text-muted text-xs mt-2 flex items-center gap-1">
                       queued by{" "}
                       {item.addedBy !== "robot" && (
-                        <DJFace uid={item.addedBy} size={18} />
+                        <DJFace uid={item.addedBy} size={22} />
                       )}
                       <span className="text-white/60">
                         {item.addedBy === "robot" ? "🤖"
