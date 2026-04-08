@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Trash2 } from "lucide-react"
+import { Trash2, X } from "lucide-react"
 import type { Station } from "../types"
 import { DJFace } from "./FaceGenerator"
 
@@ -53,20 +53,105 @@ function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station[
   )
 }
 
+function StationRow({
+  station, active, isOwn, userId, now, onSelect, onRemove,
+}: {
+  station: Station
+  active: boolean
+  isOwn: boolean
+  userId: string
+  now: number
+  onSelect: () => void
+  onRemove: () => void
+}) {
+  const isLive = station.liveUntil > now
+  const listeners = station.listeners ?? []
+  const spunBy = station.nowPlayingAddedBy
+  const isRobot = spunBy === "robot"
+
+  return (
+    <li>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onSelect}
+        onKeyDown={e => e.key === "Enter" && onSelect()}
+        className={`group w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
+      >
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm truncate ${active ? "text-accent" : "text-white"}`}>
+            {station.displayName}
+            {isOwn && <span className="text-muted text-xs font-normal ml-1.5">(you)</span>}
+          </p>
+          {isLive && station.nowPlayingTrackName ? (
+            <p className="text-xs text-muted truncate mt-0.5">
+              {station.nowPlayingArtistName && `${station.nowPlayingArtistName} — `}{station.nowPlayingTrackName}
+            </p>
+          ) : !isLive ? (
+            <p className="text-xs text-muted/40 mt-0.5">offline</p>
+          ) : null}
+          {listeners.length > 0 && (
+            <div className="mt-2">
+              <ListenerFaces listeners={listeners} />
+            </div>
+          )}
+        </div>
+
+        {isLive && (
+          <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-0.5">
+            {isRobot ? (
+              <span className="text-2xl leading-none opacity-40">🤖</span>
+            ) : spunBy ? (
+              <div className="rounded-full ring-2 ring-accent/40">
+                <DJFace uid={spunBy} size={42} />
+              </div>
+            ) : null}
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-muted/70 truncate max-w-[56px]">
+                {isRobot ? "robot" : spunBy === userId ? "you" : station.nowPlayingAddedByName ?? ""}
+              </span>
+              <LiveDot />
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={e => { e.stopPropagation(); onRemove() }}
+          className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all flex-shrink-0 pt-1"
+          title="Remove station"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+    </li>
+  )
+}
+
 interface Props {
   stations: Station[]
   currentStationId: string
-  userId: string            // current user's UID (for addedBy comparisons)
-  ownedStationIds: string[] // station slugs owned by this user
+  userId: string
+  ownedStationIds: string[]
   onSelect: (stationId: string) => void
   onRemove: (stationId: string) => void
   onCreateStation: () => void
 }
 
+/** Sort score: human-DJ stations first, then robot/unknown live, then offline. Tiebreak by listener count. */
+function sortScore(s: Station, now: number): number {
+  if (s.liveUntil > now) {
+    const listenerCount = s.listeners?.length ?? 0
+    const hasHumanDJ = s.nowPlayingAddedBy && s.nowPlayingAddedBy !== "robot"
+    return (hasHumanDJ ? 10000 : 1000) + listenerCount
+  }
+  return 0
+}
+
 export function StationList({ stations, currentStationId, userId, ownedStationIds, onSelect, onRemove, onCreateStation }: Props) {
   const [now, setNow] = useState(Date.now())
-  const [showAll, setShowAll] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
 
+  // Re-render just after the next track expires so live/offline status flips automatically
   useEffect(() => {
     const next = stations
       .map(s => s.liveUntil)
@@ -77,10 +162,15 @@ export function StationList({ stations, currentStationId, userId, ownedStationId
     return () => clearTimeout(timer)
   }, [stations])
 
-  const visibleStations = showAll
-    ? stations
-    : stations.filter(s => s.liveUntil > now || s.id === currentStationId || ownedStationIds.includes(s.id))
-  const hiddenCount = stations.length - visibleStations.length
+  const sorted = [...stations].sort((a, b) => sortScore(b, now) - sortScore(a, now))
+
+  // Sidebar: live stations + own stations + currently-tuned station
+  const sidebarStations = sorted.filter(s =>
+    s.liveUntil > now || s.id === currentStationId || ownedStationIds.includes(s.id)
+  )
+  const hiddenCount = sorted.filter(s =>
+    s.liveUntil <= now && s.id !== currentStationId && !ownedStationIds.includes(s.id)
+  ).length
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
@@ -92,87 +182,77 @@ export function StationList({ stations, currentStationId, userId, ownedStationId
         <div className="p-6 text-center text-muted text-sm">No stations yet</div>
       ) : (
         <ul>
-          {visibleStations.map(station => {
-            const active = station.id === currentStationId
-            const isOwn = ownedStationIds.includes(station.id)
-            const isLive = station.liveUntil > now
-            const listeners = station.listeners ?? []
-            const spunBy = station.nowPlayingAddedBy
-            const isRobot = spunBy === "robot"
-
-            return (
-              <li key={station.id}>
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onSelect(station.id)}
-                  onKeyDown={e => e.key === "Enter" && onSelect(station.id)}
-                  className={`group w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
-                >
-                  {/* Station name + track info + listener faces */}
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm truncate ${active ? "text-accent" : "text-white"}`}>
-                      {station.displayName}
-                      {isOwn && <span className="text-muted text-xs font-normal ml-1.5">(you)</span>}
-                    </p>
-                    {isLive && station.nowPlayingTrackName && (
-                      <p className="text-xs text-muted truncate mt-0.5">
-                        {station.nowPlayingArtistName && `${station.nowPlayingArtistName} — `}{station.nowPlayingTrackName}
-                      </p>
-                    )}
-                    {listeners.length > 0 && (
-                      <div className="mt-2">
-                        <ListenerFaces listeners={listeners} />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Spun-by indicator */}
-                  {isLive && (
-                    <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-0.5">
-                      {isRobot ? (
-                        <span className="text-2xl leading-none opacity-40">🤖</span>
-                      ) : spunBy ? (
-                        <div className="rounded-full ring-2 ring-accent/40">
-                          <DJFace uid={spunBy} size={42} />
-                        </div>
-                      ) : null}
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-muted/70 truncate max-w-[56px]">
-                          {isRobot ? "robot" : spunBy === userId ? "you" : station.nowPlayingAddedByName ?? ""}
-                        </span>
-                        <LiveDot />
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={e => { e.stopPropagation(); onRemove(station.id) }}
-                    className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all flex-shrink-0 pt-1"
-                    title="Remove station"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </li>
-            )
-          })}
+          {sidebarStations.map(station => (
+            <StationRow
+              key={station.id}
+              station={station}
+              active={station.id === currentStationId}
+              isOwn={ownedStationIds.includes(station.id)}
+              userId={userId}
+              now={now}
+              onSelect={() => onSelect(station.id)}
+              onRemove={() => onRemove(station.id)}
+            />
+          ))}
         </ul>
       )}
-      {(hiddenCount > 0 || showAll) && (
+
+      {hiddenCount > 0 && (
         <button
-          onClick={() => setShowAll(v => !v)}
+          onClick={() => setMoreOpen(true)}
           className="w-full px-4 py-2.5 text-xs text-muted hover:text-white transition-colors border-t border-border/50"
         >
-          {showAll ? "Hide offline stations" : `Show ${hiddenCount} offline station${hiddenCount !== 1 ? "s" : ""}`}
+          More stations ({hiddenCount})
         </button>
       )}
+
       <button
         onClick={onCreateStation}
         className="w-full px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors border-t border-border/50 text-left"
       >
         + Create a station
       </button>
+
+      {moreOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+          onClick={() => setMoreOpen(false)}
+        >
+          <div
+            className="bg-panel rounded-2xl w-full max-w-sm overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <span className="text-xs text-muted font-medium uppercase tracking-wider">All Stations</span>
+              <button onClick={() => setMoreOpen(false)} className="text-muted hover:text-white transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <ul className="max-h-[60vh] overflow-y-auto">
+              {sorted.map(station => (
+                <StationRow
+                  key={station.id}
+                  station={station}
+                  active={station.id === currentStationId}
+                  isOwn={ownedStationIds.includes(station.id)}
+                  userId={userId}
+                  now={now}
+                  onSelect={() => { onSelect(station.id); setMoreOpen(false) }}
+                  onRemove={() => onRemove(station.id)}
+                />
+              ))}
+            </ul>
+            <div className="border-t border-border/50">
+              <button
+                onClick={() => { onCreateStation(); setMoreOpen(false) }}
+                className="w-full px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors text-left"
+              >
+                + Create a station
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

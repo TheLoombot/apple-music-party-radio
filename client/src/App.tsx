@@ -90,7 +90,10 @@ export default function App() {
         didSetInitialStation = true
         setCurrentStationId(prev => {
           if (prev) return prev
-          // Prefer own station (if live), then first live station, then first in list
+          // URL hash takes priority — allows direct links to a station
+          const hashStation = window.location.hash.slice(1)
+          if (hashStation) return hashStation
+          // Prefer own live station, then any live station, then first in list
           const owned = getOwnedStationIds()
           const ownLive = newStations.find(s => owned.includes(s.id) && s.liveUntil > Date.now())
           const firstLive = newStations.find(s => s.liveUntil > Date.now())
@@ -104,7 +107,25 @@ export default function App() {
     for (const stationId of owned) {
       indexSocket.register(stationId, user.displayName, user.storefront, user.uid)
     }
-    return () => indexSocket.disconnect()
+
+    // Sync hash → station on browser back/forward
+    const onPopState = () => {
+      const stationId = window.location.hash.slice(1)
+      if (stationId) {
+        setNowPlaying(null)
+        setUpNext([])
+        setPlaybackBlocked(false)
+        setChatMessages([])
+        playbackLoop.current.enableAutoplay()
+        setCurrentStationId(stationId)
+      }
+    }
+    window.addEventListener("popstate", onPopState)
+
+    return () => {
+      indexSocket.disconnect()
+      window.removeEventListener("popstate", onPopState)
+    }
   }, [appState, user])
 
   // Start playback loop when station changes
@@ -215,6 +236,7 @@ export default function App() {
 
   const handleSelectStation = useCallback((stationId: string) => {
     if (stationId === currentStationId) return
+    window.history.pushState(null, "", `#${stationId}`)
     setNowPlaying(null)
     setUpNext([])
     setPlaybackBlocked(false)
