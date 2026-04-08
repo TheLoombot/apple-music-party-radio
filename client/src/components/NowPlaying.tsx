@@ -241,7 +241,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <p className="text-muted text-sm mt-2 flex items-center gap-1.5">
                 spun by{" "}
                 {track.addedBy !== "robot" && (
-                  <DJFace uid={track.addedBy} size={36} />
+                  <DJFace uid={track.addedBy} size={64} />
                 )}
                 <span className="text-white/60">
                   {track.addedBy === "robot" ? "🤖"

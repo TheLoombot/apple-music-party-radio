@@ -40,11 +40,13 @@ function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station[
       {shown.map((l, i) => (
         <div
           key={l.userId}
-          title={l.displayName}
-          className="rounded-lg ring-2 ring-panel flex-shrink-0"
+          className="relative group rounded-lg ring-2 ring-panel flex-shrink-0"
           style={{ marginLeft: i === 0 ? 0 : -overlap, zIndex: shown.length - i }}
         >
           <DJFace uid={l.userId} size={size} />
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 text-xs text-white">
+            {l.displayName}
+          </div>
         </div>
       ))}
       {overflow > 0 && (
@@ -116,7 +118,7 @@ function StationRow({
               <span className="text-2xl leading-none opacity-40">🤖</span>
             ) : spunBy ? (
               <div className="rounded-lg ring-2 ring-accent/40">
-                <DJFace uid={spunBy} size={36} />
+                <DJFace uid={spunBy} size={64} />
               </div>
             ) : null}
             <div className="flex items-center gap-1">
