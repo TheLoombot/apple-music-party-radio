@@ -13,7 +13,7 @@ import { FaceGenerator } from "./components/FaceGenerator"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized } from "./services/musickit"
 import { getUserStorefront } from "./services/appleMusic"
-import { getUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId, getStationName, setStationName } from "./services/identity"
+import { getUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId, removeOwnedStationId, getStationName, setStationName } from "./services/identity"
 import { stationSocket, indexSocket } from "./services/partykit"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
@@ -184,6 +184,7 @@ export default function App() {
 
   const handleAddTrack = useCallback((track: Track) => {
     if (!user) return
+    if (!track.platformIds?.apple) return  // no playable Apple ID — don't add
     const fullQueue = [...(nowPlaying ? [nowPlaying] : []), ...upNext]
     const existing = fullQueue.find(i =>
       (track.isrc && i.isrc === track.isrc) ||
@@ -260,6 +261,8 @@ export default function App() {
 
   const handleRemoveStation = useCallback((stationId: string) => {
     indexSocket.removeStation(stationId)
+    removeOwnedStationId(stationId)
+    setOwnedStationIds(getOwnedStationIds())
     if (stationId === currentStationId) {
       const nextStation = stations.find(s => s.id !== stationId && s.liveUntil > Date.now())
       handleSelectStation(nextStation?.id ?? stations.find(s => s.id !== stationId)?.id ?? "")

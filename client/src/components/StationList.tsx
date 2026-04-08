@@ -36,7 +36,7 @@ function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station[
         <div
           key={l.userId}
           title={l.displayName}
-          className="rounded-full ring-2 ring-panel flex-shrink-0"
+          className="rounded-lg ring-2 ring-panel flex-shrink-0"
           style={{ marginLeft: i === 0 ? 0 : -10, zIndex: shown.length - i }}
         >
           <DJFace uid={l.userId} size={32} />
@@ -44,7 +44,7 @@ function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station[
       ))}
       {overflow > 0 && (
         <div
-          className="w-7 h-7 rounded-full ring-2 ring-panel bg-surface flex items-center justify-center flex-shrink-0"
+          className="w-7 h-7 rounded-lg ring-2 ring-panel bg-surface flex items-center justify-center flex-shrink-0"
           style={{ marginLeft: -10, zIndex: 0 }}
         >
           <span className="text-[9px] text-muted font-medium">+{overflow}</span>
@@ -110,7 +110,7 @@ function StationRow({
             {isRobot ? (
               <span className="text-2xl leading-none opacity-40">🤖</span>
             ) : spunBy ? (
-              <div className="rounded-full ring-2 ring-accent/40">
+              <div className="rounded-lg ring-2 ring-accent/40">
                 <DJFace uid={spunBy} size={48} />
               </div>
             ) : null}

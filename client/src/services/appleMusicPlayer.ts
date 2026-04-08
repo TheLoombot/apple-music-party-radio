@@ -8,7 +8,15 @@ export class AppleMusicPlayer implements MusicPlayer {
     const appleId = track.platformIds.apple
     if (!appleId) throw new UnavailableError("apple", track)
     const tailIds = tail?.map(t => t.platformIds.apple).filter((id): id is string => !!id)
-    await playTrackAtOffset(appleId, offsetSeconds, tailIds)
+    try {
+      await playTrackAtOffset(appleId, offsetSeconds, tailIds)
+    } catch (err: any) {
+      // MusicKit throws NOT_FOUND when a catalog ID can't be resolved in the user's storefront
+      if (err?.errorCode === "NOT_FOUND" || String(err).includes("NOT_FOUND")) {
+        throw new UnavailableError("apple", track)
+      }
+      throw err
+    }
   }
 
   async syncQueueTail(tailTracks: QueueItem[]): Promise<void> {

@@ -39,6 +39,11 @@ export function addOwnedStationId(id: string) {
   }
 }
 
+export function removeOwnedStationId(id: string) {
+  const ids = getOwnedStationIds().filter(s => s !== id)
+  localStorage.setItem("ampr_owned_stations", JSON.stringify(ids))
+}
+
 export function getStationName(id: string): string {
   try {
     const names = JSON.parse(localStorage.getItem("ampr_station_names") ?? "{}")

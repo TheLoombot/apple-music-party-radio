@@ -111,9 +111,14 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
             <p className="text-white text-base font-bold">{displayPlaylist.name}</p>
             {displayPlaylist.subtitle && <p className="text-muted text-sm truncate mt-0.5">{displayPlaylist.subtitle}</p>}
             <div className="flex items-center gap-2 mt-0.5">
-              {displayTracks !== null && (
-                <p className="text-muted text-xs opacity-60">{displayTracks.length} track{displayTracks.length !== 1 ? "s" : ""}</p>
-              )}
+              {displayTracks !== null && (() => {
+                const available = displayTracks.filter(t => t.platformIds?.apple).length
+                const total = displayTracks.length
+                const label = available < total
+                  ? `${available} of ${total} tracks available`
+                  : `${total} track${total !== 1 ? "s" : ""}`
+                return <p className="text-muted text-xs opacity-60">{label}</p>
+              })()}
               {displayPlaylist.kind === "album" && displayPlaylist.releaseYear && (
                 <p className="text-muted text-xs opacity-60">{displayPlaylist.releaseYear}</p>
               )}
@@ -124,7 +129,8 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
           </div>
           {displayTracks && displayTracks.length > 0 && (() => {
             const unqueued = displayTracks.filter(t =>
-              !queuedIsrcs.has(t.isrc) && !queuedIsrcs.has(t.platformIds?.apple ?? "")
+              t.platformIds?.apple &&
+              !queuedIsrcs.has(t.isrc) && !queuedIsrcs.has(t.platformIds.apple)
             )
             return unqueued.length > 0 ? (
               <button
@@ -148,19 +154,23 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
             <div className="p-6 text-center text-muted text-sm">No tracks found</div>
           ) : (
             <ul>
-              {displayTracks.map((track, i) => (
-                <TrackRow
-                  key={track.platformIds?.apple ?? track.isrc ?? track.name}
-                  track={track}
-                  trackNumber={displayPlaylist.kind === "album" ? i + 1 : undefined}
-                  hideArtist={displayPlaylist.kind === "album" && track.artistName === displayPlaylist.subtitle}
-                  added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
-                  onAdd={() => onAddTrack(track)}
-                  onAlbumClick={catalog && track.platformIds?.apple && displayPlaylist.kind !== "album"
-                    ? () => handleTrackAlbumClick(track)
-                    : undefined}
-                />
-              ))}
+              {displayTracks.map((track, i) => {
+                const isUnavailable = !track.platformIds?.apple
+                return (
+                  <TrackRow
+                    key={track.platformIds?.apple ?? track.isrc ?? track.name}
+                    track={track}
+                    trackNumber={displayPlaylist.kind === "album" ? i + 1 : undefined}
+                    hideArtist={displayPlaylist.kind === "album" && track.artistName === displayPlaylist.subtitle}
+                    added={!isUnavailable && (queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? ""))}
+                    unavailable={isUnavailable}
+                    onAdd={() => onAddTrack(track)}
+                    onAlbumClick={catalog && track.platformIds?.apple && displayPlaylist.kind !== "album"
+                      ? () => handleTrackAlbumClick(track)
+                      : undefined}
+                  />
+                )
+              })}
             </ul>
           )}
         </div>

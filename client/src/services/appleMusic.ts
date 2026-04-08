@@ -151,13 +151,32 @@ export async function getLibraryPlaylists(): Promise<LibraryPlaylistResult[]> {
 
 export async function getLibraryPlaylistTracks(playlistId: string): Promise<Track[]> {
   const res = await fetch(
-    `https://api.music.apple.com/v1/me/library/playlists/${playlistId}/tracks?limit=100`,
+    `https://api.music.apple.com/v1/me/library/playlists/${playlistId}/tracks?limit=100&include=catalog`,
     { headers: headers() }
   )
   if (!res.ok) return []
   const data = await res.json()
-  const tracks: (Track | null)[] = (data.data ?? []).map(normalizeLibraryTrack)
-  return tracks.filter((t: Track | null): t is Track => t !== null)
+  return (data.data ?? []).map((item: any): Track => {
+    // Prefer catalog relationship — gives the correct storefront-specific catalog ID.
+    const catalogItem = item.relationships?.catalog?.data?.[0]
+    if (catalogItem) return normalizeTrack(catalogItem)!
+    // Fall back to playParams.catalogId for purchased tracks not in the catalog.
+    const available = normalizeLibraryTrack(item)
+    if (available) return available
+    // No playable ID at all (local file, DRM-only) — return with empty platformIds
+    // so the UI can display it as unavailable rather than hiding it entirely.
+    const a = item.attributes ?? {}
+    return {
+      isrc: a.isrc ?? "",
+      platformIds: {},
+      addedViaPlatform: "apple",
+      name: a.name ?? "",
+      artistName: a.artistName ?? "",
+      albumName: a.albumName ?? "",
+      artworkUrl: a.artwork?.url ?? "",
+      durationMs: a.durationInMillis ?? 0,
+    }
+  })
 }
 
 export interface ChartResult {

@@ -237,7 +237,9 @@ export class PlaybackLoop {
         this.nativeCurrentId = wantedId
       } catch (err) {
         if (err instanceof UnavailableError) {
-          console.warn("[PlaybackLoop] track unavailable:", track0.name)
+          console.warn("[PlaybackLoop] track unavailable, skipping:", track0.name)
+          if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
+          stationSocket.expireTrack(track0.key, false)
         } else {
           console.error("[PlaybackLoop] playback error:", err)
         }

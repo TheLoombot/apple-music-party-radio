@@ -461,14 +461,14 @@ export default class RadioParty implements Party.Server {
     if (addToPool) {
       const { key: _k, expirationTime: _e, addedBy, addedAt: _t, ...trackData } = expired
       let pool = await this.storage<PoolTrack[]>("pool", [])
-      const existing = pool.find(t => t.isrc === trackData.isrc)
+      const existing = pool.find(t => sameTrack(t, trackData))
       const prevUsers = existing?.addedByUsers ?? []
       const addedByUsers = addedBy && addedBy !== "robot"
         ? [...new Set([...prevUsers, addedBy])]
         : prevUsers
       pool = [
         { ...trackData, lastPlayedAt: Date.now(), addedByUsers, playCount: (existing?.playCount ?? 0) + 1 },
-        ...pool.filter(t => t.isrc !== trackData.isrc)
+        ...pool.filter(t => !sameTrack(t, trackData))
       ].slice(0, 100)
       await this.room.storage.put("pool", pool)
       this.room.broadcast(json({ type: "pool_update", pool }))
@@ -555,12 +555,12 @@ export default class RadioParty implements Party.Server {
     while (queue.length > 0 && now >= queue[0].expirationTime) {
       const { key: _k, expirationTime: _e, addedBy, addedAt: _t, ...trackData } = queue[0]
       queue = queue.slice(1)
-      const existing = pool.find(t => t.isrc === trackData.isrc)
+      const existing = pool.find(t => sameTrack(t, trackData))
       const prevUsers = existing?.addedByUsers ?? []
       const addedByUsers = addedBy && addedBy !== "robot"
         ? [...new Set([...prevUsers, addedBy])]
         : prevUsers
-      pool = [{ ...trackData, lastPlayedAt: now, addedByUsers, playCount: (existing?.playCount ?? 0) + 1 }, ...pool.filter(t => t.isrc !== trackData.isrc)].slice(0, 100)
+      pool = [{ ...trackData, lastPlayedAt: now, addedByUsers, playCount: (existing?.playCount ?? 0) + 1 }, ...pool.filter(t => !sameTrack(t, trackData))].slice(0, 100)
       changed = true
     }
 
@@ -644,6 +644,15 @@ export default class RadioParty implements Party.Server {
 
 function liveUntilFromQueue(queue: QueueItem[]): number {
   return queue.length > 0 ? queue[queue.length - 1].expirationTime : 0
+}
+
+/** Match two tracks for pool deduplication.
+ *  Never match on empty ISRC — that would collapse all ISRC-less tracks into one. */
+function sameTrack(a: Track, b: Track): boolean {
+  if (a.isrc && b.isrc) return a.isrc === b.isrc
+  if (a.platformIds?.apple && b.platformIds?.apple) return a.platformIds.apple === b.platformIds.apple
+  if (a.platformIds?.spotify && b.platformIds?.spotify) return a.platformIds.spotify === b.platformIds.spotify
+  return false
 }
 
 function json(data: object): string {

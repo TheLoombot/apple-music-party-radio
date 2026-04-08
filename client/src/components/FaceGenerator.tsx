@@ -453,7 +453,7 @@ export function faceConfigFromUID(uid: string): FaceConfig {
 export function DJFace({ uid, size = 32 }: { uid: string; size?: number }) {
   const config = useMemo(() => faceConfigFromUID(uid), [uid])
   return (
-    <div style={{ width: size, height: size }} className="rounded-full overflow-hidden flex-shrink-0">
+    <div style={{ width: size, height: size }} className="rounded-lg overflow-hidden flex-shrink-0">
       <FaceSVG config={config} />
     </div>
   )
