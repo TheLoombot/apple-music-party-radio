@@ -40,11 +40,11 @@ function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station[
       {shown.map((l, i) => (
         <div
           key={l.userId}
-          className="relative group rounded-lg ring-2 ring-panel flex-shrink-0"
+          className="relative group/face rounded-lg ring-2 ring-panel flex-shrink-0"
           style={{ marginLeft: i === 0 ? 0 : -overlap, zIndex: shown.length - i }}
         >
           <DJFace uid={l.userId} size={size} />
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 text-xs text-white">
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover/face:opacity-100 transition-opacity z-50 text-xs text-white">
             {l.displayName}
           </div>
         </div>

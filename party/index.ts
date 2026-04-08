@@ -137,15 +137,20 @@ export default class RadioParty implements Party.Server {
       const stations = await this.storage<StationMeta[]>("stations", [])
       conn.send(json({ type: "stations_update", stations: this.withPresence(stations) }))
     } else {
-      const { queue, pool } = await this.flushExpired()
-      const chat = await this.storage<ChatMessage[]>("chat", [])
-      const djs = await this.getDJs()
-      conn.send(json({ type: "state", queue, pool, chat, djs }))
-      // Sync live status to index on every connect so stale flags get corrected
-      void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl)
-      // Re-arm expiration alarm in case the DO restarted and lost it
-      if (queue.length > 0) {
-        void this.room.storage.setAlarm(queue[0].expirationTime)
+      try {
+        const { queue, pool } = await this.flushExpired()
+        const chat = await this.storage<ChatMessage[]>("chat", [])
+        const djs = await this.getDJs()
+        conn.send(json({ type: "state", queue, pool, chat, djs }))
+        // Sync live status to index on every connect so stale flags get corrected
+        void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl)
+        // Re-arm expiration alarm in case the DO restarted and lost it
+        if (queue.length > 0) {
+          void this.room.storage.setAlarm(queue[0].expirationTime)
+        }
+      } catch (err) {
+        console.error(`[onConnect] error for room ${this.room.id}:`, err)
+        conn.send(json({ type: "state", queue: [], pool: [], chat: [], djs: [] }))
       }
     }
   }
