@@ -117,9 +117,7 @@ function StationRow({
             {isRobot ? (
               <span className="text-2xl leading-none opacity-40">🤖</span>
             ) : spunBy ? (
-              <div className="rounded-lg ring-2 ring-accent/40">
-                <DJFace uid={spunBy} size={64} />
-              </div>
+              <DJFace uid={spunBy} size={64} />
             ) : null}
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-muted/70 truncate max-w-[56px]">
