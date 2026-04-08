@@ -91,7 +91,7 @@ export default function App() {
         setCurrentStationId(prev => {
           if (prev) return prev
           // URL path takes priority — allows direct links to a station
-          const pathStation = window.location.pathname.slice(1)
+          const pathStation = window.location.pathname.slice(import.meta.env.BASE_URL.length)
           if (pathStation) return pathStation
           // Prefer own live station, then any live station, then first in list
           const owned = getOwnedStationIds()
@@ -110,7 +110,7 @@ export default function App() {
 
     // Sync path → station on browser back/forward
     const onPopState = () => {
-      const stationId = window.location.pathname.slice(1)
+      const stationId = window.location.pathname.slice(import.meta.env.BASE_URL.length)
       if (stationId) {
         setNowPlaying(null)
         setUpNext([])
@@ -250,7 +250,7 @@ export default function App() {
 
   const handleSelectStation = useCallback((stationId: string) => {
     if (stationId === currentStationId) return
-    window.history.pushState(null, "", `/${stationId}`)
+    window.history.pushState(null, "", `${import.meta.env.BASE_URL}${stationId}`)
     setNowPlaying(null)
     setUpNext([])
     setPlaybackBlocked(false)
