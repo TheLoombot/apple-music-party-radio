@@ -39,3 +39,19 @@ export function addOwnedStationId(id: string) {
   }
 }
 
+export function getStationName(id: string): string {
+  try {
+    const names = JSON.parse(localStorage.getItem("ampr_station_names") ?? "{}")
+    return names[id] ?? id
+  } catch {
+    return id
+  }
+}
+
+export function setStationName(id: string, name: string) {
+  try {
+    const names = JSON.parse(localStorage.getItem("ampr_station_names") ?? "{}")
+    names[id] = name
+    localStorage.setItem("ampr_station_names", JSON.stringify(names))
+  } catch {}
+}

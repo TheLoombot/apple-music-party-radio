@@ -78,6 +78,7 @@ interface StationMeta {
   nowPlayingAddedByName?: string
   nowPlayingTrackName?: string
   nowPlayingArtistName?: string
+  nowPlayingArtworkUrl?: string
   listeners?: Listener[]
 }
 
@@ -116,6 +117,11 @@ export default class RadioParty implements Party.Server {
   /** Send current state to a newly connected client */
   async onConnect(conn: Party.Connection) {
     this.cachedRoomId = this.room.id
+    // Persist roomId on every connect so onAlarm can always recover it after DO hibernation.
+    // broadcastQueue also does this, but onConnect covers stations that have never had queue activity.
+    if (this.room.id !== "index") {
+      void this.room.storage.put("roomId", this.room.id)
+    }
     // Derive and persist the index URL from the connection's WebSocket URL so it
     // survives DO hibernation (where room.env is inaccessible in onAlarm).
     if (!this.cachedIndexUrl && this.room.id !== "index") {
@@ -136,7 +142,7 @@ export default class RadioParty implements Party.Server {
       const djs = await this.getDJs()
       conn.send(json({ type: "state", queue, pool, chat, djs }))
       // Sync live status to index on every connect so stale flags get corrected
-      void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName)
+      void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl)
       // Re-arm expiration alarm in case the DO restarted and lost it
       if (queue.length > 0) {
         void this.room.storage.setAlarm(queue[0].expirationTime)
@@ -154,6 +160,10 @@ export default class RadioParty implements Party.Server {
     if (queue.length === 0) return
     if (Date.now() >= queue[0].expirationTime) {
       await this.expireTrack(queue[0].key, true)
+    } else {
+      // Alarm fired early (Cloudflare may do this) — reschedule for the correct time.
+      // Without this, the track is stuck: it won't be expired by alarm and won't be added to pool.
+      await this.room.storage.setAlarm(queue[0].expirationTime)
     }
   }
 
@@ -223,6 +233,7 @@ export default class RadioParty implements Party.Server {
               nowPlayingAddedByName: msg.nowPlayingAddedByName ?? undefined,
               nowPlayingTrackName: msg.nowPlayingTrackName ?? stations[idx].nowPlayingTrackName,
               nowPlayingArtistName: msg.nowPlayingArtistName ?? stations[idx].nowPlayingArtistName,
+              nowPlayingArtworkUrl: msg.nowPlayingArtworkUrl ?? stations[idx].nowPlayingArtworkUrl,
             }
             await this.room.storage.put("stations", stations)
             this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
@@ -596,13 +607,13 @@ export default class RadioParty implements Party.Server {
     return stations.map(s => ({ ...s, listeners: this.presenceMap.get(s.id) ?? [] }))
   }
 
-  private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingAddedByName?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string) {
+  private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingAddedByName?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string, nowPlayingArtworkUrl?: string) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await fetch(await this.getIndexUrl(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName }),
+          body: JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName, nowPlayingArtworkUrl }),
         })
         return
       } catch (e) {
@@ -622,7 +633,7 @@ export default class RadioParty implements Party.Server {
 
   private async broadcastQueue(queue: QueueItem[]) {
     this.room.broadcast(json({ type: "queue_update", queue }))
-    await this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName)
+    await this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl)
     if (queue.length > 0) {
       // Persist room ID alongside the alarm so onAlarm can recover it after hibernation
       await this.room.storage.put("roomId", this.getRoomId())

@@ -13,7 +13,7 @@ import { FaceGenerator } from "./components/FaceGenerator"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized } from "./services/musickit"
 import { getUserStorefront } from "./services/appleMusic"
-import { getUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId } from "./services/identity"
+import { getUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId, getStationName, setStationName } from "./services/identity"
 import { stationSocket, indexSocket } from "./services/partykit"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
@@ -102,10 +102,10 @@ export default function App() {
       }
     }
     indexSocket.connect()
-    // Register all owned stations with the index
+    // Register all owned stations with the index (use stored station name, not DJ name)
     const owned = getOwnedStationIds()
     for (const stationId of owned) {
-      indexSocket.register(stationId, user.displayName, user.storefront, user.uid)
+      indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid)
     }
 
     // Sync path → station on browser back/forward
@@ -127,6 +127,12 @@ export default function App() {
       window.removeEventListener("popstate", onPopState)
     }
   }, [appState, user])
+
+  // Update page title to current station name
+  useEffect(() => {
+    const name = stations.find(s => s.id === currentStationId)?.displayName || currentStationId
+    document.title = name ? `${name} — Party Radio` : "Apple Music Party Radio"
+  }, [currentStationId, stations])
 
   // Start playback loop when station changes
   useEffect(() => {
@@ -227,12 +233,19 @@ export default function App() {
     const name = renameInput.trim() || user.displayName
     setDisplayName(name)
     setUser(prev => prev ? { ...prev, displayName: name } : prev)
-    // Update all owned stations with the new display name
+    // Re-register owned stations using their own stored names (not the DJ name)
     for (const stationId of getOwnedStationIds()) {
-      indexSocket.register(stationId, name, user.storefront, user.uid)
+      indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid)
     }
     setRenamingDJ(false)
   }, [user, renameInput])
+
+  const handleRenameStation = useCallback((newName: string) => {
+    if (!user || !currentStationId) return
+    const name = newName.trim() || currentStationId
+    setStationName(currentStationId, name)
+    indexSocket.register(currentStationId, name, user.storefront, user.uid)
+  }, [user, currentStationId])
 
   const handleSelectStation = useCallback((stationId: string) => {
     if (stationId === currentStationId) return
@@ -270,15 +283,16 @@ export default function App() {
     if (!user || slugStatus !== "available") return
     const slug = newSlug.trim().toLowerCase()
     setIsCreatingStation(true)
-    const result = await indexSocket.createStation(slug, user.uid, user.displayName, user.storefront)
+    const result = await indexSocket.createStation(slug, user.uid, slug, user.storefront)
     if (result === "taken") {
       setSlugStatus("taken")
       setIsCreatingStation(false)
       return
     }
+    setStationName(slug, slug)
     addOwnedStationId(slug)
     setOwnedStationIds(getOwnedStationIds())
-    indexSocket.register(slug, user.displayName, user.storefront, user.uid)
+    indexSocket.register(slug, slug, user.storefront, user.uid)
     setCreateModalOpen(false)
     setNewSlug("")
     setSlugStatus("idle")
@@ -487,6 +501,9 @@ export default function App() {
             onAlbumClick={isPrivileged && nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
             onOpenPool={isPrivileged ? () => setPoolModalOpen(true) : undefined}
             catalog={catalog.current}
+            stationName={stations.find(s => s.id === currentStationId)?.displayName || currentStationId}
+            isOwner={isOwnStation}
+            onRenameStation={isOwnStation ? handleRenameStation : undefined}
           />
           <UpNext
             queue={isPrivileged ? upNext : upNext.slice(0, 1)}

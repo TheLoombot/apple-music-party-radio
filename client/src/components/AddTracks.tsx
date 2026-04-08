@@ -258,7 +258,7 @@ function BrowsableRow({ item, onBrowse }: {
     >
       <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
         {item.artworkUrl
-          ? <img src={artworkUrl(item.artworkUrl, 96)} alt="" className="w-full h-full object-cover" />
+          ? <img src={artworkUrl(item.artworkUrl, 192)} alt="" className="w-full h-full object-cover" />
           : <div className="w-full h-full flex items-center justify-center text-muted">{icon}</div>
         }
       </div>

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react"
-import { Trash2 } from "lucide-react"
+import { Trash2, X } from "lucide-react"
 import type { Station } from "../types"
 import { DJFace } from "./FaceGenerator"
+import { artworkUrl } from "../services/musickit"
 
 function LiveDot() {
   const pingRef = useRef<HTMLSpanElement>(null)
@@ -38,7 +39,7 @@ function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station[
           className="rounded-full ring-2 ring-panel flex-shrink-0"
           style={{ marginLeft: i === 0 ? 0 : -10, zIndex: shown.length - i }}
         >
-          <DJFace uid={l.userId} size={28} />
+          <DJFace uid={l.userId} size={32} />
         </div>
       ))}
       {overflow > 0 && (
@@ -77,11 +78,18 @@ function StationRow({
         tabIndex={0}
         onClick={onSelect}
         onKeyDown={e => e.key === "Enter" && onSelect()}
-        className={`group w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
+        className={`group w-full text-left flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
       >
+        {isLive && station.nowPlayingArtworkUrl ? (
+          <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
+            <img src={artworkUrl(station.nowPlayingArtworkUrl, 192)} alt="" className="w-full h-full object-cover" />
+          </div>
+        ) : (
+          <div className="w-24 h-24 rounded flex-shrink-0 bg-surface/50 flex items-center justify-center text-muted/30 text-sm">♪</div>
+        )}
         <div className="flex-1 min-w-0">
           <p className={`text-sm truncate ${active ? "text-accent" : "text-white"}`}>
-            {station.id}
+            {station.displayName || station.id}
           </p>
           {isLive && station.nowPlayingTrackName ? (
             <p className="text-xs text-muted truncate mt-0.5">
@@ -103,7 +111,7 @@ function StationRow({
               <span className="text-2xl leading-none opacity-40">🤖</span>
             ) : spunBy ? (
               <div className="rounded-full ring-2 ring-accent/40">
-                <DJFace uid={spunBy} size={42} />
+                <DJFace uid={spunBy} size={48} />
               </div>
             ) : null}
             <div className="flex items-center gap-1">
@@ -140,6 +148,7 @@ interface Props {
 
 export function StationList({ stations, currentStationId, userId, userDisplayName, ownedStationIds, onSelect, onRemove, onCreateStation }: Props) {
   const [now, setNow] = useState(Date.now())
+  const [moreOpen, setMoreOpen] = useState(false)
 
   // Re-render just after the next track expires so live/offline status flips automatically
   useEffect(() => {
@@ -155,6 +164,8 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
   const liveStations = stations
     .filter(s => s.liveUntil > now)
     .sort((a, b) => a.id.localeCompare(b.id))
+  const allStations = [...stations].sort((a, b) => a.id.localeCompare(b.id))
+  const offlineCount = stations.filter(s => s.liveUntil <= now).length
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
@@ -164,6 +175,8 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
 
       {stations.length === 0 ? (
         <div className="p-6 text-center text-muted text-sm">No stations yet</div>
+      ) : liveStations.length === 0 ? (
+        <div className="p-6 text-center text-muted text-sm">No live stations right now</div>
       ) : (
         <ul>
           {liveStations.map(station => (
@@ -182,12 +195,64 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
         </ul>
       )}
 
-      <button
-        onClick={onCreateStation}
-        className="w-full px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors border-t border-border/50 text-left"
-      >
-        + Create a station
-      </button>
+      <div className="flex border-t border-border/50">
+        {offlineCount > 0 && (
+          <button
+            onClick={() => setMoreOpen(true)}
+            className="flex-1 px-4 py-2.5 text-xs text-muted hover:text-white transition-colors text-left"
+          >
+            All stations ({stations.length})
+          </button>
+        )}
+        <button
+          onClick={onCreateStation}
+          className="flex-1 px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors text-left"
+        >
+          + Create a station
+        </button>
+      </div>
+
+      {moreOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+          onClick={() => setMoreOpen(false)}
+        >
+          <div
+            className="bg-panel rounded-2xl w-full max-w-sm overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <span className="text-xs text-muted font-medium uppercase tracking-wider">All Stations</span>
+              <button onClick={() => setMoreOpen(false)} className="text-muted hover:text-white transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <ul className="max-h-[60vh] overflow-y-auto">
+              {allStations.map(station => (
+                <StationRow
+                  key={station.id}
+                  station={station}
+                  active={station.id === currentStationId}
+                  isOwn={ownedStationIds.includes(station.id)}
+                  userId={userId}
+                  userDisplayName={userDisplayName}
+                  now={now}
+                  onSelect={() => { onSelect(station.id); setMoreOpen(false) }}
+                  onRemove={() => onRemove(station.id)}
+                />
+              ))}
+            </ul>
+            <div className="border-t border-border/50">
+              <button
+                onClick={() => { onCreateStation(); setMoreOpen(false) }}
+                className="w-full px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors text-left"
+              >
+                + Create a station
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

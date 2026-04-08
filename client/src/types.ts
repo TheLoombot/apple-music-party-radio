@@ -68,6 +68,7 @@ export interface Station {
   nowPlayingAddedByName?: string
   nowPlayingTrackName?: string
   nowPlayingArtistName?: string
+  nowPlayingArtworkUrl?: string
   listeners?: Listener[]
 }
 

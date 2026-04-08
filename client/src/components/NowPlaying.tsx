@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Volume2, VolumeX, SkipForward, Library } from "lucide-react"
+import { Volume2, VolumeX, SkipForward, Library, Pencil } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { ArtworkModal } from "./ArtworkModal"
@@ -21,6 +21,9 @@ interface Props {
   onAlbumClick?: () => void
   onOpenPool?: () => void
   catalog?: MusicCatalog
+  stationName: string
+  isOwner: boolean
+  onRenameStation?: (name: string) => void
 }
 
 function useProgress(track: QueueItem | null) {
@@ -125,12 +128,15 @@ function useMediaSession(
   }, [track?.key, isPlaying, canSkip])
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, onRenameStation }: Props) {
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
   const quiet = isMuted || isBlocked
   const [artworkOpen, setArtworkOpen] = useState(false)
   const closeArtwork = useCallback(() => setArtworkOpen(false), [])
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput, setNameInput] = useState("")
+  const nameRef = useRef<HTMLInputElement>(null)
   useMediaSession(
     track,
     isPlaying,
@@ -142,8 +148,41 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
-        Now Playing
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2 min-h-[44px]">
+        {editingName ? (
+          <input
+            ref={nameRef}
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+            onBlur={() => {
+              const name = nameInput.trim() || stationName
+              onRenameStation?.(name)
+              setEditingName(false)
+            }}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                const name = nameInput.trim() || stationName
+                onRenameStation?.(name)
+                setEditingName(false)
+              }
+              if (e.key === "Escape") setEditingName(false)
+            }}
+            className="flex-1 bg-surface text-white rounded px-2 py-0.5 text-sm outline-none focus:ring-1 focus:ring-accent"
+          />
+        ) : (
+          <>
+            <span className="text-white text-sm font-semibold flex-1 truncate">{stationName}</span>
+            {isOwner && onRenameStation && (
+              <button
+                onClick={() => { setNameInput(stationName); setEditingName(true); setTimeout(() => nameRef.current?.select(), 0) }}
+                className="text-muted/40 hover:text-muted transition-colors flex-shrink-0"
+                title="Rename station"
+              >
+                <Pencil size={12} />
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       <AnimatePresence mode="wait">
@@ -202,7 +241,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <p className="text-muted text-sm mt-2 flex items-center gap-1.5">
                 spun by{" "}
                 {track.addedBy !== "robot" && (
-                  <DJFace uid={track.addedBy} size={18} />
+                  <DJFace uid={track.addedBy} size={24} />
                 )}
                 <span className="text-white/60">
                   {track.addedBy === "robot" ? "🤖"

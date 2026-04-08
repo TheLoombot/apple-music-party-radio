@@ -110,13 +110,31 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
           <div className="flex-1 min-w-0">
             <p className="text-white text-base font-bold">{displayPlaylist.name}</p>
             {displayPlaylist.subtitle && <p className="text-muted text-sm truncate mt-0.5">{displayPlaylist.subtitle}</p>}
-            {displayPlaylist.kind === "album" && displayPlaylist.releaseYear && (
-              <p className="text-muted text-xs mt-0.5 opacity-60">{displayPlaylist.releaseYear}</p>
-            )}
-            {(displayPlaylist.kind === "playlist" || displayPlaylist.kind === "library-playlist") && displayPlaylist.lastModifiedAt && (
-              <p className="text-muted text-xs mt-0.5 opacity-60">Updated {relativeTime(displayPlaylist.lastModifiedAt)}</p>
-            )}
+            <div className="flex items-center gap-2 mt-0.5">
+              {displayTracks !== null && (
+                <p className="text-muted text-xs opacity-60">{displayTracks.length} track{displayTracks.length !== 1 ? "s" : ""}</p>
+              )}
+              {displayPlaylist.kind === "album" && displayPlaylist.releaseYear && (
+                <p className="text-muted text-xs opacity-60">{displayPlaylist.releaseYear}</p>
+              )}
+              {(displayPlaylist.kind === "playlist" || displayPlaylist.kind === "library-playlist") && displayPlaylist.lastModifiedAt && (
+                <p className="text-muted text-xs opacity-60">Updated {relativeTime(displayPlaylist.lastModifiedAt)}</p>
+              )}
+            </div>
           </div>
+          {displayTracks && displayTracks.length > 0 && (() => {
+            const unqueued = displayTracks.filter(t =>
+              !queuedIsrcs.has(t.isrc) && !queuedIsrcs.has(t.platformIds?.apple ?? "")
+            )
+            return unqueued.length > 0 ? (
+              <button
+                onClick={() => unqueued.forEach(onAddTrack)}
+                className="text-xs text-accent hover:text-white font-semibold transition-colors flex-shrink-0 px-2 py-1 rounded-lg hover:bg-accent/20"
+              >
+                Add all ({unqueued.length})
+              </button>
+            ) : null
+          })()}
           <button onClick={onClose} className="text-muted hover:text-white transition-colors flex-shrink-0 p-1">
             <X size={18} />
           </button>
