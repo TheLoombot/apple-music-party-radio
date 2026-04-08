@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Trash2, X } from "lucide-react"
+import { Trash2 } from "lucide-react"
 import type { Station } from "../types"
 import { DJFace } from "./FaceGenerator"
 
@@ -54,12 +54,13 @@ function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station[
 }
 
 function StationRow({
-  station, active, isOwn, userId, now, onSelect, onRemove,
+  station, active, isOwn, userId, userDisplayName, now, onSelect, onRemove,
 }: {
   station: Station
   active: boolean
   isOwn: boolean
   userId: string
+  userDisplayName: string
   now: number
   onSelect: () => void
   onRemove: () => void
@@ -80,8 +81,7 @@ function StationRow({
       >
         <div className="flex-1 min-w-0">
           <p className={`text-sm truncate ${active ? "text-accent" : "text-white"}`}>
-            {station.displayName}
-            {isOwn && <span className="text-muted text-xs font-normal ml-1.5">(you)</span>}
+            {station.id}
           </p>
           {isLive && station.nowPlayingTrackName ? (
             <p className="text-xs text-muted truncate mt-0.5">
@@ -108,7 +108,7 @@ function StationRow({
             ) : null}
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-muted/70 truncate max-w-[56px]">
-                {isRobot ? "robot" : spunBy === userId ? "you" : station.nowPlayingAddedByName ?? ""}
+                {isRobot ? "robot" : spunBy === userId ? userDisplayName : station.nowPlayingAddedByName ?? ""}
               </span>
               <LiveDot />
             </div>
@@ -131,25 +131,15 @@ interface Props {
   stations: Station[]
   currentStationId: string
   userId: string
+  userDisplayName: string
   ownedStationIds: string[]
   onSelect: (stationId: string) => void
   onRemove: (stationId: string) => void
   onCreateStation: () => void
 }
 
-/** Sort score: human-DJ stations first, then robot/unknown live, then offline. Tiebreak by listener count. */
-function sortScore(s: Station, now: number): number {
-  if (s.liveUntil > now) {
-    const listenerCount = s.listeners?.length ?? 0
-    const hasHumanDJ = s.nowPlayingAddedBy && s.nowPlayingAddedBy !== "robot"
-    return (hasHumanDJ ? 10000 : 1000) + listenerCount
-  }
-  return 0
-}
-
-export function StationList({ stations, currentStationId, userId, ownedStationIds, onSelect, onRemove, onCreateStation }: Props) {
+export function StationList({ stations, currentStationId, userId, userDisplayName, ownedStationIds, onSelect, onRemove, onCreateStation }: Props) {
   const [now, setNow] = useState(Date.now())
-  const [moreOpen, setMoreOpen] = useState(false)
 
   // Re-render just after the next track expires so live/offline status flips automatically
   useEffect(() => {
@@ -162,15 +152,9 @@ export function StationList({ stations, currentStationId, userId, ownedStationId
     return () => clearTimeout(timer)
   }, [stations])
 
-  const sorted = [...stations].sort((a, b) => sortScore(b, now) - sortScore(a, now))
-
-  // Sidebar: live stations + own stations + currently-tuned station
-  const sidebarStations = sorted.filter(s =>
-    s.liveUntil > now || s.id === currentStationId || ownedStationIds.includes(s.id)
-  )
-  const hiddenCount = sorted.filter(s =>
-    s.liveUntil <= now && s.id !== currentStationId && !ownedStationIds.includes(s.id)
-  ).length
+  const liveStations = stations
+    .filter(s => s.liveUntil > now)
+    .sort((a, b) => a.id.localeCompare(b.id))
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
@@ -182,13 +166,14 @@ export function StationList({ stations, currentStationId, userId, ownedStationId
         <div className="p-6 text-center text-muted text-sm">No stations yet</div>
       ) : (
         <ul>
-          {sidebarStations.map(station => (
+          {liveStations.map(station => (
             <StationRow
               key={station.id}
               station={station}
               active={station.id === currentStationId}
               isOwn={ownedStationIds.includes(station.id)}
               userId={userId}
+              userDisplayName={userDisplayName}
               now={now}
               onSelect={() => onSelect(station.id)}
               onRemove={() => onRemove(station.id)}
@@ -197,62 +182,12 @@ export function StationList({ stations, currentStationId, userId, ownedStationId
         </ul>
       )}
 
-      {hiddenCount > 0 && (
-        <button
-          onClick={() => setMoreOpen(true)}
-          className="w-full px-4 py-2.5 text-xs text-muted hover:text-white transition-colors border-t border-border/50"
-        >
-          More stations ({hiddenCount})
-        </button>
-      )}
-
       <button
         onClick={onCreateStation}
         className="w-full px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors border-t border-border/50 text-left"
       >
         + Create a station
       </button>
-
-      {moreOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
-          onClick={() => setMoreOpen(false)}
-        >
-          <div
-            className="bg-panel rounded-2xl w-full max-w-sm overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span className="text-xs text-muted font-medium uppercase tracking-wider">All Stations</span>
-              <button onClick={() => setMoreOpen(false)} className="text-muted hover:text-white transition-colors">
-                <X size={16} />
-              </button>
-            </div>
-            <ul className="max-h-[60vh] overflow-y-auto">
-              {sorted.map(station => (
-                <StationRow
-                  key={station.id}
-                  station={station}
-                  active={station.id === currentStationId}
-                  isOwn={ownedStationIds.includes(station.id)}
-                  userId={userId}
-                  now={now}
-                  onSelect={() => { onSelect(station.id); setMoreOpen(false) }}
-                  onRemove={() => onRemove(station.id)}
-                />
-              ))}
-            </ul>
-            <div className="border-t border-border/50">
-              <button
-                onClick={() => { onCreateStation(); setMoreOpen(false) }}
-                className="w-full px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors text-left"
-              >
-                + Create a station
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

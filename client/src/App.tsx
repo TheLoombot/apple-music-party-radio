@@ -90,9 +90,9 @@ export default function App() {
         didSetInitialStation = true
         setCurrentStationId(prev => {
           if (prev) return prev
-          // URL hash takes priority — allows direct links to a station
-          const hashStation = window.location.hash.slice(1)
-          if (hashStation) return hashStation
+          // URL path takes priority — allows direct links to a station
+          const pathStation = window.location.pathname.slice(1)
+          if (pathStation) return pathStation
           // Prefer own live station, then any live station, then first in list
           const owned = getOwnedStationIds()
           const ownLive = newStations.find(s => owned.includes(s.id) && s.liveUntil > Date.now())
@@ -108,9 +108,9 @@ export default function App() {
       indexSocket.register(stationId, user.displayName, user.storefront, user.uid)
     }
 
-    // Sync hash → station on browser back/forward
+    // Sync path → station on browser back/forward
     const onPopState = () => {
-      const stationId = window.location.hash.slice(1)
+      const stationId = window.location.pathname.slice(1)
       if (stationId) {
         setNowPlaying(null)
         setUpNext([])
@@ -236,7 +236,7 @@ export default function App() {
 
   const handleSelectStation = useCallback((stationId: string) => {
     if (stationId === currentStationId) return
-    window.history.pushState(null, "", `#${stationId}`)
+    window.history.pushState(null, "", `/${stationId}`)
     setNowPlaying(null)
     setUpNext([])
     setPlaybackBlocked(false)
@@ -502,6 +502,7 @@ export default function App() {
             stations={stations}
             currentStationId={currentStationId}
             userId={user.uid}
+            userDisplayName={user.displayName}
             ownedStationIds={ownedStationIds}
             onSelect={handleSelectStation}
             onRemove={handleRemoveStation}

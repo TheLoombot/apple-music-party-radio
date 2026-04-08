@@ -224,7 +224,7 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
                                 queued by{" "}
                                 {track.addedByUsers.map((u, i) => (
                                   <span key={u}>
-                                    <span className="text-white/60">{u === currentUser.uid ? "you" : u}</span>
+                                    <span className="text-white/60">{u === currentUser.uid ? currentUser.displayName : u}</span>
                                     {i < track.addedByUsers.length - 1 ? ", " : ""}
                                   </span>
                                 ))}

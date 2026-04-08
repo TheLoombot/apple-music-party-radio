@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { GripVertical } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
+import { DJFace } from "./FaceGenerator"
 import type { QueueItem, AppUser } from "../types"
 
 function formatTotalDuration(ms: number): string {
@@ -24,8 +25,8 @@ interface Props {
 }
 
 export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, onAlbumClick }: Props) {
-  const canRemove = currentUser.uid === stationOwner
-  const canReorder = canRemove && !!onReorder && queue.length > 1
+  const canRemove = !!onReorder
+  const canReorder = !!onReorder && queue.length > 1
   const totalMs = queue.reduce((sum, item) => sum + item.durationMs, 0)
 
   const [draggedKey, setDraggedKey] = useState<string | null>(null)
@@ -127,11 +128,14 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                     {onAlbumClick
                       ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{item.albumName}</button>
                       : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
-                    <p className="text-muted text-xs mt-2">
+                    <p className="text-muted text-xs mt-2 flex items-center gap-1">
                       queued by{" "}
+                      {item.addedBy !== "robot" && (
+                        <DJFace uid={item.addedBy} size={14} />
+                      )}
                       <span className="text-white/60">
                         {item.addedBy === "robot" ? "🤖"
-                          : item.addedBy === currentUser.uid ? "you"
+                          : item.addedBy === currentUser.uid ? currentUser.displayName
                           : item.addedByName ?? item.addedBy}
                       </span>
                     </p>

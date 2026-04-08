@@ -39,7 +39,7 @@ export function StationChat({ messages, currentUser, onSend }: Props) {
             const isMe = msg.userId === currentUser.uid
             return (
               <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
-                <span className="text-muted/60 text-xs mb-0.5">{isMe ? "you" : msg.displayName}</span>
+                <span className="text-muted/60 text-xs mb-0.5">{msg.displayName}</span>
                 <div className={`px-3 py-1.5 rounded-2xl text-sm max-w-[80%] break-words ${
                   isMe ? "bg-accent text-white rounded-tr-sm" : "bg-surface text-white rounded-tl-sm"
                 }`}>

@@ -199,19 +199,17 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               {onAlbumClick
                 ? <button onClick={onAlbumClick} className="text-muted/50 text-sm mt-0.5 hover:text-red-400 transition-colors text-left">{track.albumName}</button>
                 : <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>}
-              <div className="flex items-center gap-1.5 mt-2">
+              <p className="text-muted text-sm mt-2 flex items-center gap-1.5">
+                spun by{" "}
                 {track.addedBy !== "robot" && (
-                  <DJFace uid={track.addedBy === currentUser.uid ? currentUser.uid : track.addedBy} size={20} />
+                  <DJFace uid={track.addedBy} size={18} />
                 )}
-                <p className="text-muted text-sm">
-                  spun by{" "}
-                  <span className="text-white/60">
-                    {track.addedBy === "robot" ? "🤖"
-                      : track.addedBy === currentUser.uid ? "you"
-                      : track.addedByName ?? track.addedBy}
-                  </span>
-                </p>
-              </div>
+                <span className="text-white/60">
+                  {track.addedBy === "robot" ? "🤖"
+                    : track.addedBy === currentUser.uid ? currentUser.displayName
+                    : track.addedByName ?? track.addedBy}
+                </span>
+              </p>
             </motion.div>
 
             {/* Controls */}
