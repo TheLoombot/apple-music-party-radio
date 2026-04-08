@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Apple Music Party Radio</title>
+    <script>
+      // Restore path after GitHub Pages 404 redirect.
+      // 404.html encodes the real path as ?/slug; we undo that here before React boots.
+      (function(l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&');
+          });
+          window.history.replaceState(null, null,
+            l.pathname.slice(0, -1) + decoded[0] +
+            (decoded[1] ? '?' + decoded[1] : '') + l.hash
+          );
+        }
+      }(window.location));
+    </script>
     <!-- MusicKit JS v3 from Apple's CDN -->
     <script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js"
             data-web-components
