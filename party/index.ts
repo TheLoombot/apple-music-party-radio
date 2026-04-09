@@ -87,6 +87,11 @@ interface StationOwnership {
   createdAt: number
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+/** How many robot-queued tracks to maintain in the tail of the queue at all times. */
+const TARGET_ROBOT_DEPTH = 8
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 export default class RadioParty implements Party.Server {
@@ -109,6 +114,9 @@ export default class RadioParty implements Party.Server {
   // Index URL — derived from conn.uri on first connect, persisted to storage so
   // the alarm handler (where room.env may be inaccessible) can recover it.
   private cachedIndexUrl: string | null = null
+
+  // Guard against concurrent fillRobotQueue calls (e.g. rapid skips)
+  private robotFilling = false
 
   private getRoomId(): string {
     return this.cachedRoomId ?? this.room.id
@@ -148,6 +156,8 @@ export default class RadioParty implements Party.Server {
         if (queue.length > 0) {
           void this.room.storage.setAlarm(queue[0].expirationTime)
         }
+        // Proactively top up the robot queue whenever a listener connects
+        void this.fillRobotQueue()
       } catch (err) {
         console.error(`[onConnect] error for room ${this.room.id}:`, err)
         conn.send(json({ type: "state", queue: [], pool: [], chat: [], djs: [] }))
@@ -348,14 +358,17 @@ export default class RadioParty implements Party.Server {
       }
       case "add_track": {
         const addedByName = this.connListeners.get(sender.id)?.displayName
-        return this.addTrack(msg.track, msg.addedBy, addedByName)
+        await this.addTrack(msg.track, msg.addedBy, addedByName)
+        // After a user track is added, fill robot tail if it fell short
+        await this.fillRobotQueue()
+        return
       }
       case "remove_track":     return this.removeTrack(msg.key)
       case "skip_track":       return this.skipTrack()
       case "expire_track":     return this.expireTrack(msg.key, msg.addToPool)
       case "remove_from_pool": return this.removeFromPool(msg.isrc)
       case "clear_pool":       return this.clearPool()
-      case "robot_dj":         return this.robotDJ()
+      case "robot_dj":         return this.fillRobotQueue()   // client fallback ping
       case "reorder_queue":    return this.reorderQueue(msg.keys)
       case "chat_message":     return this.handleChatMessage(msg, sender)
     }
@@ -389,21 +402,48 @@ export default class RadioParty implements Party.Server {
 
   // ─── Queue & pool ────────────────────────────────────────────────────────
 
+  /** Index (in the queue array) at which a new user track should be inserted.
+   *  User tracks always sit after existing user tracks but before any robot tail. */
+  private getInsertionIndex(queue: QueueItem[]): number {
+    // queue[0] is now-playing — never insert before it.
+    // Walk forward from position 1 and return the index of the first robot track.
+    for (let i = 1; i < queue.length; i++) {
+      if (queue[i].addedBy === "robot") return i
+    }
+    return queue.length  // no robot tracks yet — append at end
+  }
+
   private async addTrack(track: Track, addedBy: string, addedByName?: string) {
     const queue = await this.storage<QueueItem[]>("queue", [])
-    const last = queue[queue.length - 1]
-    const expirationTime = last
-      ? last.expirationTime + track.durationMs
+
+    // Robot tracks always append at the tail; user tracks insert before the robot tail.
+    const insertAt = addedBy === "robot" ? queue.length : this.getInsertionIndex(queue)
+
+    const predecessor = queue[insertAt - 1] ?? null
+    const expirationTime = predecessor
+      ? predecessor.expirationTime + track.durationMs
       : Date.now() + track.durationMs
 
-    queue.push({
+    const newItem: QueueItem = {
       ...track,
       key: crypto.randomUUID(),
       expirationTime,
       addedByName,
       addedBy,
-      addedAt: Date.now()
-    })
+      addedAt: Date.now(),
+    }
+
+    queue.splice(insertAt, 0, newItem)
+
+    // Recalculate expiration times for everything after the insertion point
+    // (only needed when inserting into the middle of the queue)
+    if (insertAt < queue.length - 1) {
+      let cursor = newItem.expirationTime
+      for (let i = insertAt + 1; i < queue.length; i++) {
+        cursor += queue[i].durationMs
+        queue[i] = { ...queue[i], expirationTime: cursor }
+      }
+    }
 
     await this.room.storage.put("queue", queue)
     await this.broadcastQueue(queue)
@@ -420,16 +460,17 @@ export default class RadioParty implements Party.Server {
     const queue = await this.storage<QueueItem[]>("queue", [])
     if (queue.length <= 1) return
     const nowPlaying = queue[0]
-    const rest = queue.slice(1)
+    // Reorder only the user section — robot tail always stays at the end
+    const userItems = queue.slice(1).filter(i => i.addedBy !== "robot")
+    const robotItems = queue.slice(1).filter(i => i.addedBy === "robot")
     const keySet = new Set(keys)
-    const reordered = keys.map(k => rest.find(i => i.key === k)).filter((i): i is QueueItem => i != null)
-    const missing = rest.filter(i => !keySet.has(i.key))
+    const reordered = keys.map(k => userItems.find(i => i.key === k)).filter((i): i is QueueItem => i != null)
+    const missing = userItems.filter(i => !keySet.has(i.key))
     let cursor = nowPlaying.expirationTime
-    const newUpNext = [...reordered, ...missing].map(item => {
+    const newQueue = [nowPlaying, ...[...reordered, ...missing, ...robotItems].map(item => {
       cursor += item.durationMs
       return { ...item, expirationTime: cursor }
-    })
-    const newQueue = [nowPlaying, ...newUpNext]
+    })]
     await this.room.storage.put("queue", newQueue)
     await this.broadcastQueue(newQueue)
   }
@@ -447,12 +488,7 @@ export default class RadioParty implements Party.Server {
 
     await this.room.storage.put("queue", newQueue)
     await this.broadcastQueue(newQueue)
-
-    if (newQueue.length === 0) {
-      await this.robotDJ()
-    } else if (newQueue.length === 1 && newQueue[0].addedBy === "robot") {
-      await this.addRobotTrack(newQueue.map(i => i.isrc))
-    }
+    await this.fillRobotQueue()
   }
 
   private async expireTrack(key: string, addToPool: boolean) {
@@ -480,12 +516,7 @@ export default class RadioParty implements Party.Server {
     }
 
     await this.broadcastQueue(queue)
-
-    console.log(`[expireTrack] queue length: ${queue.length}, first addedBy: "${queue[0]?.addedBy}"`)
-    if (queue.length === 1 && queue[0].addedBy === "robot") {
-      console.log("[expireTrack] adding follow-up robot track")
-      await this.addRobotTrack(queue.map(i => i.isrc))
-    }
+    await this.fillRobotQueue()
   }
 
   private async removeFromPool(isrc: string) {
@@ -524,28 +555,67 @@ export default class RadioParty implements Party.Server {
     return [...this.room.getConnections()].length > 0
   }
 
-  private async robotDJ() {
-    const queue = await this.storage<QueueItem[]>("queue", [])
-    if (queue.length > 0) return
-    if (!this.hasListeners()) return
+  /** Proactively fill the robot tail to TARGET_ROBOT_DEPTH tracks.
+   *  Robot tracks always live at the end of the queue, after any user-queued tracks.
+   *  Batches all additions into a single storage write + broadcast. */
+  private async fillRobotQueue() {
+    if (this.robotFilling) return
+    this.robotFilling = true
+    try {
+      if (!this.hasListeners()) return
 
-    const pool = (await this.storage<PoolTrack[]>("pool", [])).filter(hasAnyPlatformId)
-    if (pool.length === 0) return
+      const queue = await this.storage<QueueItem[]>("queue", [])
+      const pool = (await this.storage<PoolTrack[]>("pool", [])).filter(hasAnyPlatformId)
+      if (pool.length === 0) return
 
-    const first = pool[Math.floor(Math.random() * pool.length)]
-    const { lastPlayedAt: _1, addedByUsers: _2, playCount: _3, ...track1 } = first
-    await this.addTrack(track1, "robot")
-    await this.addRobotTrack([first.isrc])
-  }
+      // Count robot tracks already in the tail (positions 1+, not counting now-playing)
+      const robotTailCount = queue.slice(1).filter(item => item.addedBy === "robot").length
+      const needed = TARGET_ROBOT_DEPTH - robotTailCount
+      if (needed <= 0) return
 
-  private async addRobotTrack(excludeIsrcs: string[]) {
-    if (!this.hasListeners()) return
-    const pool = await this.storage<PoolTrack[]>("pool", [])
-    const candidates = pool.filter(t => hasAnyPlatformId(t) && !excludeIsrcs.includes(t.isrc))
-    if (candidates.length === 0) return
-    const pick = candidates[Math.floor(Math.random() * candidates.length)]
-    const { lastPlayedAt: _, addedByUsers: _2, playCount: _3, ...track } = pick
-    await this.addTrack(track, "robot")
+      // Build an exclusion set so we don't re-queue the same track in this fill pass
+      const alreadyQueued = new Set<string>(
+        queue.flatMap(q => [q.isrc, q.platformIds?.apple].filter((v): v is string => !!v))
+      )
+
+      let changed = false
+      // Cap iterations at needed*2 to prevent cascade on pools full of unavailable tracks
+      for (let i = 0; i < needed && i < needed * 2; i++) {
+        const candidates = pool.filter(t => {
+          if (t.isrc && alreadyQueued.has(t.isrc)) return false
+          if (t.platformIds?.apple && alreadyQueued.has(t.platformIds.apple)) return false
+          return true
+        })
+        if (candidates.length === 0) break
+
+        const pick = candidates[Math.floor(Math.random() * candidates.length)]
+        if (pick.isrc) alreadyQueued.add(pick.isrc)
+        if (pick.platformIds?.apple) alreadyQueued.add(pick.platformIds.apple)
+
+        const { lastPlayedAt: _, addedByUsers: _2, playCount: _3, ...track } = pick
+        const last = queue[queue.length - 1]
+        const expirationTime = last
+          ? last.expirationTime + track.durationMs
+          : Date.now() + track.durationMs
+
+        queue.push({
+          ...track,
+          key: crypto.randomUUID(),
+          expirationTime,
+          addedByName: undefined,
+          addedBy: "robot",
+          addedAt: Date.now(),
+        })
+        changed = true
+      }
+
+      if (changed) {
+        await this.room.storage.put("queue", queue)
+        await this.broadcastQueue(queue)
+      }
+    } finally {
+      this.robotFilling = false
+    }
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────

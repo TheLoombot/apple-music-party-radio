@@ -156,11 +156,28 @@ export async function syncQueueTail(tailIds: string[]): Promise<void> {
   const position = nativeQueue.position
 
   // What's currently in the native queue after the playing track
-  const nativeTailIds = items.slice(position + 1).map(item => item.id)
+  const nativeTailIds = items.slice(position + 1).map(item => String(item.id))
 
   if (nativeTailIds.join(",") === tailIds.join(",")) return  // already in sync
 
-  console.debug("[MusicKit queue] syncQueueTail", {
+  // Optimisation: if the native tail is already a leading prefix of the desired tail,
+  // we only need to append the delta rather than removing and re-adding everything.
+  // This is the common case when the robot DJ just appended a new track to a full queue.
+  const isPrefixAppend =
+    nativeTailIds.length > 0 &&
+    nativeTailIds.length < tailIds.length &&
+    nativeTailIds.every((id, idx) => tailIds[idx] === id)
+
+  if (isPrefixAppend) {
+    const toAdd = tailIds.slice(nativeTailIds.length)
+    console.debug("[MusicKit queue] syncQueueTail prefix-append", { adding: toAdd })
+    for (const id of toAdd) {
+      await music.playLater({ song: id })
+    }
+    return
+  }
+
+  console.debug("[MusicKit queue] syncQueueTail full re-sync", {
     position,
     nativeTail: nativeTailIds,
     wantedTail: tailIds,

@@ -29,7 +29,6 @@ export class PlaybackLoop {
   private pendingPlay: { track: QueueItem; offsetSeconds: number; tail: QueueItem[] } | null = null
   private lastKnownQueue: QueueItem[] = []
   private autoplayEnabled = false
-  private robotDJPending = false
   private muted = false
   private expirationTimer: ReturnType<typeof setTimeout> | null = null
   private nowPlayingItemTeardown: (() => void) | null = null
@@ -61,7 +60,6 @@ export class PlaybackLoop {
     this.nativeCurrentId = null
     this.lastKnownQueue = []
     this.pendingPlay = null
-    this.robotDJPending = false
     if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
     // intentionally keep autoplayEnabled — once the user has tapped, don't ask again
   }
@@ -122,8 +120,22 @@ export class PlaybackLoop {
   private handleVisibilityChange = async () => {
     if (document.hidden) return
     if (!this.autoplayEnabled || !this.currentTrack) return
-    if (this.player.isPlaying()) return  // still going — no need to rehydrate
 
+    if (this.player.isPlaying()) {
+      // Playback is active — sync the native queue tail in case we missed soft updates
+      // while the tab was backgrounded (especially important with a deep robot queue).
+      const tail = this.lastKnownQueue.slice(1)
+      if (tail.length > 0) {
+        try {
+          await this.player.syncQueueTail(tail)
+        } catch (err) {
+          console.error("[PlaybackLoop] visibility restore syncQueueTail error:", err)
+        }
+      }
+      return
+    }
+
+    // Playback stopped — rehydrate at the correct offset.
     // Also skip if MusicKit is already on the right track (loading/waiting after natural advance)
     const liveId = this.player.getLiveCurrentId()
     const wantedId = this.currentTrack.platformIds.apple
@@ -141,7 +153,7 @@ export class PlaybackLoop {
     try {
       await this.player.playAtOffset(track, offsetSeconds, tail)
       if (this.playSequence !== seq) return
-      this.nativeCurrentId = track.platformIds.apple ?? null
+      this.nativeCurrentId = wantedId ?? null
     } catch (err) {
       if (err instanceof UnavailableError) {
         console.warn("[PlaybackLoop] track unavailable on tab focus:", track.name)
@@ -163,14 +175,11 @@ export class PlaybackLoop {
       this.pendingPlay = null
       if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
       this.player.stop()
-      if (!this.robotDJPending) {
-        this.robotDJPending = true
-        stationSocket.triggerRobotDJ()
-      }
+      // Robot queue is now server-managed. Send a fallback ping in case the server
+      // missed filling (e.g. pool was empty at expiry time but tracks were added since).
+      stationSocket.triggerRobotDJ()
       return
     }
-
-    this.robotDJPending = false
 
     const track0 = queue[0]
     const tail = queue.slice(1)

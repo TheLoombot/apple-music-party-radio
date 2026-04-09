@@ -3,6 +3,7 @@ import { AnimatePresence } from "framer-motion"
 import { SetupScreen } from "./components/SetupScreen"
 import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
+import { RobotQueue } from "./components/RobotQueue"
 import { SearchTracks } from "./components/AddTracks"
 import { PoolModal } from "./components/PoolModal"
 import { StationChat } from "./components/StationChat"
@@ -385,6 +386,9 @@ export default function App() {
       .flatMap(i => [i.isrc, i.platformIds?.apple])
       .filter(Boolean) as string[]
   )
+  // Split the queue into user-submitted tracks and robot-managed tail
+  const userQueue = upNext.filter(item => item.addedBy !== "robot")
+  const robotQueue = upNext.filter(item => item.addedBy === "robot")
 
   return (
     <div className="min-h-screen bg-surface">
@@ -509,11 +513,15 @@ export default function App() {
             onRenameStation={isOwnStation ? handleRenameStation : undefined}
           />
           <UpNext
-            queue={isPrivileged ? upNext : upNext.slice(0, 1)}
+            queue={isPrivileged ? userQueue : userQueue.slice(0, 1)}
             currentUser={user}
             stationOwner={currentStationId}
             onRemove={handleRemoveTrack}
             onReorder={isPrivileged ? (keys) => stationSocket.reorderQueue(keys) : undefined}
+            onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
+          />
+          <RobotQueue
+            queue={robotQueue}
             onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
           />
         </div>

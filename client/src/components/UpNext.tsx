@@ -65,7 +65,7 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
 
       <div>
         {queue.length === 0 ? (
-          <div className="p-6 text-center text-muted text-sm">Queue is empty, robot DJ will take over from the station pool</div>
+          <div className="p-6 text-center text-muted text-sm">No tracks queued — search or browse below to add some</div>
         ) : (
           <ul>
             <AnimatePresence initial={false}>
