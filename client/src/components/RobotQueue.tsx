@@ -56,7 +56,7 @@ export function RobotQueue({ queue, onRemove, onAlbumClick }: Props) {
               {queue.map((item, i) => (
                 <li
                   key={item.key}
-                  className="group flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 opacity-60 hover:opacity-80 transition-opacity"
+                  className="group flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0"
                 >
                   <span className="text-xs text-muted w-4 text-center flex-shrink-0 tabular-nums">{i + 1}</span>
 

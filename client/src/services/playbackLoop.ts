@@ -17,7 +17,7 @@
  */
 import { stationSocket } from "./partykit"
 import { UnavailableError } from "./player"
-import { onNowPlayingItemChange } from "./musickit"
+import { onNowPlayingItemChange, isPreviewOnly } from "./musickit"
 import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
 
@@ -26,7 +26,7 @@ export class PlaybackLoop {
   private currentTrackKey: string | null = null
   private nativeCurrentId: string | null = null  // Apple ID we last set as queue[0]
   private playSequence = 0                        // guards against stale async writes
-  private pendingPlay: { track: QueueItem; offsetSeconds: number; tail: QueueItem[] } | null = null
+  private pendingPlay: { track: QueueItem; tail: QueueItem[] } | null = null
   private lastKnownQueue: QueueItem[] = []
   private autoplayEnabled = false
   private muted = false
@@ -37,6 +37,7 @@ export class PlaybackLoop {
   onQueueChange?: (upNext: QueueItem[]) => void
   onPlaybackBlocked?: () => void
   onMutedChange?: (muted: boolean) => void
+  onPreviewOnly?: () => void
 
   constructor(private player: MusicPlayer) {}
 
@@ -68,8 +69,17 @@ export class PlaybackLoop {
     this.autoplayEnabled = true
     this.setMuted(false)
     if (!this.pendingPlay) return
-    const { track, offsetSeconds, tail } = this.pendingPlay
+    const { track, tail } = this.pendingPlay
     this.pendingPlay = null
+    // Recalculate offset at resume time — pendingPlay may have been set seconds/minutes ago
+    const now = Date.now()
+    if (now >= track.expirationTime) {
+      // Track already expired while waiting — tell server and bail
+      stationSocket.expireTrack(track.key, true)
+      return
+    }
+    const startTime = track.expirationTime - track.durationMs
+    const offsetSeconds = Math.max(0, (now - startTime) / 1000)
     const seq = ++this.playSequence
     this.nativeCurrentId = null
     try {
@@ -87,6 +97,30 @@ export class PlaybackLoop {
 
   enableAutoplay() {
     this.autoplayEnabled = true
+  }
+
+  /** Re-play the current track from the correct sync offset. Call after re-authorization. */
+  async refresh() {
+    if (!this.autoplayEnabled || !this.currentTrack) return
+    const track = this.currentTrack
+    const now = Date.now()
+    if (now >= track.expirationTime) return
+    const startTime = track.expirationTime - track.durationMs
+    const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+    const tail = this.lastKnownQueue.slice(1)
+    const seq = ++this.playSequence
+    this.nativeCurrentId = null
+    try {
+      await this.player.playAtOffset(track, offsetSeconds, tail)
+      if (this.playSequence !== seq) return
+      this.nativeCurrentId = track.platformIds.apple ?? null
+    } catch (err) {
+      if (err instanceof UnavailableError) {
+        console.warn("[PlaybackLoop] refresh: track unavailable:", track.name)
+      } else {
+        console.error("[PlaybackLoop] refresh error:", err)
+      }
+    }
   }
 
   setMuted(muted: boolean) {
@@ -111,7 +145,14 @@ export class PlaybackLoop {
     const expectedNextId = this.lastKnownQueue[1]?.platformIds?.apple
     if (!expectedNextId || itemId !== expectedNextId) return
 
-    // MusicKit moved forward on its own — tell the server
+    // MusicKit moved forward on its own — tell the server.
+    // Skip if in preview-only mode (Chrome/no FairPlay DRM): the preview auto-advanced
+    // after 30 s but the server track is still live; don't cascade rapid expires.
+    if (isPreviewOnly()) {
+      console.warn("[PlaybackLoop] preview-only mode detected — suppressing auto-advance expire")
+      this.onPreviewOnly?.()
+      return
+    }
     this.nativeCurrentId = itemId
     if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
     stationSocket.expireTrack(this.currentTrackKey, true)
@@ -136,10 +177,11 @@ export class PlaybackLoop {
     }
 
     // Playback stopped — rehydrate at the correct offset.
-    // Also skip if MusicKit is already on the right track (loading/waiting after natural advance)
     const liveId = this.player.getLiveCurrentId()
     const wantedId = this.currentTrack.platformIds.apple
-    if (wantedId && liveId === wantedId) return
+    // Note: we intentionally do NOT early-return when liveId === wantedId here.
+    // iOS can pause the audio while backgrounded even with the right track loaded —
+    // we must seek to the correct offset and resume.
 
     const track = this.currentTrack
     const now = Date.now()
@@ -231,7 +273,7 @@ export class PlaybackLoop {
       const offsetSeconds = Math.max(0, (now - startTime) / 1000)
 
       if (!this.autoplayEnabled) {
-        this.pendingPlay = { track: track0, offsetSeconds, tail }
+        this.pendingPlay = { track: track0, tail }
         this.onPlaybackBlocked?.()
         return
       }

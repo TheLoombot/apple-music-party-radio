@@ -12,7 +12,7 @@ import { StationList } from "./components/StationList"
 import { ListenersPanel } from "./components/ListenersPanel"
 import { FaceGenerator } from "./components/FaceGenerator"
 import { PlaylistModal } from "./components/PlaylistModal"
-import { initMusicKit, authorize, isAuthorized } from "./services/musickit"
+import { initMusicKit, authorize, isAuthorized, getMusicKit } from "./services/musickit"
 import { getUserStorefront } from "./services/appleMusic"
 import { getUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId, removeOwnedStationId, getStationName, setStationName } from "./services/identity"
 import { stationSocket, indexSocket } from "./services/partykit"
@@ -39,6 +39,7 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [isMuted, setIsMuted] = useState(false)
   const [playbackBlocked, setPlaybackBlocked] = useState(false)
+  const [previewOnly, setPreviewOnly] = useState(false)
   const [ownedStationIds, setOwnedStationIds] = useState<string[]>(() => getOwnedStationIds())
   const [djUserIds, setDJUserIds] = useState<string[]>([])
   const [createModalOpen, setCreateModalOpen] = useState(false)
@@ -139,6 +140,7 @@ export default function App() {
   useEffect(() => {
     if (appState !== "ready" || !currentStationId || !user) return
     playbackLoop.current.onNowPlayingChange = setNowPlaying
+    playbackLoop.current.onPreviewOnly = () => setPreviewOnly(true)
     playbackLoop.current.onQueueChange = setUpNext
     playbackLoop.current.onPlaybackBlocked = () => setPlaybackBlocked(true)
     playbackLoop.current.onMutedChange = setIsMuted
@@ -217,6 +219,17 @@ export default function App() {
   const handleMuteToggle = useCallback(() => {
     playbackLoop.current.setMuted(!isMuted)
   }, [isMuted])
+
+  const handleReauthorize = useCallback(async () => {
+    try {
+      // Unauthorize first so MusicKit doesn't skip the popup when already authorized
+      await getMusicKit().unauthorize()
+      await authorize()
+      await playbackLoop.current.refresh()
+    } catch (err: any) {
+      console.error("[reauth]", err)
+    }
+  }, [])
 
   const handleResume = useCallback(async () => {
     setPlaybackBlocked(false)
@@ -400,6 +413,13 @@ export default function App() {
         </div>
         <div className="text-muted text-xs flex items-center gap-3">
           <span className="text-muted/40 font-mono">{__COMMIT__}</span>
+          <button
+            onClick={handleReauthorize}
+            className="text-muted/40 hover:text-white transition-colors"
+            title="Reconnect Apple Music (fixes 30-second preview playback in Chrome)"
+          >
+            ↻ Apple Music
+          </button>
           {renamingDJ ? (
             <input
               ref={renameRef}
@@ -420,6 +440,16 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {previewOnly && (
+        <div className="bg-yellow-900/40 border-b border-yellow-700/40 px-6 py-2 text-xs text-yellow-300 flex items-center gap-2">
+          <span>⚠️</span>
+          <span>
+            Preview-only playback detected — your browser (Chrome) doesn't support Apple's FairPlay DRM.
+            Full songs play in Safari. Playback on this station will be limited to 30-second previews.
+          </span>
+        </div>
+      )}
 
       {createModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" onClick={() => setCreateModalOpen(false)}>

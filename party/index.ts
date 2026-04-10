@@ -174,14 +174,36 @@ export default class RadioParty implements Party.Server {
       this.cachedRoomId = await this.room.storage.get<string>("roomId") ?? null
     }
     if (!this.cachedRoomId || this.cachedRoomId === "index") return
-    const queue = await this.storage<QueueItem[]>("queue", [])
-    if (queue.length === 0) return
-    if (Date.now() >= queue[0].expirationTime) {
-      await this.expireTrack(queue[0].key, true)
-    } else {
-      // Alarm fired early (Cloudflare may do this) — reschedule for the correct time.
-      // Without this, the track is stuck: it won't be expired by alarm and won't be added to pool.
-      await this.room.storage.setAlarm(queue[0].expirationTime)
+    try {
+      const queue = await this.storage<QueueItem[]>("queue", [])
+      if (queue.length === 0) {
+        // Queue is empty — ensure the station index is marked not-live.
+        // This is the key fix for stations with no active listeners: without it,
+        // a failed/missed alarm leaves the station showing stale now-playing data
+        // indefinitely because no WebSocket connections are open to trigger a re-sync.
+        await this.notifyIndex(0)
+        return
+      }
+      if (Date.now() >= queue[0].expirationTime) {
+        await this.expireTrack(queue[0].key, true)
+      } else {
+        // Alarm fired early (Cloudflare may do this) — reschedule for the correct time.
+        // Without this, the track is stuck: it won't be expired by alarm and won't be added to pool.
+        await this.room.storage.setAlarm(queue[0].expirationTime)
+      }
+    } catch (err) {
+      console.error(`[onAlarm] error in room ${this.cachedRoomId}:`, err)
+      // Best-effort: notify index so the station doesn't stay "live" forever on error
+      try {
+        const queue = await this.storage<QueueItem[]>("queue", [])
+        await this.notifyIndex(
+          liveUntilFromQueue(queue),
+          queue[0]?.addedBy, queue[0]?.addedByName,
+          queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl
+        )
+      } catch (e) {
+        console.error(`[onAlarm] fallback notifyIndex also failed in room ${this.cachedRoomId}:`, e)
+      }
     }
   }
 
@@ -244,14 +266,19 @@ export default class RadioParty implements Party.Server {
           const stations = await this.storage<Station[]>("stations", [])
           const idx = stations.findIndex(s => s.id === msg.id)
           if (idx >= 0) {
+            const liveUntil = msg.liveUntil ?? 0
+            const isLive = liveUntil > 0
             stations[idx] = {
               ...stations[idx],
-              liveUntil: msg.liveUntil ?? 0,
+              liveUntil,
               nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
               nowPlayingAddedByName: msg.nowPlayingAddedByName ?? undefined,
-              nowPlayingTrackName: msg.nowPlayingTrackName ?? stations[idx].nowPlayingTrackName,
-              nowPlayingArtistName: msg.nowPlayingArtistName ?? stations[idx].nowPlayingArtistName,
-              nowPlayingArtworkUrl: msg.nowPlayingArtworkUrl ?? stations[idx].nowPlayingArtworkUrl,
+              // When the queue empties (liveUntil === 0), clear stale now-playing metadata.
+              // Previously `?? stations[idx].nowPlayingTrackName` preserved old data forever,
+              // so the station card kept showing the last played track even when offline.
+              nowPlayingTrackName: isLive ? (msg.nowPlayingTrackName ?? stations[idx].nowPlayingTrackName) : undefined,
+              nowPlayingArtistName: isLive ? (msg.nowPlayingArtistName ?? stations[idx].nowPlayingArtistName) : undefined,
+              nowPlayingArtworkUrl: isLive ? (msg.nowPlayingArtworkUrl ?? stations[idx].nowPlayingArtworkUrl) : undefined,
             }
             await this.room.storage.put("stations", stations)
             this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
@@ -680,9 +707,22 @@ export default class RadioParty implements Party.Server {
     }
   }
 
-  // Index room only — merges ephemeral presence into station list before broadcasting
+  // Index room only — merges ephemeral presence into station list before broadcasting.
+  // Also strips now-playing metadata from any station whose live window has passed,
+  // so clients never see stale track info regardless of what's in storage.
   private withPresence(stations: Station[]): Station[] {
-    return stations.map(s => ({ ...s, listeners: this.presenceMap.get(s.id) ?? [] }))
+    const now = Date.now()
+    return stations.map(s => {
+      const isLive = s.liveUntil > now
+      return {
+        ...s,
+        liveUntil: isLive ? s.liveUntil : 0,
+        nowPlayingTrackName: isLive ? s.nowPlayingTrackName : undefined,
+        nowPlayingArtistName: isLive ? s.nowPlayingArtistName : undefined,
+        nowPlayingArtworkUrl: isLive ? s.nowPlayingArtworkUrl : undefined,
+        listeners: this.presenceMap.get(s.id) ?? [],
+      }
+    })
   }
 
   private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingAddedByName?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string, nowPlayingArtworkUrl?: string) {
@@ -720,8 +760,13 @@ export default class RadioParty implements Party.Server {
   }
 }
 
+// Use queue[0] (currently playing track) rather than the last robot track.
+// Using the last track's expiration (up to 8 × avg_duration ≈ 30 min) means a
+// stalled station stays "live" in the index for 30 minutes. Using queue[0] keeps
+// the live window to at most one track duration; the alarm chain then refreshes
+// liveUntil on each natural track advance.
 function liveUntilFromQueue(queue: QueueItem[]): number {
-  return queue.length > 0 ? queue[queue.length - 1].expirationTime : 0
+  return queue.length > 0 ? queue[0].expirationTime : 0
 }
 
 /** Match two tracks for pool deduplication.

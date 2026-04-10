@@ -110,6 +110,16 @@ export function isAuthorized(): boolean {
   try { return getMusicKit().isAuthorized } catch { return false }
 }
 
+/** Returns true if MusicKit is in preview-only mode (no DRM / FairPlay not available).
+ *  Detected by checking currentPlaybackDuration after playback starts — previews are ≤30s
+ *  even when the track is a full-length song. Chrome lacks FairPlay support. */
+export function isPreviewOnly(): boolean {
+  try {
+    const dur = (getMusicKit() as any).currentPlaybackDuration ?? 0
+    return dur > 0 && dur <= 31
+  } catch { return false }
+}
+
 export async function playTrackAtOffset(catalogId: string, offsetSeconds: number, tailIds?: string[]): Promise<void> {
   const music = getMusicKit()
   if (tailIds && tailIds.length > 0) {
