@@ -21,6 +21,8 @@ import type * as Party from "partykit/server"
 
 // ─── Shared types (mirrored from client/src/types.ts) ────────────────────────
 
+type Platform = "apple" | "spotify"
+
 interface PlatformIds {
   apple?: string
   spotify?: string
@@ -29,7 +31,7 @@ interface PlatformIds {
 interface Track {
   isrc: string
   platformIds: PlatformIds
-  addedViaPlatform: string
+  addedViaPlatform: Platform
   name: string
   artistName: string
   albumName: string
@@ -62,13 +64,14 @@ interface ChatMessage {
 interface Listener {
   userId: string
   displayName: string
+  isDJ?: boolean
 }
 
 interface ConnectedListener extends Listener {
   isDJ: boolean
 }
 
-interface StationMeta {
+interface Station {
   id: string
   displayName: string
   storefront: string
@@ -142,7 +145,7 @@ export default class RadioParty implements Party.Server {
       } catch { /* ignore — fallback to env var */ }
     }
     if (this.room.id === "index") {
-      const stations = await this.storage<StationMeta[]>("stations", [])
+      const stations = await this.storage<Station[]>("stations", [])
       conn.send(json({ type: "stations_update", stations: this.withPresence(stations) }))
     } else {
       try {
@@ -226,7 +229,7 @@ export default class RadioParty implements Party.Server {
       if (req.method === "GET") {
         const checkSlug = url.searchParams.get("check")
         if (checkSlug) {
-          const stations = await this.storage<StationMeta[]>("stations", [])
+          const stations = await this.storage<Station[]>("stations", [])
           const taken = stations.some(s => s.id === checkSlug)
           return new Response(JSON.stringify({ taken }), {
             headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -238,7 +241,7 @@ export default class RadioParty implements Party.Server {
       if (req.method === "POST") {
         const msg = await req.json() as any
         if (msg.type === "station_status") {
-          const stations = await this.storage<StationMeta[]>("stations", [])
+          const stations = await this.storage<Station[]>("stations", [])
           const idx = stations.findIndex(s => s.id === msg.id)
           if (idx >= 0) {
             stations[idx] = {
@@ -255,7 +258,7 @@ export default class RadioParty implements Party.Server {
           }
         } else if (msg.type === "station_presence") {
           this.presenceMap.set(msg.id, msg.listeners ?? [])
-          const stations = await this.storage<StationMeta[]>("stations", [])
+          const stations = await this.storage<Station[]>("stations", [])
           this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
         }
       }
@@ -281,7 +284,7 @@ export default class RadioParty implements Party.Server {
 
   private async handleIndex(msg: any) {
     if (msg.type === "remove_station") {
-      let stations = await this.storage<StationMeta[]>("stations", [])
+      let stations = await this.storage<Station[]>("stations", [])
       stations = stations.filter(s => s.id !== msg.id)
       await this.room.storage.put("stations", stations)
       this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
@@ -289,10 +292,10 @@ export default class RadioParty implements Party.Server {
     }
     if (msg.type !== "register") return
 
-    const stations = await this.storage<StationMeta[]>("stations", [])
+    const stations = await this.storage<Station[]>("stations", [])
     const idx = stations.findIndex(s => s.id === msg.id)
     const existing = idx >= 0 ? stations[idx] : null
-    const meta: StationMeta = {
+    const meta: Station = {
       ...existing,
       id: msg.id,
       displayName: msg.displayName,
@@ -665,7 +668,7 @@ export default class RadioParty implements Party.Server {
   }
 
   private async notifyIndexPresence() {
-    const listeners: Listener[] = [...this.connListeners.values()].map(({ userId, displayName }) => ({ userId, displayName }))
+    const listeners: Listener[] = [...this.connListeners.values()].map(({ userId, displayName, isDJ }) => ({ userId, displayName, isDJ }))
     try {
       await fetch(await this.getIndexUrl(), {
         method: "POST",
@@ -678,7 +681,7 @@ export default class RadioParty implements Party.Server {
   }
 
   // Index room only — merges ephemeral presence into station list before broadcasting
-  private withPresence(stations: StationMeta[]): StationMeta[] {
+  private withPresence(stations: Station[]): Station[] {
     return stations.map(s => ({ ...s, listeners: this.presenceMap.get(s.id) ?? [] }))
   }
 
