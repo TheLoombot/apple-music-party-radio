@@ -7,11 +7,12 @@ import type { QueueItem } from "../types"
 
 interface Props {
   queue: QueueItem[]
+  onRemove?: (item: QueueItem) => void
   onAlbumClick?: (item: QueueItem) => void
 }
 
-export function RobotQueue({ queue, onAlbumClick }: Props) {
-  const [expanded, setExpanded] = useState(false)
+export function RobotQueue({ queue, onRemove, onAlbumClick }: Props) {
+  const [expanded, setExpanded] = useState(true)
 
   if (queue.length === 0) return null
 
@@ -55,27 +56,36 @@ export function RobotQueue({ queue, onAlbumClick }: Props) {
               {queue.map((item, i) => (
                 <li
                   key={item.key}
-                  className="flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 opacity-60 hover:opacity-80 transition-opacity"
+                  className="group flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 opacity-60 hover:opacity-80 transition-opacity"
                 >
                   <span className="text-xs text-muted w-4 text-center flex-shrink-0 tabular-nums">{i + 1}</span>
 
-                  <div className="w-10 h-10 rounded flex-shrink-0 overflow-hidden bg-surface">
+                  <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
                     {item.artworkUrl ? (
-                      <img src={artworkUrl(item.artworkUrl, 80)} alt="" className="w-full h-full object-cover" />
+                      <img src={artworkUrl(item.artworkUrl, 192)} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-muted text-xs">♪</div>
+                      <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>
                     )}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-white/80 text-sm font-medium truncate">{item.name}</p>
-                    <p className="text-muted/60 text-xs truncate">{item.artistName}</p>
+                    <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
+                    <p className="text-white/80 text-base font-semibold truncate">{item.name}</p>
                     {onAlbumClick
-                      ? <button onClick={() => onAlbumClick(item)} className="text-muted/40 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{item.albumName}</button>
-                      : <p className="text-muted/40 text-xs truncate">{item.albumName}</p>}
+                      ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{item.albumName}</button>
+                      : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
                   </div>
 
-                  <span className="text-xs text-muted/50 tabular-nums flex-shrink-0">{formatDuration(item.durationMs)}</span>
+                  <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(item.durationMs)}</span>
+                  {onRemove && (
+                    <button
+                      onClick={() => onRemove(item)}
+                      className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all text-lg leading-none flex-shrink-0"
+                      title="Remove from queue"
+                    >
+                      ×
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

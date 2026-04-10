@@ -522,6 +522,7 @@ export default function App() {
           />
           <RobotQueue
             queue={robotQueue}
+            onRemove={isPrivileged ? handleRemoveTrack : undefined}
             onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
           />
         </div>
