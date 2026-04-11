@@ -104,11 +104,19 @@ export default function App() {
       }
     }
     indexSocket.connect()
-    // Register all owned stations with the index (use stored station name, not DJ name)
+    // Register owned stations; remove any legacy UUID-shaped IDs left over from the
+    // old 1:1 uid→station model (they were never real named stations).
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     const owned = getOwnedStationIds()
     for (const stationId of owned) {
-      indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid)
+      if (uuidRe.test(stationId)) {
+        indexSocket.removeStation(stationId)
+        removeOwnedStationId(stationId)
+      } else {
+        indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid)
+      }
     }
+    setOwnedStationIds(getOwnedStationIds())
 
     // Sync path → station on browser back/forward
     const onPopState = () => {
@@ -167,11 +175,6 @@ export default function App() {
     const uid = getUserId()
     const displayName = getDisplayName() ?? `DJ ${uid.slice(0, 6)}`
     catalog.current = new AppleMusicCatalog(storefront)
-    // Legacy migration: if user has no owned stations recorded, assume their UID-based station exists
-    if (getOwnedStationIds().length === 0) {
-      addOwnedStationId(uid)
-      setOwnedStationIds([uid])
-    }
     setUser({ uid, storefront, displayName })
     setAppState("ready")
   }

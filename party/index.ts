@@ -177,11 +177,14 @@ export default class RadioParty implements Party.Server {
     try {
       const queue = await this.storage<QueueItem[]>("queue", [])
       if (queue.length === 0) {
-        // Queue is empty — ensure the station index is marked not-live.
-        // This is the key fix for stations with no active listeners: without it,
-        // a failed/missed alarm leaves the station showing stale now-playing data
-        // indefinitely because no WebSocket connections are open to trigger a re-sync.
-        await this.notifyIndex(0)
+        // Queue empty — try to refill from pool before marking the station offline.
+        // This keeps the alarm chain alive when the queue drains with no listeners present.
+        await this.fillRobotQueue()
+        const refilled = await this.storage<QueueItem[]>("queue", [])
+        if (refilled.length === 0) {
+          // Pool also empty — station genuinely has nothing to play
+          await this.notifyIndex(0)
+        }
         return
       }
       if (Date.now() >= queue[0].expirationTime) {
@@ -302,6 +305,21 @@ export default class RadioParty implements Party.Server {
         this.cachedOwnerUid = body.ownerUid
         return new Response("ok", { headers: corsHeaders })
       }
+
+      // POST /parties/main/<slug>/bootstrap — wake a dormant station (sent by index on register)
+      if (req.method === "POST" && url.pathname.endsWith("/bootstrap")) {
+        // Persist context needed by onAlarm (normally set on first WebSocket connect)
+        this.cachedRoomId = this.room.id
+        void this.room.storage.put("roomId", this.room.id)
+        if (!this.cachedIndexUrl) {
+          const protocol = url.protocol === "https:" ? "https" : "http"
+          const indexUrl = `${protocol}://${url.host}/parties/main/index`
+          this.cachedIndexUrl = indexUrl
+          void this.room.storage.put("indexUrl", indexUrl)
+        }
+        void this.bootstrapIfNeeded()
+        return new Response("ok", { headers: corsHeaders })
+      }
     }
 
     return new Response("ok", { headers: corsHeaders })
@@ -336,6 +354,18 @@ export default class RadioParty implements Party.Server {
 
     await this.room.storage.put("stations", stations)
     this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
+
+    // If the station appears offline, send it a bootstrap ping so it wakes up and
+    // starts playing from its pool even with no listeners connected.
+    if (!existing || existing.liveUntil <= Date.now()) {
+      const indexUrl = await this.getIndexUrl()
+      const bootstrapUrl = indexUrl.replace(/\/index$/, `/${encodeURIComponent(msg.id)}/bootstrap`)
+      void fetch(bootstrapUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }).catch(() => {})
+    }
   }
 
   // ─── Station room ────────────────────────────────────────────────────────
@@ -587,13 +617,12 @@ export default class RadioParty implements Party.Server {
 
   /** Proactively fill the robot tail to TARGET_ROBOT_DEPTH tracks.
    *  Robot tracks always live at the end of the queue, after any user-queued tracks.
-   *  Batches all additions into a single storage write + broadcast. */
+   *  Batches all additions into a single storage write + broadcast.
+   *  Runs even with no active listeners so stations stay "always on". */
   private async fillRobotQueue() {
     if (this.robotFilling) return
     this.robotFilling = true
     try {
-      if (!this.hasListeners()) return
-
       const queue = await this.storage<QueueItem[]>("queue", [])
       const pool = (await this.storage<PoolTrack[]>("pool", [])).filter(hasAnyPlatformId)
       if (pool.length === 0) return
@@ -603,20 +632,33 @@ export default class RadioParty implements Party.Server {
       const needed = TARGET_ROBOT_DEPTH - robotTailCount
       if (needed <= 0) return
 
-      // Build an exclusion set so we don't re-queue the same track in this fill pass
+      // Build an exclusion set so we don't immediately repeat a track already in the queue.
+      // When the pool is smaller than the queue depth we cycle: clear the set (keeping only
+      // the currently-playing track) and allow repeats rather than leaving slots empty.
       const alreadyQueued = new Set<string>(
         queue.flatMap(q => [q.isrc, q.platformIds?.apple].filter((v): v is string => !!v))
       )
 
       let changed = false
-      // Cap iterations at needed*2 to prevent cascade on pools full of unavailable tracks
-      for (let i = 0; i < needed && i < needed * 2; i++) {
+      let poolCycled = false
+      let filled = 0
+      let attempts = 0
+      while (filled < needed && attempts < needed * 4) {
+        attempts++
         const candidates = pool.filter(t => {
           if (t.isrc && alreadyQueued.has(t.isrc)) return false
           if (t.platformIds?.apple && alreadyQueued.has(t.platformIds.apple)) return false
           return true
         })
-        if (candidates.length === 0) break
+        if (candidates.length === 0) {
+          if (poolCycled) break  // still no candidates after cycling — give up
+          // Pool fully cycled through the queue — allow repeats (keep pool looping forever)
+          poolCycled = true
+          alreadyQueued.clear()
+          if (queue[0]?.isrc) alreadyQueued.add(queue[0].isrc)
+          if (queue[0]?.platformIds?.apple) alreadyQueued.add(queue[0].platformIds.apple)
+          continue
+        }
 
         const pick = candidates[Math.floor(Math.random() * candidates.length)]
         if (pick.isrc) alreadyQueued.add(pick.isrc)
@@ -636,6 +678,7 @@ export default class RadioParty implements Party.Server {
           addedBy: "robot",
           addedAt: Date.now(),
         })
+        filled++
         changed = true
       }
 
@@ -646,6 +689,19 @@ export default class RadioParty implements Party.Server {
     } finally {
       this.robotFilling = false
     }
+  }
+
+  /** Start or restart the alarm chain for a station that has pool tracks but no
+   *  active queue/alarm — called when a bootstrap HTTP ping arrives from the index. */
+  private async bootstrapIfNeeded() {
+    const queue = await this.storage<QueueItem[]>("queue", [])
+    if (queue.length > 0) {
+      // Queue already exists — just re-arm the alarm in case it lapsed after hibernation
+      await this.room.storage.setAlarm(queue[0].expirationTime)
+      return
+    }
+    // Empty queue — fill from pool; broadcastQueue inside fillRobotQueue arms the alarm
+    await this.fillRobotQueue()
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
