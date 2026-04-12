@@ -821,13 +821,21 @@ export default class RadioParty implements Party.Server {
   }
 }
 
-// Use queue[0] (currently playing track) rather than the last robot track.
-// Using the last track's expiration (up to 8 × avg_duration ≈ 30 min) means a
-// stalled station stays "live" in the index for 30 minutes. Using queue[0] keeps
-// the live window to at most one track duration; the alarm chain then refreshes
-// liveUntil on each natural track advance.
+// Use queue[0].expirationTime + a grace buffer as liveUntil.
+//
+// Why queue[0] (not the last track): using the last robot track's expiration
+// (up to 8 × avg_duration ≈ 30 min) keeps a stalled station "live" in the index
+// for 30 minutes, showing stale now-playing data. queue[0] gives a much tighter window.
+//
+// Why the 60-second grace: Cloudflare can fire alarms up to ~30 s after their scheduled
+// time. Between queue[0].expirationTime and when the alarm fires + notifyIndex completes,
+// `withPresence` would see liveUntil <= now and strip the now-playing data, making the
+// station appear "silent" in the list even though it's mid-song. The 60 s buffer covers
+// worst-case alarm latency so the station never incorrectly blinks offline.
+const LIVE_UNTIL_GRACE_MS = 60_000
+
 function liveUntilFromQueue(queue: QueueItem[]): number {
-  return queue.length > 0 ? queue[0].expirationTime : 0
+  return queue.length > 0 ? queue[0].expirationTime + LIVE_UNTIL_GRACE_MS : 0
 }
 
 /** Match two tracks for pool deduplication.
