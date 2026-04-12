@@ -141,6 +141,7 @@ export class StationSocket {
 export class IndexSocket {
   private socket: PartySocket | null = null
   onStationsUpdate?: (stations: Station[]) => void
+  onConnectionChange?: (connected: boolean) => void
 
   connect() {
     this.disconnect()
@@ -148,6 +149,8 @@ export class IndexSocket {
       ? { host: HOST, room: "index", protocol: "ws" as const }
       : { host: HOST, room: "index" }
     this.socket = new PartySocket(opts)
+    this.socket.onopen = () => this.onConnectionChange?.(true)
+    this.socket.onclose = () => this.onConnectionChange?.(false)
     this.socket.onmessage = (e) => {
       const msg = JSON.parse(e.data)
       if (msg.type === "stations_update") {

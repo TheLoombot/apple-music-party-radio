@@ -98,6 +98,20 @@ Open `http://localhost:5173`. The app will ask you to connect your Apple Music a
 
 > **Note:** The app uses `import.meta.env.DEV` to automatically point the WebSocket client at `localhost:1999` during development.
 
+#### Running servers separately
+
+If you want to inspect each server's output independently, run them in separate terminals:
+
+```bash
+# Terminal 1 — PartyKit local dev server
+npx partykit dev
+```
+
+```bash
+# Terminal 2 — Vite (React) dev server
+npm run dev --prefix client
+```
+
 ---
 
 ## Production deployment
@@ -141,6 +155,14 @@ apple-music-party-radio.<your-github-username>.partykit.dev
 Set `VITE_PARTYKIT_HOST` to that hostname (without `https://`) in your static hosting environment, then redeploy the client.
 
 > **Note:** PartyKit persists Durable Object state across deployments. The station queue and pool survive server restarts.
+
+#### Tailing production logs
+
+To stream live logs from the deployed PartyKit server:
+
+```bash
+npx partykit tail
+```
 
 ### Keeping the developer token fresh
 

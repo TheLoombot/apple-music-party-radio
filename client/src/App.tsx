@@ -40,6 +40,7 @@ export default function App() {
   const [previewOnly, setPreviewOnly] = useState(false)
   const [ownedStationIds, setOwnedStationIds] = useState<string[]>(() => getOwnedStationIds())
   const [djUserIds, setDJUserIds] = useState<string[]>([])
+  const [serverConnected, setServerConnected] = useState<boolean | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [newSlug, setNewSlug] = useState("")
   const [slugStatus, setSlugStatus] = useState<"idle" | "checking" | "available" | "taken">("idle")
@@ -83,6 +84,7 @@ export default function App() {
   useEffect(() => {
     if (appState !== "ready" || !user) return
     let didSetInitialStation = false
+    indexSocket.onConnectionChange = setServerConnected
     indexSocket.onStationsUpdate = (newStations) => {
       setStations(newStations)
       // On first update, auto-select a station if none is set
@@ -434,6 +436,13 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {serverConnected === false && (
+        <div className="bg-red-900/40 border-b border-red-700/40 px-6 py-2 text-xs text-red-300 flex items-center gap-2">
+          <span>⚠️</span>
+          <span>Cannot connect to the Party Radio server — stations and playback sync are unavailable. Is the PartyKit server running?</span>
+        </div>
+      )}
 
       {previewOnly && (
         <div className="bg-yellow-900/40 border-b border-yellow-700/40 px-6 py-2 text-xs text-yellow-300 flex items-center gap-2">
