@@ -29,17 +29,24 @@ export interface MusicCatalog {
 }
 
 export class AppleMusicCatalog implements MusicCatalog {
+  private cache = new Map<string, Promise<any>>()
+
   constructor(private storefront: string) {}
 
+  private cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    if (!this.cache.has(key)) this.cache.set(key, fn())
+    return this.cache.get(key)!
+  }
+
   search(term: string) { return searchCatalog(term, this.storefront) }
-  getAlbumTracks(id: string) { return getAlbumTracks(id, this.storefront) }
-  getPlaylistTracks(id: string) { return getPlaylistTracks(id, this.storefront) }
+  getAlbumTracks(id: string) { return this.cached(`album:${id}`, () => getAlbumTracks(id, this.storefront)) }
+  getPlaylistTracks(id: string) { return this.cached(`playlist:${id}`, () => getPlaylistTracks(id, this.storefront)) }
   getLibraryPlaylists() { return getLibraryPlaylists() }
   getLibraryPlaylistTracks(id: string) { return getLibraryPlaylistTracks(id) }
   getCharts() { return getCharts(this.storefront) }
   getRecommendedPlaylists() { return getRecommendedPlaylists() }
   getRelatedPlaylists(songId: string) { return getRelatedPlaylistsForSong(songId, this.storefront) }
-  getAlbumForTrack(songId: string) { return getAlbumForSong(songId, this.storefront) }
+  getAlbumForTrack(songId: string) { return this.cached(`albumFor:${songId}`, () => getAlbumForSong(songId, this.storefront)) }
   getAlbumEditorial(albumId: string) { return getAlbumEditorial(albumId, this.storefront) }
   getPlaylistEditorial(playlistId: string) { return getPlaylistEditorial(playlistId, this.storefront) }
 }

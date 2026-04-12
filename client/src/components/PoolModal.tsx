@@ -205,7 +205,7 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
                       >
                         <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
                           {track.artworkUrl
-                            ? <img src={artworkUrl(track.artworkUrl, 96)} alt="" className="w-full h-full object-cover" />
+                            ? <img src={artworkUrl(track.artworkUrl, 96)} alt="" loading="lazy" className="w-full h-full object-cover" />
                             : <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>}
                         </div>
                         <div className="flex-1 min-w-0">

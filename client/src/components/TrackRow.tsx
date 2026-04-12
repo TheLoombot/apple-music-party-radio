@@ -26,7 +26,7 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
       ) : (
         <div className="relative w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
           {track.artworkUrl
-            ? <img src={artworkUrl(track.artworkUrl, 96)} alt="" className="w-full h-full object-cover" />
+            ? <img src={artworkUrl(track.artworkUrl, 96)} alt="" loading="lazy" className="w-full h-full object-cover" />
             : <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>
           }
           {unavailable && (

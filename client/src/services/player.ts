@@ -15,6 +15,7 @@ export interface MusicPlayer {
   /** Return the Apple ID of the track currently at the native player's queue position, or null */
   getLiveCurrentId(): string | null
   stop(): void
+  fadeOut(ms?: number): Promise<void>
   setVolume(level: number): void  // 0 = muted, 1 = full
   isPlaying(): boolean
 }

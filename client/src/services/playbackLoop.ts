@@ -41,7 +41,10 @@ export class PlaybackLoop {
 
   constructor(private player: MusicPlayer) {}
 
-  start(stationId: string) {
+  async start(stationId: string) {
+    if (this.autoplayEnabled && this.player.isPlaying()) {
+      await this.player.fadeOut(200)
+    }
     this.stop()
     this.setMuted(false)
     stationSocket.onQueueUpdate = this.handleQueueUpdate
@@ -79,7 +82,7 @@ export class PlaybackLoop {
       return
     }
     const startTime = track.expirationTime - track.durationMs
-    const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+    const offsetSeconds = Math.max(0, Math.min((now - startTime) / 1000, track.durationMs / 1000 - 0.5))
     const seq = ++this.playSequence
     this.nativeCurrentId = null
     try {
@@ -106,7 +109,7 @@ export class PlaybackLoop {
     const now = Date.now()
     if (now >= track.expirationTime) return
     const startTime = track.expirationTime - track.durationMs
-    const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+    const offsetSeconds = Math.max(0, Math.min((now - startTime) / 1000, track.durationMs / 1000 - 0.5))
     const tail = this.lastKnownQueue.slice(1)
     const seq = ++this.playSequence
     this.nativeCurrentId = null
@@ -188,7 +191,7 @@ export class PlaybackLoop {
     if (now >= track.expirationTime) return  // already expired — wait for next queue_update
 
     const startTime = track.expirationTime - track.durationMs
-    const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+    const offsetSeconds = Math.max(0, Math.min((now - startTime) / 1000, track.durationMs / 1000 - 0.5))
     const tail = this.lastKnownQueue.slice(1)
     const seq = ++this.playSequence
     this.nativeCurrentId = null
@@ -270,7 +273,7 @@ export class PlaybackLoop {
       }
 
       const startTime = track0.expirationTime - track0.durationMs
-      const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+      const offsetSeconds = Math.max(0, Math.min((now - startTime) / 1000, track0.durationMs / 1000 - 0.5))
 
       if (!this.autoplayEnabled) {
         this.pendingPlay = { track: track0, tail }

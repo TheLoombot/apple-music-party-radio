@@ -445,7 +445,7 @@ function PlaylistRow({ playlist, onSelect }: {
       >
         <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
           {playlist.artworkUrl
-            ? <img src={artworkUrl(playlist.artworkUrl, 96)} alt="" className="w-full h-full object-cover" />
+            ? <img src={artworkUrl(playlist.artworkUrl, 96)} alt="" loading="lazy" className="w-full h-full object-cover" />
             : <div className="w-full h-full flex items-center justify-center text-muted text-sm"><ListMusic size={14} /></div>}
         </div>
         <div className="flex-1 min-w-0">

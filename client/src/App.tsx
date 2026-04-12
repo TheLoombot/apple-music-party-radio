@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { AnimatePresence } from "framer-motion"
 import { SetupScreen } from "./components/SetupScreen"
 import { NowPlaying } from "./components/NowPlaying"
@@ -332,6 +332,15 @@ export default function App() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
+  // Derived state — must be before any early returns to satisfy Rules of Hooks
+  const queuedIsrcs = useMemo(() => new Set(
+    [...(nowPlaying ? [nowPlaying] : []), ...upNext]
+      .flatMap(i => [i.isrc, i.platformIds?.apple])
+      .filter(Boolean) as string[]
+  ), [nowPlaying, upNext])
+  const userQueue = useMemo(() => upNext.filter(item => item.addedBy !== "robot"), [upNext])
+  const robotQueue = useMemo(() => upNext.filter(item => item.addedBy === "robot"), [upNext])
+
   if (appState === "setup") return <SetupScreen error={setupError} />
 
   if (appState === "loading") {
@@ -394,15 +403,6 @@ export default function App() {
   const isOwnStation = ownedStationIds.includes(currentStationId)
     || stations.find(s => s.id === currentStationId)?.ownerUid === user.uid
   const isPrivileged = isOwnStation || djUserIds.includes(user.uid)
-  // Include both ISRCs and Apple catalog IDs — library tracks often have no ISRC
-  const queuedIsrcs = new Set(
-    [...(nowPlaying ? [nowPlaying] : []), ...upNext]
-      .flatMap(i => [i.isrc, i.platformIds?.apple])
-      .filter(Boolean) as string[]
-  )
-  // Split the queue into user-submitted tracks and robot-managed tail
-  const userQueue = upNext.filter(item => item.addedBy !== "robot")
-  const robotQueue = upNext.filter(item => item.addedBy === "robot")
 
   return (
     <div className="min-h-screen bg-surface">

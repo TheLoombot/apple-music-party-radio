@@ -28,6 +28,15 @@ export class AppleMusicPlayer implements MusicPlayer {
     try { getMusicKit().stop() } catch { /* not ready */ }
   }
 
+  async fadeOut(ms = 200): Promise<void> {
+    const steps = 8
+    const interval = ms / steps
+    for (let i = steps - 1; i >= 0; i--) {
+      this.setVolume(i / steps)
+      await new Promise(r => setTimeout(r, interval))
+    }
+  }
+
   getLiveCurrentId(): string | null {
     try {
       const music = getMusicKit()

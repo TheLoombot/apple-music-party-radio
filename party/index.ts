@@ -121,6 +121,10 @@ export default class RadioParty implements Party.Server {
   // Guard against concurrent fillRobotQueue calls (e.g. rapid skips)
   private robotFilling = false
 
+  // Debounce timers — coalesce rapid HTTP notifications to index room
+  private notifyIndexTimer: ReturnType<typeof setTimeout> | null = null
+  private presenceTimer: ReturnType<typeof setTimeout> | null = null
+
   private getRoomId(): string {
     return this.cachedRoomId ?? this.room.id
   }
@@ -226,7 +230,7 @@ export default class RadioParty implements Party.Server {
   async onClose(conn: Party.Connection) {
     if (this.getRoomId() === "index") return
     this.connListeners.delete(conn.id)
-    void this.notifyIndexPresence()
+    this.schedulePresenceNotify()
     const remaining = [...this.room.getConnections()].filter(c => c.id !== conn.id)
     if (remaining.length > 0) return
     // Last listener left — liveUntil already encodes the correct expiry time,
@@ -389,7 +393,7 @@ export default class RadioParty implements Party.Server {
         const djs = await this.getDJs()
         const isDJ = djs.includes(msg.userId)
         this.connListeners.set(sender.id, { userId: msg.userId, displayName: msg.displayName, isDJ })
-        void this.notifyIndexPresence()
+        this.schedulePresenceNotify()
         // Send current DJ list to the joining client
         sender.send(json({ type: "dj_update", djs }))
         // Legacy migration: if this room has no stored ownership and the room ID
@@ -769,6 +773,11 @@ export default class RadioParty implements Party.Server {
     return `${protocol}://${host}/parties/main/index`
   }
 
+  private schedulePresenceNotify() {
+    if (this.presenceTimer) clearTimeout(this.presenceTimer)
+    this.presenceTimer = setTimeout(() => void this.notifyIndexPresence(), 500)
+  }
+
   private async notifyIndexPresence() {
     const listeners: Listener[] = [...this.connListeners.values()].map(({ userId, displayName, isDJ }) => ({ userId, displayName, isDJ }))
     try {
@@ -826,10 +835,17 @@ export default class RadioParty implements Party.Server {
 
   private async broadcastQueue(queue: QueueItem[]) {
     this.room.broadcast(json({ type: "queue_update", queue }))
-    await this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl)
+
+    // Debounce index notification — coalesce rapid mutations (robot fill, skips, etc.)
+    // into a single HTTP call ~300 ms after the last mutation.
+    if (this.notifyIndexTimer) clearTimeout(this.notifyIndexTimer)
+    const liveUntil = liveUntilFromQueue(queue)
+    const np = queue[0]
+    this.notifyIndexTimer = setTimeout(() => {
+      void this.notifyIndex(liveUntil, np?.addedBy, np?.addedByName, np?.name, np?.artistName, np?.artworkUrl)
+    }, 300)
+
     if (queue.length > 0) {
-      // Persist room ID alongside the alarm so onAlarm can recover it after hibernation
-      await this.room.storage.put("roomId", this.getRoomId())
       await this.room.storage.setAlarm(queue[0].expirationTime)
     }
   }

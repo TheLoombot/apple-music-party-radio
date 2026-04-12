@@ -142,7 +142,8 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
 // not on a fixed timer (which is unreliable across devices and network conditions).
 function waitForPlaybackState(music: MusicKit.MusicKitInstance, targetState: number, timeoutMs: number): Promise<void> {
   return new Promise<void>((resolve) => {
-    if ((music as any).playbackState === targetState) { resolve(); return }
+    // Attach listener FIRST, then check current state — avoids a race where MusicKit
+    // transitions to targetState in the window between the check and addEventListener.
     let timer: ReturnType<typeof setTimeout>
     const handler = (e: any) => {
       if (e.state === targetState) {
@@ -152,6 +153,12 @@ function waitForPlaybackState(music: MusicKit.MusicKitInstance, targetState: num
       }
     }
     music.addEventListener(MusicKit.Events.playbackStateDidChange, handler)
+    if ((music as any).playbackState === targetState) {
+      clearTimeout(timer!)
+      music.removeEventListener(MusicKit.Events.playbackStateDidChange, handler)
+      resolve()
+      return
+    }
     timer = setTimeout(() => {
       music.removeEventListener(MusicKit.Events.playbackStateDidChange, handler)
       resolve()
@@ -193,10 +200,13 @@ export async function syncQueueTail(tailIds: string[]): Promise<void> {
     wantedTail: tailIds,
   })
 
-  // Remove all items after current position (backwards to preserve indices)
+  // Remove all items after current position — fire all concurrently then await together.
+  // Removing back-to-front means indices are stable when the Promises are created.
+  const removes: Promise<any>[] = []
   for (let i = items.length - 1; i > position; i--) {
-    await nativeQueue.remove(i)
+    removes.push(nativeQueue.remove(i))
   }
+  await Promise.all(removes)
 
   // Append wanted items in order
   for (const id of tailIds) {
