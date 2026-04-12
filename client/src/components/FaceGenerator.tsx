@@ -464,54 +464,54 @@ export function RobotFace({ size = 32 }: { size?: number }) {
   return (
     <div style={{ width: size, height: size }} className="rounded-lg overflow-hidden flex-shrink-0">
       <svg viewBox="0 0 200 220" xmlns="http://www.w3.org/2000/svg" className="w-full h-full" preserveAspectRatio="xMidYMid slice">
-        {/* Background — dark navy, distinct from human BG palette */}
-        <rect width={200} height={220} fill="#1a2640" />
+        {/* Background — mid-tone steel blue, closer to human BG register */}
+        <rect width={200} height={220} fill="#3a5068" />
 
-        {/* Shirt — same path as human faces to anchor it in the series */}
-        <path d="M -2 220 L -2 190 Q 40 180 100 178 Q 160 180 202 190 L 202 220 Z" fill="#1e3a5a" />
+        {/* Shirt */}
+        <path d="M -2 220 L -2 190 Q 40 180 100 178 Q 160 180 202 190 L 202 220 Z" fill="#2e4a60" />
 
         {/* Neck — wider, boxy */}
-        <rect x={84} y={178} width={32} height={22} rx={3} fill="#6a7e92" />
+        <rect x={84} y={178} width={32} height={22} rx={3} fill="#7a8e9e" />
 
         {/* Antenna */}
-        <line x1={100} y1={52} x2={100} y2={22} stroke="#6a7e92" strokeWidth={5} strokeLinecap="round" />
-        <circle cx={100} cy={15} r={9} fill="#00cfff" opacity={0.9} />
-        <circle cx={100} cy={15} r={5} fill="white" opacity={0.5} />
+        <line x1={100} y1={52} x2={100} y2={22} stroke="#7a8e9e" strokeWidth={5} strokeLinecap="round" />
+        <circle cx={100} cy={15} r={9} fill="#60b0c0" opacity={0.7} />
+        <circle cx={100} cy={15} r={5} fill="white" opacity={0.3} />
 
         {/* Head — rounded rect, brushed metal */}
-        <rect x={26} y={52} width={148} height={140} rx={22} fill="#7a90a6" />
+        <rect x={26} y={52} width={148} height={140} rx={22} fill="#8a9eae" />
         {/* Subtle highlight sheen */}
         <rect x={30} y={56} width={68} height={60} rx={16} fill="white" opacity={0.055} />
 
         {/* Ear panels */}
-        <rect x={12} y={96} width={14} height={50} rx={5} fill="#5e7285" />
-        <rect x={174} y={96} width={14} height={50} rx={5} fill="#5e7285" />
+        <rect x={12} y={96} width={14} height={50} rx={5} fill="#6e8295" />
+        <rect x={174} y={96} width={14} height={50} rx={5} fill="#6e8295" />
         {/* Ear bolts */}
-        <circle cx={19} cy={110} r={3.5} fill="#3e5268" />
-        <circle cx={181} cy={110} r={3.5} fill="#3e5268" />
-        <circle cx={19} cy={132} r={3.5} fill="#3e5268" />
-        <circle cx={181} cy={132} r={3.5} fill="#3e5268" />
+        <circle cx={19} cy={110} r={3.5} fill="#4e6278" />
+        <circle cx={181} cy={110} r={3.5} fill="#4e6278" />
+        <circle cx={19} cy={132} r={3.5} fill="#4e6278" />
+        <circle cx={181} cy={132} r={3.5} fill="#4e6278" />
 
         {/* Eye sockets */}
-        <rect x={46} y={90} width={46} height={30} rx={7} fill="#111d2e" />
-        <rect x={108} y={90} width={46} height={30} rx={7} fill="#111d2e" />
+        <rect x={46} y={90} width={46} height={30} rx={7} fill="#28404e" />
+        <rect x={108} y={90} width={46} height={30} rx={7} fill="#28404e" />
 
-        {/* Eyes — amber LED glow */}
-        <rect x={50} y={94} width={38} height={22} rx={5} fill="#e07800" />
-        <rect x={112} y={94} width={38} height={22} rx={5} fill="#e07800" />
+        {/* Eyes — muted amber, no harsh glow */}
+        <rect x={50} y={94} width={38} height={22} rx={5} fill="#b06820" />
+        <rect x={112} y={94} width={38} height={22} rx={5} fill="#b06820" />
         {/* Scanline highlight */}
-        <rect x={50} y={101} width={38} height={4} rx={2} fill="#ffcc66" opacity={0.55} />
-        <rect x={112} y={101} width={38} height={4} rx={2} fill="#ffcc66" opacity={0.55} />
+        <rect x={50} y={101} width={38} height={4} rx={2} fill="#d89848" opacity={0.35} />
+        <rect x={112} y={101} width={38} height={4} rx={2} fill="#d89848" opacity={0.35} />
 
-        {/* Nose — small red indicator LED */}
-        <circle cx={100} cy={138} r={5} fill="#ff3636" opacity={0.9} />
-        <circle cx={100} cy={138} r={2.5} fill="#ff9090" opacity={0.7} />
+        {/* Nose — small indicator LED, toned down */}
+        <circle cx={100} cy={138} r={4.5} fill="#b83030" opacity={0.6} />
+        <circle cx={100} cy={138} r={2} fill="#e06060" opacity={0.4} />
 
         {/* Mouth — speaker grille */}
-        <rect x={58} y={152} width={84} height={24} rx={6} fill="#111d2e" />
-        <line x1={63} y1={158} x2={137} y2={158} stroke="#2e4a62" strokeWidth={2.5} strokeLinecap="round" />
-        <line x1={63} y1={164} x2={137} y2={164} stroke="#2e4a62" strokeWidth={2.5} strokeLinecap="round" />
-        <line x1={63} y1={170} x2={137} y2={170} stroke="#2e4a62" strokeWidth={2.5} strokeLinecap="round" />
+        <rect x={58} y={152} width={84} height={24} rx={6} fill="#28404e" />
+        <line x1={63} y1={158} x2={137} y2={158} stroke="#3e5e70" strokeWidth={2.5} strokeLinecap="round" />
+        <line x1={63} y1={164} x2={137} y2={164} stroke="#3e5e70" strokeWidth={2.5} strokeLinecap="round" />
+        <line x1={63} y1={170} x2={137} y2={170} stroke="#3e5e70" strokeWidth={2.5} strokeLinecap="round" />
       </svg>
     </div>
   )

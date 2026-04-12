@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Trash2, X, Mic } from "lucide-react"
+import { Trash2, Mic } from "lucide-react"
 import type { Station } from "../types"
 import { DJFace, RobotFace } from "./FaceGenerator"
 import { artworkUrl } from "../services/musickit"
@@ -99,13 +99,7 @@ function StationRow({
             {isOwn && <Mic size={11} className="flex-shrink-0 text-muted/50" />}
             {station.displayName || station.id}
           </p>
-          {isLive && station.nowPlayingTrackName ? (
-            <p className="text-xs text-muted truncate mt-0.5">
-              {station.nowPlayingArtistName && `${station.nowPlayingArtistName} — `}{station.nowPlayingTrackName}
-            </p>
-          ) : !isLive ? (
-            <p className="text-xs text-muted/40 mt-0.5">offline</p>
-          ) : null}
+          {!isLive && <p className="text-xs text-muted/40 mt-0.5">offline</p>}
           {listeners.length > 0 && (
             <div className="mt-2">
               <ListenerFaces listeners={listeners} />
@@ -158,7 +152,6 @@ interface Props {
 
 export function StationList({ stations, currentStationId, userId, userDisplayName, ownedStationIds, onSelect, onRemove, onCreateStation }: Props) {
   const [now, setNow] = useState(Date.now())
-  const [moreOpen, setMoreOpen] = useState(false)
 
   // Re-render just after the next track expires so live/offline status flips automatically
   useEffect(() => {
@@ -174,14 +167,17 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
   const yourStations = stations
     .filter(s => ownedStationIds.includes(s.id))
     .sort((a, b) => a.id.localeCompare(b.id))
-  const liveOthers = stations
-    .filter(s => s.liveUntil > now && !ownedStationIds.includes(s.id))
-    .sort((a, b) => a.id.localeCompare(b.id))
-  const allStations = [...stations].sort((a, b) => a.id.localeCompare(b.id))
-  const offlineCount = stations.filter(s => s.liveUntil <= now).length
-  const hasContent = yourStations.length > 0 || liveOthers.length > 0
 
-  const renderRow = (station: Station, closeModal?: () => void) => (
+  const otherStations = stations
+    .filter(s => !ownedStationIds.includes(s.id))
+    .sort((a, b) => {
+      // live first, then alphabetical
+      if (a.liveUntil > now && b.liveUntil <= now) return -1
+      if (a.liveUntil <= now && b.liveUntil > now) return 1
+      return a.id.localeCompare(b.id)
+    })
+
+  const renderRow = (station: Station) => (
     <StationRow
       key={station.id}
       station={station}
@@ -190,23 +186,21 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
       userId={userId}
       userDisplayName={userDisplayName}
       now={now}
-      onSelect={() => { onSelect(station.id); closeModal?.() }}
+      onSelect={() => onSelect(station.id)}
       onRemove={() => onRemove(station.id)}
     />
   )
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
+      <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider flex-shrink-0">
         Stations
       </div>
 
-      {!hasContent ? (
-        <div className="p-6 text-center text-muted text-sm">
-          {stations.length === 0 ? "No stations yet" : "No live stations right now"}
-        </div>
+      {stations.length === 0 ? (
+        <div className="p-6 text-center text-muted text-sm">No stations yet</div>
       ) : (
-        <>
+        <div>
           {yourStations.length > 0 && (
             <>
               <div className="px-4 pt-3 pb-1 text-[10px] text-muted/50 font-medium uppercase tracking-wider">
@@ -215,76 +209,27 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
               <ul>{yourStations.map(s => renderRow(s))}</ul>
             </>
           )}
-          {liveOthers.length > 0 && (
+          {otherStations.length > 0 && (
             <>
               {yourStations.length > 0 && (
                 <div className="px-4 pt-3 pb-1 text-[10px] text-muted/50 font-medium uppercase tracking-wider">
-                  Live
+                  All stations
                 </div>
               )}
-              <ul>{liveOthers.map(s => renderRow(s))}</ul>
+              <ul>{otherStations.map(s => renderRow(s))}</ul>
             </>
           )}
-        </>
+        </div>
       )}
 
-      <div className="flex border-t border-border/50">
-        {offlineCount > 0 && (
-          <button
-            onClick={() => setMoreOpen(true)}
-            className="flex-1 px-4 py-2.5 text-xs text-muted hover:text-white transition-colors text-left"
-          >
-            All stations ({stations.length})
-          </button>
-        )}
+      <div className="border-t border-border/50">
         <button
           onClick={onCreateStation}
-          className="flex-1 px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors text-left"
+          className="w-full px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors text-left"
         >
           + Create a station
         </button>
       </div>
-
-      {moreOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
-          onClick={() => setMoreOpen(false)}
-        >
-          <div
-            className="bg-panel rounded-2xl w-full max-w-sm overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span className="text-xs text-muted font-medium uppercase tracking-wider">All Stations</span>
-              <button onClick={() => setMoreOpen(false)} className="text-muted hover:text-white transition-colors">
-                <X size={16} />
-              </button>
-            </div>
-            <ul className="max-h-[60vh] overflow-y-auto">
-              {yourStations.length > 0 && (
-                <li className="px-4 pt-3 pb-1 text-[10px] text-muted/50 font-medium uppercase tracking-wider list-none">
-                  Your stations
-                </li>
-              )}
-              {yourStations.map(s => renderRow(s, () => setMoreOpen(false)))}
-              {yourStations.length > 0 && allStations.filter(s => !ownedStationIds.includes(s.id)).length > 0 && (
-                <li className="px-4 pt-3 pb-1 text-[10px] text-muted/50 font-medium uppercase tracking-wider list-none">
-                  All stations
-                </li>
-              )}
-              {allStations.filter(s => !ownedStationIds.includes(s.id)).map(s => renderRow(s, () => setMoreOpen(false)))}
-            </ul>
-            <div className="border-t border-border/50">
-              <button
-                onClick={() => { onCreateStation(); setMoreOpen(false) }}
-                className="w-full px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors text-left"
-              >
-                + Create a station
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

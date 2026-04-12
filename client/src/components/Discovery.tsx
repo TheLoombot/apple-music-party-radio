@@ -1,14 +1,14 @@
 import { useEffect, useState, useRef } from "react"
-import { AnimatePresence } from "framer-motion"
+import { AnimatePresence, motion } from "framer-motion"
 import { ChevronRight, ListMusic } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { TrackRow } from "./TrackRow"
 import { PlaylistModal } from "./PlaylistModal"
 import { LoadingDots } from "./LoadingDots"
 import type { MusicCatalog } from "../services/catalog"
-import type { Track, PlaylistResult, LibraryPlaylistResult, AlbumResult, QueueItem } from "../types"
+import type { Track, PlaylistResult, LibraryPlaylistResult, AlbumResult, QueueItem, SearchItem } from "../types"
 
-type Tab = "related" | "charts" | "mfy" | "playlists"
+type Tab = "search" | "related" | "charts" | "mfy" | "playlists"
 type ModalState = { playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult; tracks: Track[] | null }
 
 function pickRandom<T>(arr: T[], n: number): T[] {
@@ -23,8 +23,30 @@ interface Props {
 }
 
 export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
-  const [tab, setTab] = useState<Tab>("related")
+  const [tab, setTab] = useState<Tab>("search")
 
+  // ── Search tab state ────────────────────────────────────────────────────────
+  const [query, setQuery] = useState("")
+  const [searchResults, setSearchResults] = useState<SearchItem[]>([])
+  const [searching, setSearching] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const isSearching = query.trim().length > 0
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current)
+    if (!isSearching) { setSearchResults([]); return }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true)
+      try {
+        setSearchResults(await catalog.search(query))
+      } finally {
+        setSearching(false)
+      }
+    }, 350)
+    return () => clearTimeout(debounceRef.current)
+  }, [query, catalog])
+
+  // ── Charts / MFY state ──────────────────────────────────────────────────────
   const [chartTracks, setChartTracks] = useState<Track[]>([])
   const [chartsLoading, setChartsLoading] = useState(true)
 
@@ -35,7 +57,7 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
   const [modal, setModal] = useState<ModalState | null>(null)
   const modalOpRef = useRef(0)
 
-  // Related tab state
+  // ── Related tab state ───────────────────────────────────────────────────────
   const [relatedLoading, setRelatedLoading] = useState(false)
   const [relatedTracks, setRelatedTracks] = useState<Track[]>([])
   const [relatedSeed, setRelatedSeed] = useState<{ name: string; artistName: string } | null>(null)
@@ -43,7 +65,7 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
   const [relatedError, setRelatedError] = useState(false)
   const allRelatedPlaylists = useRef<PlaylistResult[]>([])
 
-  // Playlists tab state
+  // ── Playlists tab state ─────────────────────────────────────────────────────
   const [libraryPlaylists, setLibraryPlaylists] = useState<LibraryPlaylistResult[] | null>(null)
   const [loadingLibrary, setLoadingLibrary] = useState(false)
   const [playlistFilter, setPlaylistFilter] = useState("")
@@ -122,7 +144,6 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
 
   const relatedLoadedRef = useRef(false)
 
-  // Load related on initial render if the related tab is already active and queue has items
   useEffect(() => {
     if (tab !== "related" || relatedLoadedRef.current || queue.length === 0) return
     relatedLoadedRef.current = true
@@ -146,19 +167,30 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
     }
   }
 
-  const TAB_LABELS: Record<Tab, string> = { related: "Related", charts: "Top 20", mfy: "Top Picks for You", playlists: "Your Playlists" }
+  const TAB_LABELS: Record<Tab, string> = {
+    search: "Search",
+    related: "Related",
+    charts: "Top 20",
+    mfy: "Top Picks",
+    playlists: "Playlists",
+  }
 
   return (
     <>
       <div className="bg-panel rounded-xl overflow-hidden">
-        {/* Header — always tab bar */}
+        {/* Static header */}
+        <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
+          Add or Request
+        </div>
+
+        {/* Tab bar */}
         <div className="border-b border-border">
           <div className="flex items-center">
-            {(["related", "charts", "mfy", "playlists"] as Tab[]).map(t => (
+            {(["search", "related", "charts", "mfy", "playlists"] as Tab[]).map(t => (
               <button
                 key={t}
                 onClick={() => handleTabChange(t)}
-                className={`flex-1 px-2 py-3 text-xs font-medium transition-colors border-b-2 -mb-px ${
+                className={`flex-1 px-1 py-2.5 text-[10px] font-medium transition-colors border-b-2 -mb-px ${
                   tab === t ? "text-white border-accent" : "text-muted hover:text-white border-transparent"
                 }`}
               >
@@ -169,7 +201,76 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
         </div>
 
         {/* Content */}
-        {tab === "charts" ? (
+        {tab === "search" ? (
+          <>
+            <div className="p-3 border-b border-border">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  placeholder="Search music…"
+                  className="w-full bg-surface text-white placeholder-muted rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent pr-8"
+                />
+                {query && (
+                  <button
+                    onClick={() => setQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white text-lg leading-none"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="overflow-y-auto h-96">
+              <AnimatePresence mode="wait">
+                {isSearching && (
+                  <motion.div
+                    key="search"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    {searching ? (
+                      <div className="p-6 text-center text-muted text-sm"><LoadingDots /></div>
+                    ) : searchResults.length === 0 ? (
+                      <div className="p-6 text-center text-muted text-sm">No results</div>
+                    ) : (
+                      <ul>
+                        {searchResults
+                          .filter((item, i, arr) => {
+                            if (item.kind !== "song") return true
+                            return arr.findIndex(x =>
+                              x.kind === "song" &&
+                              (x.track.isrc || x.track.platformIds?.apple) === (item.track.isrc || item.track.platformIds?.apple)
+                            ) === i
+                          })
+                          .map(item =>
+                            item.kind === "song" ? (
+                              <TrackRow
+                                key={item.track.platformIds?.apple || item.track.isrc || item.track.name}
+                                track={item.track}
+                                added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.platformIds?.apple ?? "")}
+                                onAdd={() => onAddTrack(item.track)}
+                                onAlbumClick={item.track.platformIds?.apple ? () => handleAlbumClick(item.track) : undefined}
+                              />
+                            ) : (
+                              <PlaylistRow
+                                key={item.id}
+                                playlist={item}
+                                onSelect={() => handleSelectPlaylist(item)}
+                              />
+                            )
+                          )}
+                      </ul>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </>
+        ) : tab === "charts" ? (
           <div className="h-[360px] overflow-y-auto">
             {chartsLoading ? (
               <div className="p-6 text-center text-muted text-sm"><LoadingDots /></div>

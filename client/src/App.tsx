@@ -4,13 +4,11 @@ import { SetupScreen } from "./components/SetupScreen"
 import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
 import { RobotQueue } from "./components/RobotQueue"
-import { SearchTracks } from "./components/AddTracks"
 import { PoolModal } from "./components/PoolModal"
 import { StationChat } from "./components/StationChat"
 import { Discovery } from "./components/Discovery"
 import { StationList } from "./components/StationList"
 import { ListenersPanel } from "./components/ListenersPanel"
-import { FaceGenerator } from "./components/FaceGenerator"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized, getMusicKit } from "./services/musickit"
 import { getUserStorefront } from "./services/appleMusic"
@@ -525,9 +523,25 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Main layout */}
-      <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-4">
+      {/* Main layout — 3 columns */}
+      <div className="max-w-[1600px] mx-auto p-4 grid grid-cols-1 lg:grid-cols-[380px_1fr_420px] gap-4 items-start">
+
+        {/* Left: station list */}
+        <div>
+          <StationList
+            stations={stations}
+            currentStationId={currentStationId}
+            userId={user.uid}
+            userDisplayName={user.displayName}
+            ownedStationIds={ownedStationIds}
+            onSelect={handleSelectStation}
+            onRemove={handleRemoveStation}
+            onCreateStation={() => setCreateModalOpen(true)}
+          />
+        </div>
+
+        {/* Center: playback */}
+        <div className="space-y-4 max-w-[480px] mx-auto w-full">
           <NowPlaying
             track={nowPlaying}
             stationOwner={currentStationId}
@@ -559,17 +573,9 @@ export default function App() {
             onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
           />
         </div>
+
+        {/* Right: listeners, chat, add or request */}
         <div className="space-y-4">
-          <StationList
-            stations={stations}
-            currentStationId={currentStationId}
-            userId={user.uid}
-            userDisplayName={user.displayName}
-            ownedStationIds={ownedStationIds}
-            onSelect={handleSelectStation}
-            onRemove={handleRemoveStation}
-            onCreateStation={() => setCreateModalOpen(true)}
-          />
           {(() => {
             const currentStation = stations.find(s => s.id === currentStationId)
             return (
@@ -590,23 +596,15 @@ export default function App() {
             onSend={(text) => stationSocket.sendChatMessage(text)}
           />
           {isPrivileged && (
-            <>
-              <Discovery
-                catalog={catalog.current}
-                queuedIsrcs={queuedIsrcs}
-                queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
-                onAddTrack={handleAddTrack}
-              />
-              <SearchTracks
-                currentUser={user}
-                catalog={catalog.current}
-                onAddTrack={handleAddTrack}
-                queuedIsrcs={queuedIsrcs}
-              />
-              <FaceGenerator />
-            </>
+            <Discovery
+              catalog={catalog.current}
+              queuedIsrcs={queuedIsrcs}
+              queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
+              onAddTrack={handleAddTrack}
+            />
           )}
         </div>
+
       </div>
     </div>
   )
