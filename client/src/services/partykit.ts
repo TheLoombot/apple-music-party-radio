@@ -34,6 +34,7 @@ export class StationSocket {
   private socket: PartySocket | null = null
   private pingInterval: ReturnType<typeof setInterval> | null = null
   private chatMessages: ChatMessage[] = []
+  private lastJoinParams: { userId: string; displayName: string } | null = null
 
   onQueueUpdate?: (queue: QueueItem[]) => void
   onPoolUpdate?: (pool: PoolTrack[]) => void
@@ -47,6 +48,16 @@ export class StationSocket {
       ? { host: HOST, room: stationId, protocol: "ws" as const }
       : { host: HOST, room: stationId }
     this.socket = new PartySocket(opts)
+
+    // Resend join on every (re)connect so the server's connListeners map stays
+    // fresh after reconnects (e.g. server restart, network blip). Without this,
+    // chat and presence are silently broken because the server requires a join
+    // before it'll process chat messages or include the user in the listener list.
+    this.socket.onopen = () => {
+      if (this.lastJoinParams) {
+        this.socket?.send(JSON.stringify({ type: "join", ...this.lastJoinParams }))
+      }
+    }
 
     this.socket.onmessage = (e) => {
       const msg = JSON.parse(e.data)
@@ -82,6 +93,7 @@ export class StationSocket {
   }
 
   join(userId: string, displayName: string) {
+    this.lastJoinParams = { userId, displayName }
     this.send({ type: "join", userId, displayName })
   }
 

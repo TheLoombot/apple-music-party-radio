@@ -142,8 +142,13 @@ export default class RadioParty implements Party.Server {
     if (!this.cachedIndexUrl && this.room.id !== "index") {
       try {
         const wsUrl = new URL(conn.uri)
-        const protocol = wsUrl.protocol === "wss:" ? "https" : "http"
-        const indexUrl = `${protocol}://${wsUrl.host}/parties/main/index`
+        const isSecure = wsUrl.protocol === "wss:"
+        const protocol = isSecure ? "https" : "http"
+        // In local dev (non-secure), always use localhost so server-side fetches
+        // to the index room resolve correctly regardless of the browser's hostname
+        // (e.g. http://imac:1999 won't resolve from within Node.js).
+        const host = isSecure ? wsUrl.host : `localhost:${wsUrl.port || "1999"}`
+        const indexUrl = `${protocol}://${host}/parties/main/index`
         this.cachedIndexUrl = indexUrl
         void this.room.storage.put("indexUrl", indexUrl)
       } catch { /* ignore — fallback to env var */ }
