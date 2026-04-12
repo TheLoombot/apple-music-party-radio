@@ -414,13 +414,6 @@ export default function App() {
         </div>
         <div className="text-muted text-xs flex items-center gap-3">
           <span className="text-muted/40 font-mono">{__COMMIT__}</span>
-          <button
-            onClick={handleReauthorize}
-            className="text-muted/40 hover:text-white transition-colors"
-            title="Reconnect Apple Music (fixes 30-second preview playback in Chrome)"
-          >
-            ↻ Apple Music
-          </button>
           {renamingDJ ? (
             <input
               ref={renameRef}

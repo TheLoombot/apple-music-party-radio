@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { AnimatePresence, motion } from "framer-motion"
 import { X, ListMusic, Disc3, ChevronLeft } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
@@ -73,7 +74,7 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
     restoreScrollRef.current = prevEntry.scrollTop
   }
 
-  return (
+  return createPortal(
     <motion.div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75"
       initial={{ opacity: 0 }}
@@ -127,27 +128,13 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
               )}
             </div>
           </div>
-          {displayTracks && displayTracks.length > 0 && (() => {
-            const unqueued = displayTracks.filter(t =>
-              t.platformIds?.apple &&
-              !queuedIsrcs.has(t.isrc) && !queuedIsrcs.has(t.platformIds.apple)
-            )
-            return unqueued.length > 0 ? (
-              <button
-                onClick={() => unqueued.forEach(onAddTrack)}
-                className="text-xs text-accent hover:text-white font-semibold transition-colors flex-shrink-0 px-2 py-1 rounded-lg hover:bg-accent/20"
-              >
-                Add all ({unqueued.length})
-              </button>
-            ) : null
-          })()}
           <button onClick={onClose} className="text-muted hover:text-white transition-colors flex-shrink-0 p-1">
             <X size={18} />
           </button>
         </div>
 
         {/* Track list */}
-        <div ref={scrollRef} className="overflow-y-auto flex-1">
+        <div ref={scrollRef} className="overflow-y-auto flex-1 min-h-0">
           {displayTracks === null ? (
             <div className="p-6 text-center text-muted text-sm"><LoadingDots /></div>
           ) : displayTracks.length === 0 ? (
@@ -174,6 +161,24 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
             </ul>
           )}
         </div>
+
+        {/* Footer — Add all */}
+        {displayTracks && displayTracks.length > 0 && (() => {
+          const unqueued = displayTracks.filter(t =>
+            t.platformIds?.apple &&
+            !queuedIsrcs.has(t.isrc) && !queuedIsrcs.has(t.platformIds.apple)
+          )
+          return unqueued.length > 0 ? (
+            <div className="border-t border-border flex-shrink-0">
+              <button
+                onClick={() => unqueued.forEach(onAddTrack)}
+                className="w-full px-4 py-3 text-sm text-muted hover:text-white font-medium transition-colors text-left"
+              >
+                + Add all {unqueued.length} tracks
+              </button>
+            </div>
+          ) : null
+        })()}
       </motion.div>
 
       <AnimatePresence>
@@ -190,6 +195,7 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
           />
         )}
       </AnimatePresence>
-    </motion.div>
+    </motion.div>,
+    document.body
   )
 }
