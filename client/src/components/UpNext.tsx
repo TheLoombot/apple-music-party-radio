@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { GripVertical } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
-import { DJFace } from "./FaceGenerator"
+import { DJFace, RobotFace } from "./FaceGenerator"
 import type { QueueItem, AppUser } from "../types"
 
 function formatTotalDuration(ms: number): string {
@@ -130,11 +130,12 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                       : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
                     <p className="text-muted text-xs mt-2 flex items-center gap-1">
                       queued by{" "}
-                      {item.addedBy !== "robot" && (
-                        <DJFace uid={item.addedBy} size={22} />
-                      )}
+                      {item.addedBy === "robot"
+                        ? <RobotFace size={18} />
+                        : <DJFace uid={item.addedBy} size={18} />
+                      }
                       <span className="text-white/60">
-                        {item.addedBy === "robot" ? "🤖"
+                        {item.addedBy === "robot" ? "robot"
                           : item.addedBy === currentUser.uid ? currentUser.displayName
                           : item.addedByName ?? item.addedBy}
                       </span>

@@ -4,7 +4,7 @@ import { Volume2, VolumeX, SkipForward, Library, Pencil } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { ArtworkModal } from "./ArtworkModal"
-import { DJFace } from "./FaceGenerator"
+import { DJFace, RobotFace } from "./FaceGenerator"
 import type { QueueItem, AppUser } from "../types"
 import type { MusicCatalog } from "../services/catalog"
 
@@ -240,11 +240,12 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 : <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>}
               <p className="text-muted text-sm mt-2 flex items-center gap-1.5">
                 spun by{" "}
-                {track.addedBy !== "robot" && (
-                  <DJFace uid={track.addedBy} size={64} />
-                )}
+                {track.addedBy === "robot"
+                  ? <RobotFace size={20} />
+                  : <DJFace uid={track.addedBy} size={20} />
+                }
                 <span className="text-white/60">
-                  {track.addedBy === "robot" ? "🤖"
+                  {track.addedBy === "robot" ? "robot"
                     : track.addedBy === currentUser.uid ? currentUser.displayName
                     : track.addedByName ?? track.addedBy}
                 </span>

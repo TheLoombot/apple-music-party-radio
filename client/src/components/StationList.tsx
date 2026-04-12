@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Trash2, X, Mic } from "lucide-react"
 import type { Station } from "../types"
-import { DJFace } from "./FaceGenerator"
+import { DJFace, RobotFace } from "./FaceGenerator"
 import { artworkUrl } from "../services/musickit"
 
 function LiveDot() {
@@ -116,7 +116,7 @@ function StationRow({
         {isLive && (
           <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-0.5">
             {isRobot ? (
-              <span className="text-2xl leading-none opacity-40">🤖</span>
+              <RobotFace size={64} />
             ) : spunBy ? (
               <DJFace uid={spunBy} size={64} />
             ) : null}
