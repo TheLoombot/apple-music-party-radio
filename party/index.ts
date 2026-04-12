@@ -423,13 +423,13 @@ export default class RadioParty implements Party.Server {
         await this.fillRobotQueue()
         return
       }
-      case "remove_track":     return this.removeTrack(msg.key)
-      case "skip_track":       return this.skipTrack()
-      case "expire_track":     return this.expireTrack(msg.key, msg.addToPool)
-      case "remove_from_pool": return this.removeFromPool(msg.isrc)
-      case "clear_pool":       return this.clearPool()
-      case "robot_dj":         return this.fillRobotQueue()   // client fallback ping
-      case "reorder_queue":    return this.reorderQueue(msg.keys)
+      case "remove_track":     if (!this.isPrivilegedConn(sender)) return; return this.removeTrack(msg.key)
+      case "skip_track":       if (!this.isPrivilegedConn(sender)) return; return this.skipTrack()
+      case "expire_track":     return this.expireTrack(msg.key, msg.addToPool)  // clients self-report their own track advance
+      case "remove_from_pool": if (!this.isPrivilegedConn(sender)) return; return this.removeFromPool(msg.isrc)
+      case "clear_pool":       if (!this.isPrivilegedConn(sender)) return; return this.clearPool()
+      case "robot_dj":         if (!this.isPrivilegedConn(sender)) return; return this.fillRobotQueue()
+      case "reorder_queue":    if (!this.isPrivilegedConn(sender)) return; return this.reorderQueue(msg.keys)
       case "chat_message":     return this.handleChatMessage(msg, sender)
     }
   }
@@ -458,6 +458,11 @@ export default class RadioParty implements Party.Server {
 
   private isDJConn(sender: Party.Connection): boolean {
     return this.connListeners.get(sender.id)?.isDJ === true
+  }
+
+  /** Owner or any granted DJ — used to gate queue/pool mutations server-side. */
+  private isPrivilegedConn(sender: Party.Connection): boolean {
+    return this.isOwnerConn(sender) || this.isDJConn(sender)
   }
 
   // ─── Queue & pool ────────────────────────────────────────────────────────

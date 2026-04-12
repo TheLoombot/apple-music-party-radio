@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Trash2, X } from "lucide-react"
+import { Trash2, X, Mic } from "lucide-react"
 import type { Station } from "../types"
 import { DJFace } from "./FaceGenerator"
 import { artworkUrl } from "../services/musickit"
@@ -95,7 +95,8 @@ function StationRow({
           <div className="w-24 h-24 rounded flex-shrink-0 bg-surface/50 flex items-center justify-center text-muted/30 text-sm">♪</div>
         )}
         <div className="flex-1 min-w-0">
-          <p className={`text-sm truncate ${active ? "text-accent" : "text-white"}`}>
+          <p className={`text-sm truncate flex items-center gap-1.5 ${active ? "text-accent" : "text-white"}`}>
+            {isOwn && <Mic size={11} className="flex-shrink-0 text-muted/50" />}
             {station.displayName || station.id}
           </p>
           {isLive && station.nowPlayingTrackName ? (
@@ -128,13 +129,15 @@ function StationRow({
           </div>
         )}
 
-        <button
-          onClick={e => { e.stopPropagation(); onRemove() }}
-          className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all flex-shrink-0 pt-1"
-          title="Remove station"
-        >
-          <Trash2 size={13} />
-        </button>
+        {isOwn && (
+          <button
+            onClick={e => { e.stopPropagation(); onRemove() }}
+            className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all flex-shrink-0 pt-1"
+            title="Remove station"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
     </li>
   )
@@ -166,11 +169,29 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
     return () => clearTimeout(timer)
   }, [stations])
 
-  const liveStations = stations
-    .filter(s => s.liveUntil > now)
+  const yourStations = stations
+    .filter(s => ownedStationIds.includes(s.id))
+    .sort((a, b) => a.id.localeCompare(b.id))
+  const liveOthers = stations
+    .filter(s => s.liveUntil > now && !ownedStationIds.includes(s.id))
     .sort((a, b) => a.id.localeCompare(b.id))
   const allStations = [...stations].sort((a, b) => a.id.localeCompare(b.id))
   const offlineCount = stations.filter(s => s.liveUntil <= now).length
+  const hasContent = yourStations.length > 0 || liveOthers.length > 0
+
+  const renderRow = (station: Station, closeModal?: () => void) => (
+    <StationRow
+      key={station.id}
+      station={station}
+      active={station.id === currentStationId}
+      isOwn={ownedStationIds.includes(station.id)}
+      userId={userId}
+      userDisplayName={userDisplayName}
+      now={now}
+      onSelect={() => { onSelect(station.id); closeModal?.() }}
+      onRemove={() => onRemove(station.id)}
+    />
+  )
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
@@ -178,26 +199,31 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
         Stations
       </div>
 
-      {stations.length === 0 ? (
-        <div className="p-6 text-center text-muted text-sm">No stations yet</div>
-      ) : liveStations.length === 0 ? (
-        <div className="p-6 text-center text-muted text-sm">No live stations right now</div>
+      {!hasContent ? (
+        <div className="p-6 text-center text-muted text-sm">
+          {stations.length === 0 ? "No stations yet" : "No live stations right now"}
+        </div>
       ) : (
-        <ul>
-          {liveStations.map(station => (
-            <StationRow
-              key={station.id}
-              station={station}
-              active={station.id === currentStationId}
-              isOwn={ownedStationIds.includes(station.id)}
-              userId={userId}
-              userDisplayName={userDisplayName}
-              now={now}
-              onSelect={() => onSelect(station.id)}
-              onRemove={() => onRemove(station.id)}
-            />
-          ))}
-        </ul>
+        <>
+          {yourStations.length > 0 && (
+            <>
+              <div className="px-4 pt-3 pb-1 text-[10px] text-muted/50 font-medium uppercase tracking-wider">
+                Your stations
+              </div>
+              <ul>{yourStations.map(s => renderRow(s))}</ul>
+            </>
+          )}
+          {liveOthers.length > 0 && (
+            <>
+              {yourStations.length > 0 && (
+                <div className="px-4 pt-3 pb-1 text-[10px] text-muted/50 font-medium uppercase tracking-wider">
+                  Live
+                </div>
+              )}
+              <ul>{liveOthers.map(s => renderRow(s))}</ul>
+            </>
+          )}
+        </>
       )}
 
       <div className="flex border-t border-border/50">
@@ -233,19 +259,18 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
               </button>
             </div>
             <ul className="max-h-[60vh] overflow-y-auto">
-              {allStations.map(station => (
-                <StationRow
-                  key={station.id}
-                  station={station}
-                  active={station.id === currentStationId}
-                  isOwn={ownedStationIds.includes(station.id)}
-                  userId={userId}
-                  userDisplayName={userDisplayName}
-                  now={now}
-                  onSelect={() => { onSelect(station.id); setMoreOpen(false) }}
-                  onRemove={() => onRemove(station.id)}
-                />
-              ))}
+              {yourStations.length > 0 && (
+                <li className="px-4 pt-3 pb-1 text-[10px] text-muted/50 font-medium uppercase tracking-wider list-none">
+                  Your stations
+                </li>
+              )}
+              {yourStations.map(s => renderRow(s, () => setMoreOpen(false)))}
+              {yourStations.length > 0 && allStations.filter(s => !ownedStationIds.includes(s.id)).length > 0 && (
+                <li className="px-4 pt-3 pb-1 text-[10px] text-muted/50 font-medium uppercase tracking-wider list-none">
+                  All stations
+                </li>
+              )}
+              {allStations.filter(s => !ownedStationIds.includes(s.id)).map(s => renderRow(s, () => setMoreOpen(false)))}
             </ul>
             <div className="border-t border-border/50">
               <button
