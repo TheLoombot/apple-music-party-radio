@@ -188,7 +188,20 @@ export default class RadioParty implements Party.Server {
         return
       }
       if (Date.now() >= queue[0].expirationTime) {
-        await this.expireTrack(queue[0].key, true)
+        // Flush ALL stale tracks in one pass rather than one per alarm fire.
+        // If the DO was hibernated for a while, multiple tracks may have expired.
+        // Expiring them one-at-a-time leaves liveUntilFromQueue pointing at a past
+        // timestamp through the entire catch-up sequence, making the station look offline.
+        const { queue: cleanQueue } = await this.flushExpired()
+        if (cleanQueue.length > 0) {
+          // Broadcast current state and arm next alarm (broadcastQueue handles both)
+          await this.broadcastQueue(cleanQueue)
+        }
+        await this.fillRobotQueue()
+        if (cleanQueue.length === 0) {
+          const refilled = await this.storage<QueueItem[]>("queue", [])
+          if (refilled.length === 0) await this.notifyIndex(0)
+        }
       } else {
         // Alarm fired early (Cloudflare may do this) — reschedule for the correct time.
         // Without this, the track is stuck: it won't be expired by alarm and won't be added to pool.
@@ -671,9 +684,10 @@ export default class RadioParty implements Party.Server {
 
         const { lastPlayedAt: _, addedByUsers: _2, playCount: _3, ...track } = pick
         const last = queue[queue.length - 1]
-        const expirationTime = last
-          ? last.expirationTime + track.durationMs
-          : Date.now() + track.durationMs
+        // Use max(lastExpiry, now) so robot tracks always have future expiration times
+        // even when the existing queue has stale items (e.g. after DO hibernation).
+        const startFrom = last ? Math.max(last.expirationTime, Date.now()) : Date.now()
+        const expirationTime = startFrom + track.durationMs
 
         queue.push({
           ...track,
@@ -835,7 +849,10 @@ export default class RadioParty implements Party.Server {
 const LIVE_UNTIL_GRACE_MS = 60_000
 
 function liveUntilFromQueue(queue: QueueItem[]): number {
-  return queue.length > 0 ? queue[0].expirationTime + LIVE_UNTIL_GRACE_MS : 0
+  if (queue.length === 0) return 0
+  // Use max(queue[0].expiry, now) so this never returns a past timestamp when
+  // the queue has stale items (e.g. DO just woke from hibernation mid-catch-up).
+  return Math.max(queue[0].expirationTime, Date.now()) + LIVE_UNTIL_GRACE_MS
 }
 
 /** Match two tracks for pool deduplication.
