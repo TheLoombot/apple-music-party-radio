@@ -23,43 +23,6 @@ function LiveDot() {
   )
 }
 
-/** Overlapping row of up to `max` listener faces, then a "+N" overflow badge. */
-function ListenerFaces({ listeners, max = 4 }: { listeners: NonNullable<Station["listeners"]>; max?: number }) {
-  const shown = listeners.slice(0, max)
-  const overflow = listeners.length - max
-
-  if (shown.length === 0) return null
-
-  const size = 22
-  const overlap = 8
-  const step = size - overlap
-  const totalWidth = size + (shown.length - 1) * step + (overflow > 0 ? step : 0)
-
-  return (
-    <div className="flex items-center flex-shrink-0" style={{ width: totalWidth }}>
-      {shown.map((l, i) => (
-        <div
-          key={l.userId}
-          className="relative group/face rounded-lg ring-2 ring-panel flex-shrink-0"
-          style={{ marginLeft: i === 0 ? 0 : -overlap, zIndex: shown.length - i }}
-        >
-          <DJFace uid={l.userId} size={size} />
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover/face:opacity-100 transition-opacity z-50 text-xs text-white">
-            {l.displayName}
-          </div>
-        </div>
-      ))}
-      {overflow > 0 && (
-        <div
-          className="rounded-lg ring-2 ring-panel bg-surface flex items-center justify-center flex-shrink-0"
-          style={{ width: size, height: size, marginLeft: -overlap, zIndex: 0 }}
-        >
-          <span className="text-[9px] text-muted font-medium">+{overflow}</span>
-        </div>
-      )}
-    </div>
-  )
-}
 
 function StationRow({
   station, active, isOwn, userId, userDisplayName, now, onSelect, onRemove,
@@ -74,7 +37,6 @@ function StationRow({
   onRemove: () => void
 }) {
   const isLive = station.liveUntil > now
-  const listeners = station.listeners ?? []
   const spunBy = station.nowPlayingAddedBy
   const isRobot = spunBy === "robot"
 
@@ -85,52 +47,60 @@ function StationRow({
         tabIndex={0}
         onClick={onSelect}
         onKeyDown={e => e.key === "Enter" && onSelect()}
-        className={`group w-full text-left flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
+        className={`group w-full text-left flex items-center gap-2.5 px-3 py-2.5 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
       >
-        {isLive && station.nowPlayingArtworkUrl ? (
-          <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
-            <img src={artworkUrl(station.nowPlayingArtworkUrl, 192)} alt="" className="w-full h-full object-cover" />
+        {/* Album art thumbnail */}
+        <div className="relative group/art w-12 h-12 flex-shrink-0">
+          <div className="w-full h-full rounded overflow-hidden bg-surface/50">
+            {isLive && station.nowPlayingArtworkUrl
+              ? <img src={artworkUrl(station.nowPlayingArtworkUrl, 80)} alt="" className="w-full h-full object-cover" />
+              : <div className="w-full h-full flex items-center justify-center text-muted/20 text-xs">♪</div>
+            }
           </div>
-        ) : (
-          <div className="w-24 h-24 rounded flex-shrink-0 bg-surface/50 flex items-center justify-center text-muted/30 text-sm">♪</div>
-        )}
-        <div className="flex-1 min-w-0">
-          <p className={`text-sm truncate flex items-center gap-1.5 ${active ? "text-accent" : "text-white"}`}>
-            {isOwn && <Mic size={11} className="flex-shrink-0 text-muted/50" />}
-            {station.displayName || station.id}
-          </p>
-          {!isLive && <p className="text-xs text-muted/40 mt-0.5">offline</p>}
-          {listeners.length > 0 && (
-            <div className="mt-2">
-              <ListenerFaces listeners={listeners} />
+          {isLive && station.nowPlayingTrackName && (
+            <div className="absolute bottom-full left-0 mb-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover/art:opacity-100 transition-opacity z-50 text-xs text-white max-w-[200px]">
+              {station.nowPlayingArtistName && <p className="text-muted/70 truncate">{station.nowPlayingArtistName}</p>}
+              <p className="truncate">{station.nowPlayingTrackName}</p>
             </div>
           )}
         </div>
 
+        {/* Station name */}
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm truncate flex items-center gap-1 ${active ? "text-accent" : isLive ? "text-white" : "text-white/50"}`}>
+            {isOwn && <Mic size={10} className="flex-shrink-0 text-muted/40" />}
+            {station.displayName || station.id}
+          </p>
+        </div>
+
+        {/* Right side: DJ face + live dot, or nothing when offline */}
         {isLive && (
-          <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-0.5">
-            {isRobot ? (
-              <RobotFace size={64} />
-            ) : spunBy ? (
-              <DJFace uid={spunBy} size={64} />
-            ) : null}
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-muted/70 truncate max-w-[56px]">
-                {isRobot ? "robot" : spunBy === userId ? userDisplayName : station.nowPlayingAddedByName ?? ""}
-              </span>
-              <LiveDot />
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="relative group/dj">
+              {isRobot
+                ? <RobotFace size={28} />
+                : spunBy
+                ? <DJFace uid={spunBy} size={28} />
+                : null}
+              {(isRobot || spunBy) && (
+                <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover/dj:opacity-100 transition-opacity z-50 text-xs text-white">
+                  {isRobot ? "robot" : spunBy === userId ? userDisplayName : station.nowPlayingAddedByName ?? spunBy}
+                </div>
+              )}
             </div>
+            <LiveDot />
           </div>
         )}
 
-        <div className="flex-shrink-0 w-[13px] pt-1">
+        {/* Trash — always reserve space to prevent layout shift */}
+        <div className="flex-shrink-0 w-3">
           {isOwn && (
             <button
               onClick={e => { e.stopPropagation(); onRemove() }}
               className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all"
               title="Remove station"
             >
-              <Trash2 size={13} />
+              <Trash2 size={11} />
             </button>
           )}
         </div>
