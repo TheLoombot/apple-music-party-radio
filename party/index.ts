@@ -18,40 +18,17 @@
  *   on first join — ownership is bootstrapped lazily.
  */
 import type * as Party from "partykit/server"
-
-// ─── Shared types (mirrored from client/src/types.ts) ────────────────────────
-
-type Platform = "apple" | "spotify"
-
-interface PlatformIds {
-  apple?: string
-  spotify?: string
-}
-
-interface Track {
-  isrc: string
-  platformIds: PlatformIds
-  addedViaPlatform: Platform
-  name: string
-  artistName: string
-  albumName: string
-  artworkUrl: string
-  durationMs: number
-}
-
-interface QueueItem extends Track {
-  key: string
-  expirationTime: number
-  addedBy: string
-  addedByName?: string   // display name resolved server-side from connListeners
-  addedAt: number
-}
-
-interface PoolTrack extends Track {
-  lastPlayedAt: number
-  addedByUsers: string[]
-  playCount: number
-}
+import {
+  type Platform,
+  type PlatformIds,
+  type Track,
+  type QueueItem,
+  type PoolTrack,
+  sameTrack,
+  liveUntilFromQueue,
+  migrateTrack,
+  hasAnyPlatformId,
+} from "./utils"
 
 interface ChatMessage {
   id: string
@@ -835,62 +812,6 @@ export default class RadioParty implements Party.Server {
   }
 }
 
-// Use queue[0].expirationTime + a grace buffer as liveUntil.
-//
-// Why queue[0] (not the last track): using the last robot track's expiration
-// (up to 8 × avg_duration ≈ 30 min) keeps a stalled station "live" in the index
-// for 30 minutes, showing stale now-playing data. queue[0] gives a much tighter window.
-//
-// Why the 60-second grace: Cloudflare can fire alarms up to ~30 s after their scheduled
-// time. Between queue[0].expirationTime and when the alarm fires + notifyIndex completes,
-// `withPresence` would see liveUntil <= now and strip the now-playing data, making the
-// station appear "silent" in the list even though it's mid-song. The 60 s buffer covers
-// worst-case alarm latency so the station never incorrectly blinks offline.
-const LIVE_UNTIL_GRACE_MS = 60_000
-
-function liveUntilFromQueue(queue: QueueItem[]): number {
-  if (queue.length === 0) return 0
-  // Use max(queue[0].expiry, now) so this never returns a past timestamp when
-  // the queue has stale items (e.g. DO just woke from hibernation mid-catch-up).
-  return Math.max(queue[0].expirationTime, Date.now()) + LIVE_UNTIL_GRACE_MS
-}
-
-/** Match two tracks for pool deduplication.
- *  Never match on empty ISRC — that would collapse all ISRC-less tracks into one. */
-function sameTrack(a: Track, b: Track): boolean {
-  if (a.isrc && b.isrc) return a.isrc === b.isrc
-  if (a.platformIds?.apple && b.platformIds?.apple) return a.platformIds.apple === b.platformIds.apple
-  if (a.platformIds?.spotify && b.platformIds?.spotify) return a.platformIds.spotify === b.platformIds.spotify
-  return false
-}
-
 function json(data: object): string {
   return JSON.stringify(data)
-}
-
-function hasAnyPlatformId(t: { platformIds: PlatformIds }): boolean {
-  return !!(t.platformIds?.apple || t.platformIds?.spotify)
-}
-
-// Migrate old catalogId-based track shape to the new platformIds shape.
-// Runs transparently on every queue/pool read until all stored data is updated.
-function migrateTrack(item: any): any {
-  if (item.platformIds) {
-    // Backfill fields for pool tracks that predate them
-    if ('lastPlayedAt' in item) {
-      return {
-        ...item,
-        addedByUsers: item.addedByUsers ?? [],
-        playCount: item.playCount ?? 1,
-      }
-    }
-    return item
-  }
-  const { catalogId, isrc, ...rest } = item
-  return {
-    ...rest,
-    isrc: isrc ?? "",
-    platformIds: { apple: catalogId },
-    addedViaPlatform: "apple",
-  }
 }

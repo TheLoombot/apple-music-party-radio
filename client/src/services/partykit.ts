@@ -10,7 +10,7 @@ import type { QueueItem, Track, PoolTrack, Station, ChatMessage } from "../types
 
 // Ensure every track from the server has a platformIds object.
 // Mirrors the server-side migrateTrack — runs on every received queue/pool item.
-function migrateTrack<T extends object>(item: T): T {
+export function migrateTrack<T extends object>(item: T): T {
   const t = item as any
   if (t?.platformIds) return item
   return { ...item, platformIds: { apple: t?.catalogId }, addedViaPlatform: t?.addedViaPlatform ?? "apple" }

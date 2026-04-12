@@ -24,6 +24,8 @@ jobs:
 
       - run: npm run install:all
 
+      - run: npm run test:all
+
       - run: npx partykit deploy
         env:
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
