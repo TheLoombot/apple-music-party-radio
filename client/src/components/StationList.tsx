@@ -129,15 +129,17 @@ function StationRow({
           </div>
         )}
 
-        {isOwn && (
-          <button
-            onClick={e => { e.stopPropagation(); onRemove() }}
-            className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all flex-shrink-0 pt-1"
-            title="Remove station"
-          >
-            <Trash2 size={13} />
-          </button>
-        )}
+        <div className="flex-shrink-0 w-[13px] pt-1">
+          {isOwn && (
+            <button
+              onClick={e => { e.stopPropagation(); onRemove() }}
+              className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all"
+              title="Remove station"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
       </div>
     </li>
   )
