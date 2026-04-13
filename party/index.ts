@@ -141,7 +141,7 @@ export default class RadioParty implements Party.Server {
     // Persist roomId on every connect so onAlarm can always recover it after DO hibernation.
     // broadcastQueue also does this, but onConnect covers stations that have never had queue activity.
     if (this.room.id !== "index") {
-      void this.room.storage.put("roomId", this.room.id)
+      await this.room.storage.put("roomId", this.room.id)
     }
     // Derive and persist the index URL from the connection's WebSocket URL so it
     // survives DO hibernation (where room.env is inaccessible in onAlarm).
@@ -156,7 +156,7 @@ export default class RadioParty implements Party.Server {
         const host = isSecure ? wsUrl.host : `localhost:${wsUrl.port || "1999"}`
         const indexUrl = `${protocol}://${host}/parties/main/index`
         this.cachedIndexUrl = indexUrl
-        void this.room.storage.put("indexUrl", indexUrl)
+        await this.room.storage.put("indexUrl", indexUrl)
       } catch { /* ignore — fallback to env var */ }
     }
     if (this.room.id === "index") {
@@ -188,7 +188,12 @@ export default class RadioParty implements Party.Server {
     if (!this.cachedRoomId) {
       this.cachedRoomId = await this.room.storage.get<string>("roomId") ?? null
     }
-    if (!this.cachedRoomId || this.cachedRoomId === "index") return
+    if (!this.cachedRoomId || this.cachedRoomId === "index") {
+      console.warn("[onAlarm] roomId missing from storage — alarm fired but cannot proceed. Stored roomId:", this.cachedRoomId)
+      return
+    }
+    console.log(`[onAlarm] fired for room "${this.cachedRoomId}", indexUrl cache: ${this.cachedIndexUrl ?? "(none)"}`)
+
     try {
       const queue = await this.storage<QueueItem[]>("queue", [])
       if (queue.length === 0) {
@@ -313,6 +318,8 @@ export default class RadioParty implements Party.Server {
             }
             await this.room.storage.put("stations", stations)
             this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
+          } else {
+            console.warn(`[station_status] unknown station "${msg.id}" — not in registry, update dropped`)
           }
         } else if (msg.type === "station_presence") {
           this.presenceMap.set(msg.id, msg.listeners ?? [])
@@ -336,16 +343,18 @@ export default class RadioParty implements Party.Server {
 
       // POST /parties/main/<slug>/bootstrap — wake a dormant station (sent by index on register)
       if (req.method === "POST" && url.pathname.endsWith("/bootstrap")) {
-        // Persist context needed by onAlarm (normally set on first WebSocket connect)
+        // Persist context needed by onAlarm (normally set on first WebSocket connect).
+        // Await these writes so the DO has both values in durable storage before returning —
+        // if the DO hibernates immediately after this response, onAlarm can still recover them.
         this.cachedRoomId = this.room.id
-        void this.room.storage.put("roomId", this.room.id)
+        await this.room.storage.put("roomId", this.room.id)
         if (!this.cachedIndexUrl) {
           const protocol = url.protocol === "https:" ? "https" : "http"
           const indexUrl = `${protocol}://${url.host}/parties/main/index`
           this.cachedIndexUrl = indexUrl
-          void this.room.storage.put("indexUrl", indexUrl)
+          await this.room.storage.put("indexUrl", indexUrl)
         }
-        void this.bootstrapIfNeeded()
+        await this.bootstrapIfNeeded()
         return new Response("ok", { headers: corsHeaders })
       }
     }
@@ -802,7 +811,9 @@ export default class RadioParty implements Party.Server {
     if (stored) { this.cachedIndexUrl = stored; return stored }
     const host = (this.room.env as any)?.PARTYKIT_HOST ?? "localhost:1999"
     const protocol = host.startsWith("localhost") ? "http" : "https"
-    return `${protocol}://${host}/parties/main/index`
+    const url = `${protocol}://${host}/parties/main/index`
+    console.warn(`[getIndexUrl] no stored indexUrl for room "${this.cachedRoomId}" — falling back to env/default: ${url}`)
+    return url
   }
 
   private schedulePresenceNotify() {
@@ -844,11 +855,12 @@ export default class RadioParty implements Party.Server {
   private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingAddedByName?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string, nowPlayingArtworkUrl?: string) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        await fetch(await this.getIndexUrl(), {
+        const res = await fetch(await this.getIndexUrl(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName, nowPlayingArtworkUrl }),
         })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return
       } catch (e) {
         if (attempt === 2) console.error("[notifyIndex] failed after 3 attempts", e)
