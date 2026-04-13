@@ -41,8 +41,22 @@ function useProgress(track: QueueItem | null) {
     }
 
     tick()
-    const id = setInterval(tick, 1000)
-    return () => clearInterval(id)
+    let id = setInterval(tick, 1000)
+
+    function onVisibilityChange() {
+      if (document.hidden) return
+      // Tab just became visible. Browser throttles setInterval to ~1 min while
+      // hidden — snap immediately to the correct position then restart fresh.
+      clearInterval(id)
+      tick()
+      id = setInterval(tick, 1000)
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
+    }
   }, [track?.key])
 
   return { progress, elapsed }

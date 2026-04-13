@@ -60,7 +60,11 @@ export class StationSocket {
     }
 
     this.socket.onmessage = (e) => {
-      const msg = JSON.parse(e.data)
+      let msg: any
+      try { msg = JSON.parse(e.data) } catch (err) {
+        console.error("[StationSocket] failed to parse message:", err)
+        return
+      }
       if (msg.type === "state") {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
         this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean).map(migrateTrack))
@@ -164,7 +168,11 @@ export class IndexSocket {
     this.socket.onopen = () => this.onConnectionChange?.(true)
     this.socket.onclose = () => this.onConnectionChange?.(false)
     this.socket.onmessage = (e) => {
-      const msg = JSON.parse(e.data)
+      let msg: any
+      try { msg = JSON.parse(e.data) } catch (err) {
+        console.error("[IndexSocket] failed to parse message:", err)
+        return
+      }
       if (msg.type === "stations_update") {
         this.onStationsUpdate?.(msg.stations ?? [])
       }

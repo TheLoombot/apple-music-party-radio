@@ -121,8 +121,7 @@ export default class RadioParty implements Party.Server {
   // Guard against concurrent fillRobotQueue calls (e.g. rapid skips)
   private robotFilling = false
 
-  // Debounce timers — coalesce rapid HTTP notifications to index room
-  private notifyIndexTimer: ReturnType<typeof setTimeout> | null = null
+  // Debounce timer for presence notifications only (join/leave coalescing)
   private presenceTimer: ReturnType<typeof setTimeout> | null = null
 
   private getRoomId(): string {
@@ -553,7 +552,7 @@ export default class RadioParty implements Party.Server {
     const keySet = new Set(keys)
     const reordered = keys.map(k => userItems.find(i => i.key === k)).filter((i): i is QueueItem => i != null)
     const missing = userItems.filter(i => !keySet.has(i.key))
-    let cursor = nowPlaying.expirationTime
+    let cursor = Math.max(nowPlaying.expirationTime, Date.now())
     const newQueue = [nowPlaying, ...[...reordered, ...missing, ...robotItems].map(item => {
       cursor += item.durationMs
       return { ...item, expirationTime: cursor }
@@ -841,18 +840,18 @@ export default class RadioParty implements Party.Server {
   private async broadcastQueue(queue: QueueItem[]) {
     this.room.broadcast(json({ type: "queue_update", queue }))
 
-    // Debounce index notification — coalesce rapid mutations (robot fill, skips, etc.)
-    // into a single HTTP call ~300 ms after the last mutation.
-    if (this.notifyIndexTimer) clearTimeout(this.notifyIndexTimer)
-    const liveUntil = liveUntilFromQueue(queue)
-    const np = queue[0]
-    this.notifyIndexTimer = setTimeout(() => {
-      void this.notifyIndex(liveUntil, np?.addedBy, np?.addedByName, np?.name, np?.artistName, np?.artworkUrl)
-    }, 300)
-
+    // Arm the expiration alarm before notifyIndex — the alarm chain is critical and
+    // must not be gated behind the (potentially slow) HTTP call to the index room.
     if (queue.length > 0) {
       await this.room.storage.setAlarm(queue[0].expirationTime)
     }
+
+    // Notify index inline — setTimeout is unreliable here because the DO can be
+    // evicted from memory after the event handler returns (especially in no-listener
+    // alarm scenarios), cancelling any pending timers before they fire.
+    const liveUntil = liveUntilFromQueue(queue)
+    const np = queue[0]
+    await this.notifyIndex(liveUntil, np?.addedBy, np?.addedByName, np?.name, np?.artistName, np?.artworkUrl)
   }
 }
 
