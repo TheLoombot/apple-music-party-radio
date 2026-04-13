@@ -69,6 +69,7 @@ interface Listener {
 
 interface ConnectedListener extends Listener {
   isDJ: boolean
+  lastMessageAt?: number  // for per-connection chat rate limiting
 }
 
 interface Station {
@@ -94,6 +95,12 @@ interface StationOwnership {
 
 /** How many robot-queued tracks to maintain in the tail of the queue at all times. */
 const TARGET_ROBOT_DEPTH = 8
+
+/** Max tracks a single non-robot user may have queued at once (prevents queue flooding). */
+const MAX_USER_QUEUE_DEPTH = 5
+
+/** Min milliseconds between chat messages per connection (prevents chat flooding). */
+const CHAT_RATE_LIMIT_MS = 1000
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 
@@ -502,12 +509,18 @@ export default class RadioParty implements Party.Server {
   private async addTrack(track: Track, addedBy: string, addedByName?: string) {
     const queue = await this.storage<QueueItem[]>("queue", [])
 
+    // Reject if this user already has too many tracks queued (excludes now-playing).
+    if (addedBy !== "robot") {
+      const userQueued = queue.slice(1).filter(i => i.addedBy === addedBy).length
+      if (userQueued >= MAX_USER_QUEUE_DEPTH) return
+    }
+
     // Robot tracks always append at the tail; user tracks insert before the robot tail.
     const insertAt = addedBy === "robot" ? queue.length : this.getInsertionIndex(queue)
 
     const predecessor = queue[insertAt - 1] ?? null
     const expirationTime = predecessor
-      ? predecessor.expirationTime + track.durationMs
+      ? Math.max(predecessor.expirationTime, Date.now()) + track.durationMs
       : Date.now() + track.durationMs
 
     const newItem: QueueItem = {
@@ -537,7 +550,19 @@ export default class RadioParty implements Party.Server {
 
   private async removeTrack(key: string) {
     let queue = await this.storage<QueueItem[]>("queue", [])
+    // Removing now-playing must go through skipTrack/expireTrack so pool logic runs correctly.
+    if (queue[0]?.key === key) return
+    if (!queue.find(i => i.key === key)) return
     queue = queue.filter(i => i.key !== key)
+    // Recalculate expiration times for all queued tracks (anchored to max(queue[0].expiry, now)
+    // so stale times from DO hibernation are healed at the same time).
+    if (queue.length > 1) {
+      let cursor = Math.max(queue[0].expirationTime, Date.now())
+      for (let i = 1; i < queue.length; i++) {
+        cursor += queue[i].durationMs
+        queue[i] = { ...queue[i], expirationTime: cursor }
+      }
+    }
     await this.room.storage.put("queue", queue)
     await this.broadcastQueue(queue)
   }
@@ -622,6 +647,9 @@ export default class RadioParty implements Party.Server {
     if (!text) return
     const listener = this.connListeners.get(sender.id)
     if (!listener) return
+    const now = Date.now()
+    if (listener.lastMessageAt && now - listener.lastMessageAt < CHAT_RATE_LIMIT_MS) return
+    this.connListeners.set(sender.id, { ...listener, lastMessageAt: now })
     const message: ChatMessage = {
       id: crypto.randomUUID(),
       userId: listener.userId,
