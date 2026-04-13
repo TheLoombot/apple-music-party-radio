@@ -145,7 +145,9 @@ export default class RadioParty implements Party.Server {
     }
     // Derive and persist the index URL from the connection's WebSocket URL so it
     // survives DO hibernation (where room.env is inaccessible in onAlarm).
-    if (!this.cachedIndexUrl && this.room.id !== "index") {
+    // Always re-derive on each connect (no !cachedIndexUrl guard) so a production
+    // wss connection overwrites any stale localhost URL written during dev.
+    if (this.room.id !== "index") {
       try {
         const wsUrl = new URL(conn.uri)
         const isSecure = wsUrl.protocol === "wss:"
@@ -156,7 +158,9 @@ export default class RadioParty implements Party.Server {
         const host = isSecure ? wsUrl.host : `localhost:${wsUrl.port || "1999"}`
         const indexUrl = `${protocol}://${host}/parties/main/index`
         this.cachedIndexUrl = indexUrl
-        await this.room.storage.put("indexUrl", indexUrl)
+        // Only persist production URLs — never store a localhost URL in durable storage
+        // since it will be wrong after the DO is deployed/hibernated and used in onAlarm.
+        if (isSecure) await this.room.storage.put("indexUrl", indexUrl)
       } catch { /* ignore — fallback to env var */ }
     }
     if (this.room.id === "index") {
@@ -348,12 +352,12 @@ export default class RadioParty implements Party.Server {
         // if the DO hibernates immediately after this response, onAlarm can still recover them.
         this.cachedRoomId = this.room.id
         await this.room.storage.put("roomId", this.room.id)
-        if (!this.cachedIndexUrl) {
-          const protocol = url.protocol === "https:" ? "https" : "http"
-          const indexUrl = `${protocol}://${url.host}/parties/main/index`
-          this.cachedIndexUrl = indexUrl
-          await this.room.storage.put("indexUrl", indexUrl)
-        }
+        const bsProtocol = url.protocol === "https:" ? "https" : "http"
+        const bsIndexUrl = `${bsProtocol}://${url.host}/parties/main/index`
+        this.cachedIndexUrl = bsIndexUrl
+        // Always overwrite stored indexUrl from production bootstrap requests — this
+        // heals rooms whose storage has a stale localhost URL from a dev session.
+        if (bsProtocol === "https") await this.room.storage.put("indexUrl", bsIndexUrl)
         await this.bootstrapIfNeeded()
         return new Response("ok", { headers: corsHeaders })
       }
@@ -803,14 +807,16 @@ export default class RadioParty implements Party.Server {
   }
 
   // Derive the index room's HTTP URL. Priority:
-  //   1. In-memory cache (set from conn.uri on first connect)
-  //   2. Storage (persisted in case of DO hibernation between connect and alarm)
+  //   1. In-memory cache (set from conn.uri on first connect — production only)
+  //   2. Storage (persisted in case of DO hibernation between connect and alarm — production only)
   //   3. PARTYKIT_HOST env var (set in partykit.json, only available after deploy)
   //   4. localhost fallback (dev only)
+  // localhost URLs are skipped at every level — they are only valid for the current
+  // in-process dev session and must never be used in alarm context after hibernation.
   private async getIndexUrl(): Promise<string> {
-    if (this.cachedIndexUrl) return this.cachedIndexUrl
+    if (this.cachedIndexUrl && !this.cachedIndexUrl.includes("localhost")) return this.cachedIndexUrl
     const stored = await this.room.storage.get<string>("indexUrl")
-    if (stored) { this.cachedIndexUrl = stored; return stored }
+    if (stored && !stored.includes("localhost")) { this.cachedIndexUrl = stored; return stored }
     const host = (this.room.env as any)?.PARTYKIT_HOST ?? "localhost:1999"
     const protocol = host.startsWith("localhost") ? "http" : "https"
     const url = `${protocol}://${host}/parties/main/index`
@@ -865,6 +871,7 @@ export default class RadioParty implements Party.Server {
       return
     } catch (_e) {
       // context.parties throws a runtime error in onAlarm — fall through to URL approach
+      console.warn(`[notifyIndex] context.parties path failed for room "${this.cachedRoomId}":`, _e)
     }
 
     // Fallback: public URL (alarm context where parties binding is unavailable)
