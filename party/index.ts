@@ -125,10 +125,6 @@ export default class RadioParty implements Party.Server {
   // the alarm handler (where room.env may be inaccessible) can recover it.
   private cachedIndexUrl: string | null = null
 
-  // Station display name + storefront — stored at creation, used to upsert into the index
-  // if the station falls out of the registry (e.g. index storage cleared).
-  private cachedStationMeta: { displayName: string; storefront: string } | null = null
-
   // Guard against concurrent fillRobotQueue calls (e.g. rapid skips)
   private robotFilling = false
 
@@ -323,25 +319,7 @@ export default class RadioParty implements Party.Server {
             await this.room.storage.put("stations", stations)
             this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
           } else {
-            // Station fell out of the registry (e.g. index storage cleared). Re-register it so
-            // future status updates aren't dropped. displayName/storefront come from the station DO's
-            // own stored meta. The correct name will be overwritten on the next client register.
-            console.warn(`[station_status] unknown station "${msg.id}" — upserting into registry`)
-            const liveUntil = msg.liveUntil ?? 0
-            const isLive = liveUntil > 0
-            stations.push({
-              id: msg.id,
-              displayName: msg.displayName ?? msg.id,
-              storefront: msg.storefront ?? "",
-              liveUntil,
-              nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
-              nowPlayingAddedByName: msg.nowPlayingAddedByName ?? undefined,
-              nowPlayingTrackName: isLive ? msg.nowPlayingTrackName : undefined,
-              nowPlayingArtistName: isLive ? msg.nowPlayingArtistName : undefined,
-              nowPlayingArtworkUrl: isLive ? msg.nowPlayingArtworkUrl : undefined,
-            })
-            await this.room.storage.put("stations", stations)
-            this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
+            console.warn(`[station_status] unknown station "${msg.id}" — not in registry, update dropped`)
           }
         } else if (msg.type === "station_presence") {
           this.presenceMap.set(msg.id, msg.listeners ?? [])
@@ -359,9 +337,7 @@ export default class RadioParty implements Party.Server {
         const body = await req.json() as { ownerUid: string; displayName: string; storefront: string }
         const ownership: StationOwnership = { ownerUid: body.ownerUid, createdAt: Date.now() }
         await this.room.storage.put("ownership", ownership)
-        await this.room.storage.put("stationMeta", { displayName: body.displayName, storefront: body.storefront })
         this.cachedOwnerUid = body.ownerUid
-        this.cachedStationMeta = { displayName: body.displayName, storefront: body.storefront }
         return new Response("ok", { headers: corsHeaders })
       }
 
@@ -877,18 +853,12 @@ export default class RadioParty implements Party.Server {
   }
 
   private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingAddedByName?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string, nowPlayingArtworkUrl?: string) {
-    // Lazily load station meta so the index can upsert this station if it fell out of the registry.
-    if (!this.cachedStationMeta) {
-      const stored = await this.room.storage.get<{ displayName: string; storefront: string }>("stationMeta")
-      if (stored) this.cachedStationMeta = stored
-    }
-    const { displayName, storefront } = this.cachedStationMeta ?? {}
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const res = await fetch(await this.getIndexUrl(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, displayName, storefront, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName, nowPlayingArtworkUrl }),
+          body: JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName, nowPlayingArtworkUrl }),
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return
