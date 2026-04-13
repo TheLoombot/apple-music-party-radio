@@ -50,10 +50,10 @@ function StationRow({
         className={`group w-full text-left flex items-center gap-2.5 px-3 py-2.5 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
       >
         {/* Album art thumbnail */}
-        <div className="relative group/art w-12 h-12 flex-shrink-0">
+        <div className="relative group/art w-[60px] h-[60px] flex-shrink-0">
           <div className="w-full h-full rounded overflow-hidden bg-surface/50">
             {isLive && station.nowPlayingArtworkUrl
-              ? <img src={artworkUrl(station.nowPlayingArtworkUrl, 80)} alt="" className="w-full h-full object-cover" />
+              ? <img src={artworkUrl(station.nowPlayingArtworkUrl, 120)} alt="" className="w-full h-full object-cover" />
               : <div className="w-full h-full flex items-center justify-center text-muted/20 text-xs">♪</div>
             }
           </div>
