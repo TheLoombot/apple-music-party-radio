@@ -395,13 +395,15 @@ export default class RadioParty implements Party.Server {
     // If the station appears offline, send it a bootstrap ping so it wakes up and
     // starts playing from its pool even with no listeners connected.
     if (!existing || existing.liveUntil <= Date.now()) {
-      const indexUrl = await this.getIndexUrl()
-      const bootstrapUrl = indexUrl.replace(/\/index$/, `/${encodeURIComponent(msg.id)}/bootstrap`)
-      void fetch(bootstrapUrl, {
+      // Pass the full public URL so the bootstrap handler can derive the correct indexUrl from url.host
+      const host = (this.room.env as any)?.PARTYKIT_HOST ?? "localhost:1999"
+      const protocol = host.startsWith("localhost") ? "http" : "https"
+      const bootstrapUrl = `${protocol}://${host}/parties/main/${encodeURIComponent(msg.id)}/bootstrap`
+      void this.room.context.parties.main.get(msg.id).fetch(bootstrapUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
-      }).catch(() => {})
+      }).catch((e: unknown) => console.error(`[bootstrap] failed for station "${msg.id}":`, e))
     }
   }
 
@@ -824,7 +826,7 @@ export default class RadioParty implements Party.Server {
   private async notifyIndexPresence() {
     const listeners: Listener[] = [...this.connListeners.values()].map(({ userId, displayName, isDJ }) => ({ userId, displayName, isDJ }))
     try {
-      await fetch(await this.getIndexUrl(), {
+      await this.room.context.parties.main.get("index").fetch("/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "station_presence", id: this.getRoomId(), listeners }),
@@ -853,13 +855,22 @@ export default class RadioParty implements Party.Server {
   }
 
   private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingAddedByName?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string, nowPlayingArtworkUrl?: string) {
+    const body = JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName, nowPlayingArtworkUrl })
+    const headers = { "Content-Type": "application/json" }
+
+    // Primary: internal service binding — bypasses public-URL auth. Not available in onAlarm context.
+    try {
+      const res = await this.room.context.parties.main.get("index").fetch("/", { method: "POST", headers, body })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return
+    } catch (_e) {
+      // context.parties throws a runtime error in onAlarm — fall through to URL approach
+    }
+
+    // Fallback: public URL (alarm context where parties binding is unavailable)
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await fetch(await this.getIndexUrl(), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName, nowPlayingArtworkUrl }),
-        })
+        const res = await fetch(await this.getIndexUrl(), { method: "POST", headers, body })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return
       } catch (e) {
