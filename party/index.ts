@@ -823,7 +823,7 @@ export default class RadioParty implements Party.Server {
   // localhost URLs are skipped at every level — they are only valid for the current
   // in-process dev session and must never be used in alarm context after hibernation.
   private async getIndexUrl(): Promise<string> {
-    if (this.cachedIndexUrl && !this.cachedIndexUrl.includes("localhost")) return this.cachedIndexUrl
+    if (this.cachedIndexUrl) return this.cachedIndexUrl
     const stored = await this.room.storage.get<string>("indexUrl")
     if (stored && !stored.includes("localhost")) { this.cachedIndexUrl = stored; return stored }
     const host = (this.room.env as any)?.PARTYKIT_HOST ?? "localhost:1999"
