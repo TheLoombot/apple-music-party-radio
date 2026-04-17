@@ -150,7 +150,9 @@ export default class RadioParty implements Party.Server {
     // Derive and persist the index URL from the connection's WebSocket URL so it
     // survives DO hibernation (where room.env is inaccessible in onAlarm).
     // Always re-derive on each connect (no !cachedIndexUrl guard) so a production
-    // wss connection overwrites any stale localhost URL written during dev.
+    // connection always overwrites any stale URL from a prior dev session.
+    // Dev and prod use separate durable storage backends, so localhost URLs in dev
+    // storage can never bleed into prod.
     if (this.room.id !== "index") {
       try {
         const wsUrl = new URL(conn.uri)
@@ -162,9 +164,7 @@ export default class RadioParty implements Party.Server {
         const host = isSecure ? wsUrl.host : `localhost:${wsUrl.port || "1999"}`
         const indexUrl = `${protocol}://${host}/parties/main/index`
         this.cachedIndexUrl = indexUrl
-        // Only persist production URLs — never store a localhost URL in durable storage
-        // since it will be wrong after the DO is deployed/hibernated and used in onAlarm.
-        if (isSecure) await this.room.storage.put("indexUrl", indexUrl)
+        await this.room.storage.put("indexUrl", indexUrl)
       } catch { /* ignore — fallback to env var */ }
     }
     if (this.room.id === "index") {
@@ -825,7 +825,7 @@ export default class RadioParty implements Party.Server {
   private async getIndexUrl(): Promise<string> {
     if (this.cachedIndexUrl) return this.cachedIndexUrl
     const stored = await this.room.storage.get<string>("indexUrl")
-    if (stored && !stored.includes("localhost")) { this.cachedIndexUrl = stored; return stored }
+    if (stored) { this.cachedIndexUrl = stored; return stored }
     const host = (this.room.env as any)?.PARTYKIT_HOST ?? "localhost:1999"
     const protocol = host.startsWith("localhost") ? "http" : "https"
     const url = `${protocol}://${host}/parties/main/index`
