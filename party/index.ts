@@ -128,6 +128,10 @@ export default class RadioParty implements Party.Server {
   // Guard against concurrent fillRobotQueue calls (e.g. rapid skips)
   private robotFilling = false
 
+  // Set to true while inside onAlarm — context.parties is unavailable in that
+  // context, so notifyIndex skips the binding attempt and goes straight to the URL path.
+  private inAlarm = false
+
   // Debounce timer for presence notifications only (join/leave coalescing)
   private presenceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -188,62 +192,67 @@ export default class RadioParty implements Party.Server {
   }
 
   async onAlarm() {
-    // room.id is inaccessible in onAlarm — restore from storage
-    if (!this.cachedRoomId) {
-      this.cachedRoomId = await this.room.storage.get<string>("roomId") ?? null
-    }
-    if (!this.cachedRoomId || this.cachedRoomId === "index") {
-      console.warn("[onAlarm] roomId missing from storage — alarm fired but cannot proceed. Stored roomId:", this.cachedRoomId)
-      return
-    }
-    console.log(`[onAlarm] fired for room "${this.cachedRoomId}", indexUrl cache: ${this.cachedIndexUrl ?? "(none)"}`)
-
+    this.inAlarm = true
     try {
-      const queue = await this.storage<QueueItem[]>("queue", [])
-      if (queue.length === 0) {
-        // Queue empty — try to refill from pool before marking the station offline.
-        // This keeps the alarm chain alive when the queue drains with no listeners present.
-        await this.fillRobotQueue()
-        const refilled = await this.storage<QueueItem[]>("queue", [])
-        if (refilled.length === 0) {
-          // Pool also empty — station genuinely has nothing to play
-          await this.notifyIndex(0)
-        }
+      // room.id is inaccessible in onAlarm — restore from storage
+      if (!this.cachedRoomId) {
+        this.cachedRoomId = await this.room.storage.get<string>("roomId") ?? null
+      }
+      if (!this.cachedRoomId || this.cachedRoomId === "index") {
+        console.warn("[onAlarm] roomId missing from storage — alarm fired but cannot proceed. Stored roomId:", this.cachedRoomId)
         return
       }
-      if (Date.now() >= queue[0].expirationTime) {
-        // Flush ALL stale tracks in one pass rather than one per alarm fire.
-        // If the DO was hibernated for a while, multiple tracks may have expired.
-        // Expiring them one-at-a-time leaves liveUntilFromQueue pointing at a past
-        // timestamp through the entire catch-up sequence, making the station look offline.
-        const { queue: cleanQueue } = await this.flushExpired()
-        if (cleanQueue.length > 0) {
-          // Broadcast current state and arm next alarm (broadcastQueue handles both)
-          await this.broadcastQueue(cleanQueue)
-        }
-        await this.fillRobotQueue()
-        if (cleanQueue.length === 0) {
-          const refilled = await this.storage<QueueItem[]>("queue", [])
-          if (refilled.length === 0) await this.notifyIndex(0)
-        }
-      } else {
-        // Alarm fired early (Cloudflare may do this) — reschedule for the correct time.
-        // Without this, the track is stuck: it won't be expired by alarm and won't be added to pool.
-        await this.room.storage.setAlarm(queue[0].expirationTime)
-      }
-    } catch (err) {
-      console.error(`[onAlarm] error in room ${this.cachedRoomId}:`, err)
-      // Best-effort: notify index so the station doesn't stay "live" forever on error
+      console.log(`[onAlarm] fired for room "${this.cachedRoomId}", indexUrl cache: ${this.cachedIndexUrl ?? "(none)"}`)
+
       try {
         const queue = await this.storage<QueueItem[]>("queue", [])
-        await this.notifyIndex(
-          liveUntilFromQueue(queue),
-          queue[0]?.addedBy, queue[0]?.addedByName,
-          queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl
-        )
-      } catch (e) {
-        console.error(`[onAlarm] fallback notifyIndex also failed in room ${this.cachedRoomId}:`, e)
+        if (queue.length === 0) {
+          // Queue empty — try to refill from pool before marking the station offline.
+          // This keeps the alarm chain alive when the queue drains with no listeners present.
+          await this.fillRobotQueue()
+          const refilled = await this.storage<QueueItem[]>("queue", [])
+          if (refilled.length === 0) {
+            // Pool also empty — station genuinely has nothing to play
+            await this.notifyIndex(0)
+          }
+          return
+        }
+        if (Date.now() >= queue[0].expirationTime) {
+          // Flush ALL stale tracks in one pass rather than one per alarm fire.
+          // If the DO was hibernated for a while, multiple tracks may have expired.
+          // Expiring them one-at-a-time leaves liveUntilFromQueue pointing at a past
+          // timestamp through the entire catch-up sequence, making the station look offline.
+          const { queue: cleanQueue } = await this.flushExpired()
+          if (cleanQueue.length > 0) {
+            // Broadcast current state and arm next alarm (broadcastQueue handles both)
+            await this.broadcastQueue(cleanQueue)
+          }
+          await this.fillRobotQueue()
+          if (cleanQueue.length === 0) {
+            const refilled = await this.storage<QueueItem[]>("queue", [])
+            if (refilled.length === 0) await this.notifyIndex(0)
+          }
+        } else {
+          // Alarm fired early (Cloudflare may do this) — reschedule for the correct time.
+          // Without this, the track is stuck: it won't be expired by alarm and won't be added to pool.
+          await this.room.storage.setAlarm(queue[0].expirationTime)
+        }
+      } catch (err) {
+        console.error(`[onAlarm] error in room ${this.cachedRoomId}:`, err)
+        // Best-effort: notify index so the station doesn't stay "live" forever on error
+        try {
+          const queue = await this.storage<QueueItem[]>("queue", [])
+          await this.notifyIndex(
+            liveUntilFromQueue(queue),
+            queue[0]?.addedBy, queue[0]?.addedByName,
+            queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl
+          )
+        } catch (e) {
+          console.error(`[onAlarm] fallback notifyIndex also failed in room ${this.cachedRoomId}:`, e)
+        }
       }
+    } finally {
+      this.inAlarm = false
     }
   }
 
@@ -865,16 +874,18 @@ export default class RadioParty implements Party.Server {
     const headers = { "Content-Type": "application/json" }
 
     // Primary: internal service binding — bypasses public-URL auth. Not available in onAlarm context.
-    try {
-      const res = await this.room.context.parties.main.get("index").fetch("/", { method: "POST", headers, body })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      return
-    } catch (_e) {
-      // context.parties throws a runtime error in onAlarm — fall through to URL approach
-      console.warn(`[notifyIndex] context.parties path failed for room "${this.cachedRoomId}":`, _e)
+    if (!this.inAlarm) {
+      try {
+        const res = await this.room.context.parties.main.get("index").fetch("/", { method: "POST", headers, body })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return
+      } catch (_e) {
+        // Unexpected failure outside alarm context — fall through to URL approach
+        console.warn(`[notifyIndex] context.parties path failed for room "${this.cachedRoomId}":`, _e)
+      }
     }
 
-    // Fallback: public URL (alarm context where parties binding is unavailable)
+    // Fallback: public URL (always used in alarm context; parties binding is unavailable there)
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const res = await fetch(await this.getIndexUrl(), { method: "POST", headers, body })
