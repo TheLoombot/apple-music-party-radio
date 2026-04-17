@@ -150,7 +150,7 @@ export default class RadioParty implements Party.Server {
     if (this.room.id !== "index") {
       try {
         const wsUrl = new URL(conn.uri)
-        const isSecure = wsUrl.protocol === "wss:"
+        const isSecure = wsUrl.protocol === "wss:" || wsUrl.protocol === "https:"
         const protocol = isSecure ? "https" : "http"
         // In local dev (non-secure), always use localhost so server-side fetches
         // to the index room resolve correctly regardless of the browser's hostname
