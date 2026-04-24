@@ -5,9 +5,10 @@ interface Props {
   messages: ChatMessage[]
   currentUser: AppUser
   onSend: (text: string) => void
+  embedded?: boolean
 }
 
-export function StationChat({ messages, currentUser, onSend }: Props) {
+export function StationChat({ messages, currentUser, onSend, embedded }: Props) {
   const [input, setInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -26,12 +27,12 @@ export function StationChat({ messages, currentUser, onSend }: Props) {
   }
 
   return (
-    <div className="bg-panel rounded-xl overflow-hidden flex flex-col">
+    <div className={embedded ? "flex flex-col flex-1 min-h-0 overflow-hidden" : "bg-panel rounded-xl overflow-hidden flex flex-col"}>
       <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
         Chat
       </div>
 
-      <div ref={scrollRef} className="h-64 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={scrollRef} className={`${embedded ? "flex-1 min-h-0" : "h-64"} overflow-y-auto px-4 py-3 space-y-3`}>
         {messages.length === 0 ? (
           <p className="text-muted text-xs text-center pt-4">No messages yet. Say something!</p>
         ) : (

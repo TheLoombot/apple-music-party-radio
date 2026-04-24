@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Volume2, VolumeX, SkipForward, Library, Pencil } from "lucide-react"
+import { Volume2, VolumeX, SkipForward, Library, Pencil, ChevronDown } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { ArtworkModal } from "./ArtworkModal"
@@ -24,6 +24,8 @@ interface Props {
   stationName: string
   isOwner: boolean
   onRenameStation?: (name: string) => void
+  onOpenStationModal?: () => void
+  activeStationCount?: number
 }
 
 function useProgress(track: QueueItem | null) {
@@ -142,7 +144,7 @@ function useMediaSession(
   }, [track?.key, isPlaying, canSkip])
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, onRenameStation }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, onRenameStation, onOpenStationModal, activeStationCount }: Props) {
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
   const quiet = isMuted || isBlocked
@@ -185,14 +187,23 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           />
         ) : (
           <>
-            <span className="text-white text-sm font-semibold flex-1 truncate">{stationName}</span>
+            <button
+              onClick={onOpenStationModal}
+              className="text-white text-sm font-semibold flex-1 min-w-0 text-left hover:text-accent transition-colors flex items-center gap-1.5"
+            >
+              <span className="truncate">{stationName}</span>
+              {(activeStationCount ?? 0) > 0 && (
+                <span className="text-muted/50 text-xs font-normal flex-shrink-0">+{activeStationCount}</span>
+              )}
+              <ChevronDown size={12} className="flex-shrink-0 text-muted/40" />
+            </button>
             {isOwner && onRenameStation && (
               <button
                 onClick={() => { setNameInput(stationName); setEditingName(true); setTimeout(() => nameRef.current?.select(), 0) }}
-                className="text-muted/40 hover:text-muted transition-colors flex-shrink-0"
+                className="text-muted/40 hover:text-muted transition-colors w-8 h-8 flex items-center justify-center flex-shrink-0"
                 title="Rename station"
               >
-                <Pencil size={12} />
+                <Pencil size={14} />
               </button>
             )}
           </>

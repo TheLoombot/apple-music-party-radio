@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronDown, ChevronUp, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import type { QueueItem } from "../types"
@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function RobotQueue({ queue, onRemove, onAlbumClick }: Props) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
 
   if (queue.length === 0) return null
 
@@ -80,10 +80,10 @@ export function RobotQueue({ queue, onRemove, onAlbumClick }: Props) {
                   {onRemove && (
                     <button
                       onClick={() => onRemove(item)}
-                      className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all text-lg leading-none flex-shrink-0"
+                      className="w-9 h-9 flex items-center justify-center text-muted hover:text-red-400 transition-colors flex-shrink-0"
                       title="Remove from queue"
                     >
-                      ×
+                      <X size={15} />
                     </button>
                   )}
                 </li>

@@ -92,18 +92,15 @@ function StationRow({
           </div>
         )}
 
-        {/* Trash — always reserve space to prevent layout shift */}
-        <div className="flex-shrink-0 w-3">
-          {isOwn && (
-            <button
-              onClick={e => { e.stopPropagation(); onRemove() }}
-              className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 transition-all"
-              title="Remove station"
-            >
-              <Trash2 size={11} />
-            </button>
-          )}
-        </div>
+        {isOwn && (
+          <button
+            onClick={e => { e.stopPropagation(); onRemove() }}
+            className="w-9 h-9 flex items-center justify-center text-muted/40 hover:text-red-400 transition-colors flex-shrink-0"
+            title="Remove station"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
     </li>
   )
@@ -163,10 +160,6 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider flex-shrink-0">
-        Stations
-      </div>
-
       {stations.length === 0 ? (
         <div className="p-6 text-center text-muted text-sm">No stations yet</div>
       ) : (

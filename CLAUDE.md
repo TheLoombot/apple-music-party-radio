@@ -1,5 +1,9 @@
 # Apple Music Party Radio — Claude Code Guide
 
+**Never add `Co-Authored-By:` lines to git commit messages.**
+
+---
+
 Real-time collaborative radio stations backed by Apple Music. Listeners hear the same track at the same position via **time-based sync** (each client plays independently, no audio stream through the server). The server is a PartyKit Durable Object; the client is React + MusicKit JS v3.
 
 ---

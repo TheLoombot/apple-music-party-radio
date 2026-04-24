@@ -94,7 +94,7 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
         {/* Header */}
         <div className="flex items-center gap-4 px-4 py-4 border-b border-border bg-surface/40 flex-shrink-0">
           {navStack.length > 0 && (
-            <button onClick={navigateBack} className="text-muted hover:text-white transition-colors flex-shrink-0 p-1">
+            <button onClick={navigateBack} className="text-muted hover:text-white transition-colors w-10 h-10 flex items-center justify-center flex-shrink-0">
               <ChevronLeft size={18} />
             </button>
           )}
@@ -128,7 +128,7 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
               )}
             </div>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-white transition-colors flex-shrink-0 p-1">
+          <button onClick={onClose} className="text-muted hover:text-white transition-colors w-10 h-10 flex items-center justify-center flex-shrink-0">
             <X size={18} />
           </button>
         </div>

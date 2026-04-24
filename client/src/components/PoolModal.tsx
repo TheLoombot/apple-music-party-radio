@@ -103,7 +103,7 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
         {/* Header */}
         {inAlbum ? (
           <div className="flex items-center gap-3 px-4 py-4 border-b border-border bg-surface/40 flex-shrink-0">
-            <button onClick={handleBack} className="text-muted hover:text-white transition-colors flex-shrink-0 p-1">
+            <button onClick={handleBack} className="text-muted hover:text-white transition-colors w-10 h-10 flex items-center justify-center flex-shrink-0">
               <ChevronLeft size={18} />
             </button>
             <div className="w-12 h-12 rounded flex-shrink-0 overflow-hidden bg-surface">
@@ -117,7 +117,7 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
               <p className="text-white text-sm font-bold truncate">{album.name || <LoadingDots />}</p>
               {album.subtitle && <p className="text-muted text-xs truncate">{album.subtitle}</p>}
             </div>
-            <button onClick={onClose} className="text-muted hover:text-white transition-colors flex-shrink-0 p-1">
+            <button onClick={onClose} className="text-muted hover:text-white transition-colors w-10 h-10 flex items-center justify-center flex-shrink-0">
               <X size={18} />
             </button>
           </div>
@@ -147,9 +147,9 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
                   {filterQuery && (
                     <button
                       onClick={() => setFilterQuery("")}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white transition-colors text-sm leading-none"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-muted hover:text-white transition-colors"
                     >
-                      <X size={12} />
+                      <X size={14} />
                     </button>
                   )}
                 </div>
@@ -237,16 +237,16 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
                           {canManagePool && (
                             <button
                               onClick={() => onRemoveFromPool(track.isrc)}
-                              className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-full flex items-center justify-center text-muted hover:text-red-400 transition-all"
+                              className="w-9 h-9 rounded-full flex items-center justify-center text-muted hover:text-red-400 transition-colors"
                               title="Remove from pool"
                             >
-                              <Trash2 size={13} />
+                              <Trash2 size={14} />
                             </button>
                           )}
                           <button
                             onClick={() => onAddTrack(track)}
                             disabled={unavailable}
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-sm transition-all ${
+                            className={`w-9 h-9 rounded-full flex items-center justify-center text-base transition-all ${
                               added ? "bg-green-500/20 text-green-400 hover:bg-red-500/20 hover:text-red-400" : unavailable ? "bg-surface text-muted cursor-not-allowed" : "bg-surface text-muted hover:bg-accent hover:text-white"
                             }`}
                             title={unavailable ? "No longer available" : added ? "Remove from queue" : "Add to queue"}

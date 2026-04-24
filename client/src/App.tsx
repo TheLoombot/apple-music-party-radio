@@ -5,9 +5,9 @@ import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
 import { RobotQueue } from "./components/RobotQueue"
 import { PoolModal } from "./components/PoolModal"
-import { StationChat } from "./components/StationChat"
-import { Discovery } from "./components/Discovery"
-import { StationList } from "./components/StationList"
+import { StationModal } from "./components/StationModal"
+import { ChatModal } from "./components/ChatModal"
+import { DiscoveryModal } from "./components/DiscoveryModal"
 import { ListenersPanel } from "./components/ListenersPanel"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized, getMusicKit } from "./services/musickit"
@@ -34,6 +34,10 @@ export default function App() {
   const [upNext, setUpNext] = useState<QueueItem[]>([])
   const [pool, setPool] = useState<PoolTrack[]>([])
   const [poolModalOpen, setPoolModalOpen] = useState(false)
+  const [stationModalOpen, setStationModalOpen] = useState(false)
+  const [chatModalOpen, setChatModalOpen] = useState(false)
+  const [discoveryModalOpen, setDiscoveryModalOpen] = useState(false)
+  const [lastReadSentAt, setLastReadSentAt] = useState(0)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [isMuted, setIsMuted] = useState(false)
   const [playbackBlocked, setPlaybackBlocked] = useState(false)
@@ -274,6 +278,7 @@ export default function App() {
     setUpNext([])
     setPlaybackBlocked(false)
     setChatMessages([])
+    setLastReadSentAt(0)
     playbackLoop.current.enableAutoplay()
     setCurrentStationId(stationId)
   }, [currentStationId])
@@ -344,6 +349,14 @@ export default function App() {
   ), [nowPlaying, upNext])
   const userQueue = useMemo(() => upNext.filter(item => item.addedBy !== "robot"), [upNext])
   const robotQueue = useMemo(() => upNext.filter(item => item.addedBy === "robot"), [upNext])
+  const unreadCount = useMemo(
+    () => chatMessages.filter(m => m.userId !== user?.uid && m.sentAt > lastReadSentAt).length,
+    [chatMessages, lastReadSentAt, user?.uid]
+  )
+  const activeStationCount = useMemo(
+    () => stations.filter(s => s.liveUntil > Date.now() && s.id !== currentStationId).length,
+    [stations, currentStationId]
+  )
 
   if (appState === "setup") return <SetupScreen error={setupError} />
 
@@ -409,35 +422,7 @@ export default function App() {
   const isPrivileged = isOwnStation || djUserIds.includes(user.uid)
 
   return (
-    <div className="min-h-screen bg-surface">
-      {/* Header */}
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">🎵</span>
-          <span className="text-white font-semibold">Apple Music Party Radio</span>
-        </div>
-        <div className="text-muted text-xs flex items-center gap-3">
-          <span className="text-muted/40 font-mono">{__COMMIT__}</span>
-          {renamingDJ ? (
-            <input
-              ref={renameRef}
-              value={renameInput}
-              onChange={e => setRenameInput(e.target.value)}
-              onBlur={handleCommitRename}
-              onKeyDown={e => { if (e.key === "Enter") handleCommitRename(); if (e.key === "Escape") setRenamingDJ(false) }}
-              className="bg-surface text-white rounded px-2 py-0.5 text-xs outline-none focus:ring-1 focus:ring-accent w-36"
-            />
-          ) : (
-            <button
-              onClick={handleStartRename}
-              className="text-muted hover:text-white transition-colors group"
-              title="Click to rename"
-            >
-              DJ <span className="text-white group-hover:underline decoration-dotted">{user.displayName}</span>
-            </button>
-          )}
-        </div>
-      </header>
+    <div className="min-h-screen bg-surface flex flex-col">
 
       {serverConnected === false && (
         <div className="bg-red-900/40 border-b border-red-700/40 px-6 py-2 text-xs text-red-300 flex items-center gap-2">
@@ -534,89 +519,142 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Main layout — 3 columns */}
-      <div className="max-w-[1600px] mx-auto p-4 grid grid-cols-1 lg:grid-cols-[380px_1fr_420px] gap-4 items-start">
-
-        {/* Left: station list */}
-        <div>
-          <StationList
+      <AnimatePresence>
+        {stationModalOpen && (
+          <StationModal
+            onClose={() => setStationModalOpen(false)}
             stations={stations}
             currentStationId={currentStationId}
             userId={user.uid}
             userDisplayName={user.displayName}
             ownedStationIds={ownedStationIds}
-            onSelect={handleSelectStation}
+            onSelect={(id) => { handleSelectStation(id); setStationModalOpen(false) }}
             onRemove={handleRemoveStation}
             onCreateStation={() => setCreateModalOpen(true)}
           />
-        </div>
+        )}
+      </AnimatePresence>
 
-        {/* Center: playback */}
-        <div className="space-y-4 max-w-[480px] mx-auto w-full">
-          <NowPlaying
-            track={nowPlaying}
-            stationOwner={currentStationId}
-            currentUser={user}
-            canSkip={isPrivileged}
-            onSkip={handleSkip}
-            isMuted={isMuted}
-            onMuteToggle={handleMuteToggle}
-            isBlocked={playbackBlocked}
-            onResume={handleResume}
-            onAlbumClick={isPrivileged && nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
-            onOpenPool={isPrivileged ? () => setPoolModalOpen(true) : undefined}
-            catalog={catalog.current}
-            stationName={stations.find(s => s.id === currentStationId)?.displayName || currentStationId}
-            isOwner={isOwnStation}
-            onRenameStation={isOwnStation ? handleRenameStation : undefined}
-          />
-          <UpNext
-            queue={isPrivileged ? userQueue : userQueue.slice(0, 1)}
-            currentUser={user}
-            stationOwner={currentStationId}
-            onRemove={handleRemoveTrack}
-            onReorder={isPrivileged ? (keys) => stationSocket.reorderQueue(keys) : undefined}
-            onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
-          />
-          <RobotQueue
-            queue={robotQueue}
-            onRemove={isPrivileged ? handleRemoveTrack : undefined}
-            onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
-          />
-        </div>
-
-        {/* Right: listeners, chat, add or request */}
-        <div className="space-y-4">
-          {(() => {
-            const currentStation = stations.find(s => s.id === currentStationId)
-            return (
-              <ListenersPanel
-                listeners={currentStation?.listeners ?? []}
-                ownerUid={currentStation?.ownerUid}
-                currentUserId={user.uid}
-                djUserIds={djUserIds}
-                isStationOwner={isOwnStation}
-                onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
-                onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
-              />
-            )
-          })()}
-          <StationChat
+      <AnimatePresence>
+        {chatModalOpen && (
+          <ChatModal
+            onClose={() => setChatModalOpen(false)}
             messages={chatMessages}
             currentUser={user}
             onSend={(text) => stationSocket.sendChatMessage(text)}
           />
-          {isPrivileged && (
-            <Discovery
-              catalog={catalog.current}
-              queuedIsrcs={queuedIsrcs}
-              queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
-              onAddTrack={handleAddTrack}
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {discoveryModalOpen && (
+          <DiscoveryModal
+            onClose={() => setDiscoveryModalOpen(false)}
+            catalog={catalog.current}
+            queuedIsrcs={queuedIsrcs}
+            queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
+            onAddTrack={handleAddTrack}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Main layout — single centered column */}
+      <div className="flex-1 max-w-[480px] w-full mx-auto px-4 py-4 space-y-4">
+
+        <NowPlaying
+          track={nowPlaying}
+          stationOwner={currentStationId}
+          currentUser={user}
+          canSkip={isPrivileged}
+          onSkip={handleSkip}
+          isMuted={isMuted}
+          onMuteToggle={handleMuteToggle}
+          isBlocked={playbackBlocked}
+          onResume={handleResume}
+          onAlbumClick={isPrivileged && nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
+          onOpenPool={isPrivileged ? () => setPoolModalOpen(true) : undefined}
+          catalog={catalog.current}
+          stationName={stations.find(s => s.id === currentStationId)?.displayName || currentStationId}
+          isOwner={isOwnStation}
+          onRenameStation={isOwnStation ? handleRenameStation : undefined}
+          onOpenStationModal={() => setStationModalOpen(true)}
+          activeStationCount={activeStationCount}
+        />
+
+        {isPrivileged && (
+          <button
+            onClick={() => setDiscoveryModalOpen(true)}
+            className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide"
+          >
+            + ADD
+          </button>
+        )}
+
+        {(() => {
+          const currentStation = stations.find(s => s.id === currentStationId)
+          return (
+            <ListenersPanel
+              listeners={currentStation?.listeners ?? []}
+              ownerUid={currentStation?.ownerUid}
+              currentUserId={user.uid}
+              djUserIds={djUserIds}
+              isStationOwner={isOwnStation}
+              onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
+              onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
+              onOpenChat={() => {
+                setLastReadSentAt(chatMessages[chatMessages.length - 1]?.sentAt ?? Date.now())
+                setChatModalOpen(true)
+              }}
+              unreadCount={unreadCount}
             />
-          )}
-        </div>
+          )
+        })()}
+
+        <UpNext
+          queue={userQueue}
+          currentUser={user}
+          stationOwner={currentStationId}
+          onRemove={handleRemoveTrack}
+          onReorder={isPrivileged ? (keys) => stationSocket.reorderQueue(keys) : undefined}
+          onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
+        />
+
+        <RobotQueue
+          queue={robotQueue}
+          onRemove={isPrivileged ? handleRemoveTrack : undefined}
+          onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
+        />
 
       </div>
+
+      {/* Footer */}
+      <footer className="border-t border-border/50 max-w-[480px] w-full mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-muted/40">
+          <span>🎵</span>
+          <span>Party Radio</span>
+          <span className="font-mono text-muted/25">{__COMMIT__}</span>
+        </div>
+        <div className="text-xs">
+          {renamingDJ ? (
+            <input
+              ref={renameRef}
+              value={renameInput}
+              onChange={e => setRenameInput(e.target.value)}
+              onBlur={handleCommitRename}
+              onKeyDown={e => { if (e.key === "Enter") handleCommitRename(); if (e.key === "Escape") setRenamingDJ(false) }}
+              className="bg-surface text-white rounded px-2 py-0.5 text-xs outline-none focus:ring-1 focus:ring-accent w-36"
+            />
+          ) : (
+            <button
+              onClick={handleStartRename}
+              className="text-muted/60 hover:text-white transition-colors"
+              title="Click to rename"
+            >
+              DJ <span className="text-white/60 hover:text-white">{user.displayName}</span>
+            </button>
+          )}
+        </div>
+      </footer>
     </div>
   )
 }

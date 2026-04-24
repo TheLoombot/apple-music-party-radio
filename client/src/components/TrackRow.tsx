@@ -53,7 +53,7 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
         {onRemove && (
           <button
             onClick={onRemove}
-            className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-full flex items-center justify-center text-muted hover:text-red-400 transition-all"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-muted hover:text-red-400 transition-colors"
             title="Remove from pool"
           >
             <Trash2 size={14} />
@@ -62,7 +62,7 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
         <button
           onClick={onAdd}
           disabled={unavailable}
-          className={`w-7 h-7 rounded-full flex items-center justify-center text-sm transition-all ${
+          className={`w-9 h-9 rounded-full flex items-center justify-center text-base transition-all ${
             added ? "bg-green-500/20 text-green-400 hover:bg-red-500/20 hover:text-red-400" : unavailable ? "bg-surface text-muted cursor-not-allowed" : "bg-surface text-muted hover:bg-accent hover:text-white"
           }`}
           title={unavailable ? "No longer available" : added ? "Remove from queue" : "Add to queue"}

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ChevronRight, ListMusic } from "lucide-react"
+import { ChevronRight, ListMusic, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { TrackRow } from "./TrackRow"
 import { PlaylistModal } from "./PlaylistModal"
@@ -20,9 +20,10 @@ interface Props {
   queuedIsrcs: Set<string>
   queue: QueueItem[]
   onAddTrack: (track: Track) => void
+  embedded?: boolean
 }
 
-export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
+export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }: Props) {
   const [tab, setTab] = useState<Tab>("search")
 
   // ── Search tab state ────────────────────────────────────────────────────────
@@ -84,6 +85,14 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
   }, [catalog])
 
   const refreshMfy = () => setPlaylists(pickRandom(allPlaylists.current, 3))
+
+  const refreshCharts = () => {
+    setChartsLoading(true)
+    catalog.getCharts().then(c => {
+      setChartTracks(c[0]?.tracks ?? [])
+      setChartsLoading(false)
+    })
+  }
 
   const handleSelectPlaylist = async (playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult) => {
     const op = ++modalOpRef.current
@@ -177,11 +186,12 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
 
   return (
     <>
-      <div className="bg-panel rounded-xl overflow-hidden">
-        {/* Static header */}
-        <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
-          Add or Request
-        </div>
+      <div className={embedded ? "flex flex-col flex-1 min-h-0 overflow-hidden" : "bg-panel rounded-xl overflow-hidden"}>
+        {!embedded && (
+          <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
+            Add or Request
+          </div>
+        )}
 
         {/* Tab bar */}
         <div className="border-b border-border">
@@ -190,7 +200,7 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
               <button
                 key={t}
                 onClick={() => handleTabChange(t)}
-                className={`flex-1 px-1 py-2.5 text-[10px] font-medium transition-colors border-b-2 -mb-px ${
+                className={`flex-1 px-1 py-3 text-xs font-medium transition-colors border-b-2 -mb-px ${
                   tab === t ? "text-white border-accent" : "text-muted hover:text-white border-transparent"
                 }`}
               >
@@ -215,14 +225,14 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
                 {query && (
                   <button
                     onClick={() => setQuery("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white text-lg leading-none"
+                    className="absolute right-0 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-muted hover:text-white transition-colors"
                   >
-                    ×
+                    <X size={14} />
                   </button>
                 )}
               </div>
             </div>
-            <div className="overflow-y-auto h-96">
+            <div className={`overflow-y-auto ${embedded ? "flex-1 min-h-0" : "h-96"}`}>
               <AnimatePresence mode="wait">
                 {isSearching && (
                   <motion.div
@@ -271,26 +281,35 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
             </div>
           </>
         ) : tab === "charts" ? (
-          <div className="h-[360px] overflow-y-auto">
-            {chartsLoading ? (
-              <div className="p-6 text-center text-muted text-sm"><LoadingDots /></div>
-            ) : chartTracks.length === 0 ? (
-              <div className="p-6 text-center text-muted text-sm">No chart data available</div>
-            ) : (
-              <ul>
-                {chartTracks.map((track, i) => (
-                  <TrackRow
-                    key={track.platformIds?.apple ?? track.isrc}
-                    track={track}
-                    rankNumber={i + 1}
-                    added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
-                    onAdd={() => onAddTrack(track)}
-                    onAlbumClick={track.platformIds?.apple ? () => handleAlbumClick(track) : undefined}
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
+          <>
+            <div className={`overflow-y-auto ${embedded ? "flex-1 min-h-0" : "h-[360px]"}`}>
+              {chartsLoading ? (
+                <div className="p-6 text-center text-muted text-sm"><LoadingDots /></div>
+              ) : chartTracks.length === 0 ? (
+                <div className="p-6 text-center text-muted text-sm">No chart data available</div>
+              ) : (
+                <ul>
+                  {chartTracks.map((track, i) => (
+                    <TrackRow
+                      key={track.platformIds?.apple ?? track.isrc}
+                      track={track}
+                      rankNumber={i + 1}
+                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
+                      onAdd={() => onAddTrack(track)}
+                      onAlbumClick={track.platformIds?.apple ? () => handleAlbumClick(track) : undefined}
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
+            <button
+              onClick={refreshCharts}
+              disabled={chartsLoading}
+              className="w-full py-3.5 border-t border-border/50 text-sm text-muted hover:text-white transition-colors font-medium disabled:opacity-30 flex-shrink-0"
+            >
+              ↻ Refresh
+            </button>
+          </>
         ) : tab === "mfy" ? (
           mfyLoading ? (
             <div className="p-6 text-center text-muted text-sm"><LoadingDots /></div>
@@ -303,18 +322,21 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
                   <PlaylistRow key={playlist.id} playlist={playlist} onSelect={() => handleSelectPlaylist(playlist)} />
                 ))}
               </ul>
-              <div className="px-4 py-2.5 border-t border-border/50 flex justify-end">
-                <button onClick={refreshMfy} className="text-muted hover:text-white transition-colors" title="Shuffle">↻</button>
-              </div>
+              <button
+                onClick={refreshMfy}
+                className="w-full py-3.5 border-t border-border/50 text-sm text-muted hover:text-white transition-colors font-medium flex-shrink-0"
+              >
+                ↻ Shuffle
+              </button>
             </>
           )
         ) : tab === "playlists" ? (
           loadingLibrary ? (
-            <div className="h-[360px] flex items-center justify-center text-muted text-sm"><LoadingDots /></div>
+            <div className={`${embedded ? "flex-1 min-h-0" : "h-[360px]"} flex items-center justify-center text-muted text-sm`}><LoadingDots /></div>
           ) : !libraryPlaylists || libraryPlaylists.length === 0 ? (
-            <div className="h-[360px] flex items-center justify-center text-muted text-sm">No playlists found</div>
+            <div className={`${embedded ? "flex-1 min-h-0" : "h-[360px]"} flex items-center justify-center text-muted text-sm`}>No playlists found</div>
           ) : (
-            <div className="h-[360px] flex flex-col">
+            <div className={`${embedded ? "flex-1 min-h-0" : "h-[360px]"} flex flex-col`}>
               <div className="px-3 py-2 border-b border-border/50 flex-shrink-0">
                 <div className="relative">
                   <input
@@ -327,9 +349,9 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
                   {playlistFilter && (
                     <button
                       onClick={() => setPlaylistFilter("")}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white transition-colors text-sm leading-none"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-muted hover:text-white transition-colors"
                     >
-                      ×
+                      <X size={13} />
                     </button>
                   )}
                 </div>
@@ -353,16 +375,18 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
                 <TrackRowSkeleton animate={relatedLoading} />
                 <TrackRowSkeleton animate={relatedLoading} />
               </ul>
-              <div className="px-4 py-2.5 border-t border-border/50 flex items-center justify-between gap-3">
-                {relatedLoading ? (
-                  <p className="text-xs text-muted"><LoadingDots /></p>
-                ) : (relatedError || relatedTracks.length === 0) ? (
-                  <p className="text-xs text-muted">
-                    {queue.length === 0 ? "Add tracks to the queue to get suggestions." : "None found."}
-                  </p>
-                ) : <span />}
-                <button onClick={refreshRelated} disabled={relatedLoading} className="text-muted hover:text-white transition-colors flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed" title="Shuffle">↻</button>
-              </div>
+              {(relatedError || relatedTracks.length === 0) && !relatedLoading && (
+                <p className="px-4 py-3 text-xs text-muted border-t border-border/50">
+                  {queue.length === 0 ? "Add tracks to the queue to get suggestions." : "None found."}
+                </p>
+              )}
+              <button
+                onClick={refreshRelated}
+                disabled={relatedLoading}
+                className="w-full py-3.5 border-t border-border/50 text-sm text-muted hover:text-white transition-colors font-medium flex-shrink-0 disabled:opacity-30"
+              >
+                {relatedLoading ? <LoadingDots /> : "↻ Refresh"}
+              </button>
             </>
           ) : (
             <>
@@ -378,16 +402,19 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack }: Props) {
                 ))}
               </ul>
               {relatedSeed && relatedPlaylist && (
-                <div className="px-4 py-2.5 border-t border-border/50 flex items-start justify-between gap-3">
-                  <p className="text-xs text-muted">
-                    <span className="text-white/70">{relatedSeed.name}</span>
-                    <span className="text-muted/60"> appears on </span>
-                    <button onClick={() => handleSelectPlaylist(relatedPlaylist)} className="text-white/70 hover:text-red-400 transition-colors">{relatedPlaylist.name}</button>
-                    <span className="text-muted/60"> alongside these tracks</span>
-                  </p>
-                  <button onClick={refreshRelated} className="text-muted hover:text-white transition-colors flex-shrink-0" title="Shuffle">↻</button>
-                </div>
+                <p className="px-4 py-3 text-xs text-muted border-t border-border/50">
+                  <span className="text-white/70">{relatedSeed.name}</span>
+                  <span className="text-muted/60"> appears on </span>
+                  <button onClick={() => handleSelectPlaylist(relatedPlaylist)} className="text-white/70 hover:text-red-400 transition-colors">{relatedPlaylist.name}</button>
+                  <span className="text-muted/60"> alongside these tracks</span>
+                </p>
               )}
+              <button
+                onClick={refreshRelated}
+                className="w-full py-3.5 border-t border-border/50 text-sm text-muted hover:text-white transition-colors font-medium flex-shrink-0"
+              >
+                ↻ Refresh
+              </button>
             </>
           )
         )}
