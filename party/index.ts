@@ -787,8 +787,11 @@ export default class RadioParty implements Party.Server {
   private async bootstrapIfNeeded() {
     const queue = await this.storage<QueueItem[]>("queue", [])
     if (queue.length > 0) {
-      // Queue already exists — just re-arm the alarm in case it lapsed after hibernation
+      // Queue already exists — re-arm the alarm and immediately push liveUntil to the
+      // index so the station shows as live without waiting for the next alarm to fire.
       await this.room.storage.setAlarm(queue[0].expirationTime)
+      const np = queue[0]
+      void this.notifyIndex(liveUntilFromQueue(queue), np.addedBy, np.addedByName, np.name, np.artistName, np.artworkUrl)
       return
     }
     // Empty queue — fill from pool; broadcastQueue inside fillRobotQueue arms the alarm
