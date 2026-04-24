@@ -97,7 +97,7 @@ interface StationOwnership {
 const TARGET_ROBOT_DEPTH = 8
 
 /** Max tracks a single non-robot user may have queued at once (prevents queue flooding). */
-const MAX_USER_QUEUE_DEPTH = 5
+const MAX_USER_QUEUE_DEPTH = 100
 
 /** Min milliseconds between chat messages per connection (prevents chat flooding). */
 const CHAT_RATE_LIMIT_MS = 1000
@@ -470,7 +470,11 @@ export default class RadioParty implements Party.Server {
       }
       case "add_track": {
         const addedByName = this.connListeners.get(sender.id)?.displayName
-        await this.addTrack(msg.track, msg.addedBy, addedByName)
+        const added = await this.addTrack(msg.track, msg.addedBy, addedByName)
+        if (!added) {
+          sender.send(json({ type: "queue_full", limit: MAX_USER_QUEUE_DEPTH }))
+          return
+        }
         // After a user track is added, fill robot tail if it fell short
         await this.fillRobotQueue()
         return
@@ -530,13 +534,13 @@ export default class RadioParty implements Party.Server {
     return queue.length  // no robot tracks yet — append at end
   }
 
-  private async addTrack(track: Track, addedBy: string, addedByName?: string) {
+  private async addTrack(track: Track, addedBy: string, addedByName?: string): Promise<boolean> {
     const queue = await this.storage<QueueItem[]>("queue", [])
 
     // Reject if this user already has too many tracks queued (excludes now-playing).
     if (addedBy !== "robot") {
       const userQueued = queue.slice(1).filter(i => i.addedBy === addedBy).length
-      if (userQueued >= MAX_USER_QUEUE_DEPTH) return
+      if (userQueued >= MAX_USER_QUEUE_DEPTH) return false
     }
 
     // Robot tracks always append at the tail; user tracks insert before the robot tail.
@@ -570,6 +574,7 @@ export default class RadioParty implements Party.Server {
 
     await this.room.storage.put("queue", queue)
     await this.broadcastQueue(queue)
+    return true
   }
 
   private async removeTrack(key: string) {

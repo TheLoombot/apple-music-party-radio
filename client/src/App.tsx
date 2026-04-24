@@ -47,6 +47,7 @@ export default function App() {
   const [isCreatingStation, setIsCreatingStation] = useState(false)
   const [renamingDJ, setRenamingDJ] = useState(false)
   const [renameInput, setRenameInput] = useState("")
+  const [queueFullAlert, setQueueFullAlert] = useState<number | null>(null)
   const [albumModal, setAlbumModal] = useState<{ playlist: AlbumResult; tracks: Track[] | null } | null>(null)
   const renameRef = useRef<HTMLInputElement>(null)
   const albumModalOpRef = useRef(0)
@@ -155,6 +156,7 @@ export default function App() {
     stationSocket.onPoolUpdate = setPool
     stationSocket.onChatUpdate = setChatMessages
     stationSocket.onDJUpdate = setDJUserIds
+    stationSocket.onQueueFull = (limit) => setQueueFullAlert(limit)
     setDJUserIds([])
     playbackLoop.current.start(currentStationId)
     stationSocket.join(user.uid, user.displayName)
@@ -451,6 +453,13 @@ export default function App() {
             Preview-only playback detected — your browser (Chrome) doesn't support Apple's FairPlay DRM.
             Full songs play in Safari. Playback on this station will be limited to 30-second previews.
           </span>
+        </div>
+      )}
+
+      {queueFullAlert !== null && (
+        <div className="bg-orange-900/50 border-b border-orange-700/40 px-6 py-2 text-xs text-orange-200 flex items-center justify-between gap-2">
+          <span>You already have {queueFullAlert} songs queued — remove one before adding more.</span>
+          <button onClick={() => setQueueFullAlert(null)} className="text-orange-300 hover:text-white transition-colors ml-4 shrink-0">✕</button>
         </div>
       )}
 

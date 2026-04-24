@@ -40,6 +40,7 @@ export class StationSocket {
   onPoolUpdate?: (pool: PoolTrack[]) => void
   onChatUpdate?: (messages: ChatMessage[]) => void
   onDJUpdate?: (djUserIds: string[]) => void
+  onQueueFull?: (limit: number) => void
 
   connect(stationId: string) {
     this.disconnect()
@@ -80,6 +81,8 @@ export class StationSocket {
         this.onChatUpdate?.([...this.chatMessages])
       } else if (msg.type === "dj_update") {
         this.onDJUpdate?.(msg.djs ?? [])
+      } else if (msg.type === "queue_full") {
+        this.onQueueFull?.(msg.limit)
       }
     }
 
