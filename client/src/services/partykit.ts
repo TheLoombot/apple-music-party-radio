@@ -137,7 +137,7 @@ export class StationSocket {
   }
 
   sendChatMessage(text: string) {
-    this.send({ type: "chat_message", text })
+    this.send({ type: "chat_message", text, ...this.lastJoinParams })
   }
 
   grantDJ(userId: string) {
@@ -193,8 +193,9 @@ export class IndexSocket {
 
   disconnect() {
     if (this.disconnectTimer) { clearTimeout(this.disconnectTimer); this.disconnectTimer = null }
-    this.socket?.close()
+    const s = this.socket
     this.socket = null
+    if (s) { s.onclose = null; s.close() }
   }
 
   register(id: string, displayName: string, storefront: string, ownerUid?: string) {

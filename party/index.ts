@@ -674,8 +674,15 @@ export default class RadioParty implements Party.Server {
   private async handleChatMessage(msg: any, sender: Party.Connection) {
     const text = (msg.text ?? "").trim().slice(0, 500)
     if (!text) return
-    const listener = this.connListeners.get(sender.id)
-    if (!listener) return
+    let listener = this.connListeners.get(sender.id)
+    if (!listener) {
+      // DO may have woken from hibernation, losing in-memory connListeners.
+      // Fall back to user info embedded in the message and re-register.
+      if (!msg.userId) return
+      const djs = await this.getDJs()
+      listener = { userId: msg.userId, displayName: msg.displayName ?? msg.userId, isDJ: djs.includes(msg.userId) }
+      this.connListeners.set(sender.id, listener)
+    }
     const now = Date.now()
     if (listener.lastMessageAt && now - listener.lastMessageAt < CHAT_RATE_LIMIT_MS) return
     this.connListeners.set(sender.id, { ...listener, lastMessageAt: now })
