@@ -159,6 +159,7 @@ export class StationSocket {
 
 export class IndexSocket {
   private socket: PartySocket | null = null
+  private disconnectTimer: ReturnType<typeof setTimeout> | null = null
   onStationsUpdate?: (stations: Station[]) => void
   onConnectionChange?: (connected: boolean) => void
 
@@ -168,8 +169,16 @@ export class IndexSocket {
       ? { host: HOST, room: "index", protocol: "ws" as const }
       : { host: HOST, room: "index" }
     this.socket = new PartySocket(opts)
-    this.socket.onopen = () => this.onConnectionChange?.(true)
-    this.socket.onclose = () => this.onConnectionChange?.(false)
+    this.socket.onopen = () => {
+      if (this.disconnectTimer) { clearTimeout(this.disconnectTimer); this.disconnectTimer = null }
+      this.onConnectionChange?.(true)
+    }
+    this.socket.onclose = () => {
+      this.disconnectTimer = setTimeout(() => {
+        this.disconnectTimer = null
+        this.onConnectionChange?.(false)
+      }, 5000)
+    }
     this.socket.onmessage = (e) => {
       let msg: any
       try { msg = JSON.parse(e.data) } catch (err) {
@@ -183,6 +192,7 @@ export class IndexSocket {
   }
 
   disconnect() {
+    if (this.disconnectTimer) { clearTimeout(this.disconnectTimer); this.disconnectTimer = null }
     this.socket?.close()
     this.socket = null
   }

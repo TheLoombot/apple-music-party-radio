@@ -28,9 +28,11 @@ export function StationChat({ messages, currentUser, onSend, embedded }: Props) 
 
   return (
     <div className={embedded ? "flex flex-col flex-1 min-h-0 overflow-hidden" : "bg-panel rounded-xl overflow-hidden flex flex-col"}>
-      <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
-        Chat
-      </div>
+      {!embedded && (
+        <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
+          Chat
+        </div>
+      )}
 
       <div ref={scrollRef} className={`${embedded ? "flex-1 min-h-0" : "h-64"} overflow-y-auto px-4 py-3 space-y-3`}>
         {messages.length === 0 ? (
