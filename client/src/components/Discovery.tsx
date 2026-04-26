@@ -24,14 +24,19 @@ interface Props {
 }
 
 export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }: Props) {
-  const [tab, setTab] = useState<Tab>("search")
+  const [tab, setTab] = useState<Tab>("related")
 
   // ── Search tab state ────────────────────────────────────────────────────────
   const [query, setQuery] = useState("")
   const [searchResults, setSearchResults] = useState<SearchItem[]>([])
   const [searching, setSearching] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const isSearching = query.trim().length > 0
+
+  useEffect(() => {
+    if (tab === "search") searchInputRef.current?.focus()
+  }, [tab])
 
   useEffect(() => {
     clearTimeout(debounceRef.current)
@@ -85,14 +90,6 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
   }, [catalog])
 
   const refreshMfy = () => setPlaylists(pickRandom(allPlaylists.current, 3))
-
-  const refreshCharts = () => {
-    setChartsLoading(true)
-    catalog.getCharts().then(c => {
-      setChartTracks(c[0]?.tracks ?? [])
-      setChartsLoading(false)
-    })
-  }
 
   const handleSelectPlaylist = async (playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult) => {
     const op = ++modalOpRef.current
@@ -216,6 +213,7 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
             <div className="p-3 border-b border-border">
               <div className="relative">
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={query}
                   onChange={e => setQuery(e.target.value)}
@@ -302,13 +300,6 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
                 </ul>
               )}
             </div>
-            <button
-              onClick={refreshCharts}
-              disabled={chartsLoading}
-              className="w-full py-3.5 border-t border-border/50 text-sm text-muted hover:text-white transition-colors font-medium disabled:opacity-30 flex-shrink-0"
-            >
-              ↻ Refresh
-            </button>
           </>
         ) : tab === "mfy" ? (
           mfyLoading ? (
@@ -322,12 +313,14 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
                   <PlaylistRow key={playlist.id} playlist={playlist} onSelect={() => handleSelectPlaylist(playlist)} />
                 ))}
               </ul>
-              <button
-                onClick={refreshMfy}
-                className="w-full py-3.5 border-t border-border/50 text-sm text-muted hover:text-white transition-colors font-medium flex-shrink-0"
-              >
-                ↻ Shuffle
-              </button>
+              <div className="px-4 py-3 border-t border-border/50 flex-shrink-0">
+                <button
+                  onClick={refreshMfy}
+                  className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide"
+                >
+                  ↻ Shuffle
+                </button>
+              </div>
             </>
           )
         ) : tab === "playlists" ? (
@@ -380,13 +373,15 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
                   {queue.length === 0 ? "Add tracks to the queue to get suggestions." : "None found."}
                 </p>
               )}
-              <button
-                onClick={refreshRelated}
-                disabled={relatedLoading}
-                className="w-full py-3.5 border-t border-border/50 text-sm text-muted hover:text-white transition-colors font-medium flex-shrink-0 disabled:opacity-30"
-              >
-                {relatedLoading ? <LoadingDots /> : "↻ Refresh"}
-              </button>
+              <div className="px-4 py-3 border-t border-border/50 flex-shrink-0">
+                <button
+                  onClick={refreshRelated}
+                  disabled={relatedLoading}
+                  className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide disabled:opacity-30"
+                >
+                  {relatedLoading ? <LoadingDots /> : "↻ Refresh"}
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -409,12 +404,14 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
                   <span className="text-muted/60"> alongside these tracks</span>
                 </p>
               )}
-              <button
-                onClick={refreshRelated}
-                className="w-full py-3.5 border-t border-border/50 text-sm text-muted hover:text-white transition-colors font-medium flex-shrink-0"
-              >
-                ↻ Refresh
-              </button>
+              <div className="px-4 py-3 border-t border-border/50 flex-shrink-0">
+                <button
+                  onClick={refreshRelated}
+                  className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide"
+                >
+                  ↻ Refresh
+                </button>
+              </div>
             </>
           )
         )}
