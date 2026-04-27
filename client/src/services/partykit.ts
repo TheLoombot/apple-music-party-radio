@@ -6,7 +6,7 @@
  *  indexSocket    — connects to the "index" room, manages station discovery
  */
 import PartySocket from "partysocket"
-import type { QueueItem, Track, PoolTrack, Station, ChatMessage } from "../types"
+import type { QueueItem, Track, PoolTrack, Station, ChatMessage, SuggestedTrack } from "../types"
 
 // Ensure every track from the server has a platformIds object.
 // Mirrors the server-side migrateTrack — runs on every received queue/pool item.
@@ -41,6 +41,8 @@ export class StationSocket {
   onChatUpdate?: (messages: ChatMessage[]) => void
   onDJUpdate?: (djUserIds: string[]) => void
   onQueueFull?: (limit: number) => void
+  onSuggestionsUpdate?: (suggestions: SuggestedTrack[]) => void
+  onSuggestionsFull?: (limit: number) => void
 
   connect(stationId: string) {
     this.disconnect()
@@ -72,6 +74,7 @@ export class StationSocket {
         this.chatMessages = msg.chat ?? []
         this.onChatUpdate?.([...this.chatMessages])
         if (msg.djs) this.onDJUpdate?.(msg.djs)
+        if (msg.suggestions) this.onSuggestionsUpdate?.(msg.suggestions)
       } else if (msg.type === "queue_update") {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
       } else if (msg.type === "pool_update") {
@@ -83,6 +86,10 @@ export class StationSocket {
         this.onDJUpdate?.(msg.djs ?? [])
       } else if (msg.type === "queue_full") {
         this.onQueueFull?.(msg.limit)
+      } else if (msg.type === "suggestions_update") {
+        this.onSuggestionsUpdate?.(msg.suggestions ?? [])
+      } else if (msg.type === "suggestions_full") {
+        this.onSuggestionsFull?.(msg.limit)
       }
     }
 
@@ -146,6 +153,22 @@ export class StationSocket {
 
   revokeDJ(userId: string) {
     this.send({ type: "revoke_dj", userId })
+  }
+
+  suggestTrack(track: Track) {
+    this.send({ type: "suggest_track", track })
+  }
+
+  voteSuggestion(key: string) {
+    this.send({ type: "vote_suggestion", key })
+  }
+
+  enqueueSuggestion(key: string) {
+    this.send({ type: "enqueue_suggestion", key })
+  }
+
+  removeSuggestion(key: string) {
+    this.send({ type: "remove_suggestion", key })
   }
 
   private send(data: object) {

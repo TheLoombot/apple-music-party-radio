@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react"
+import { Trash2, ArrowUp } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import type { Track } from "../types"
@@ -13,9 +13,10 @@ interface Props {
   onRemove?: () => void
   unavailable?: boolean
   onAlbumClick?: () => void
+  requestMode?: boolean
 }
 
-export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, onAdd, onRemove, unavailable, onAlbumClick }: Props) {
+export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, onAdd, onRemove, unavailable, onAlbumClick, requestMode }: Props) {
   return (
     <div className={`flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 group ${unavailable ? "opacity-50" : ""}`}>
       {rankNumber != null && (
@@ -65,9 +66,9 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
           className={`w-9 h-9 rounded-full flex items-center justify-center text-base transition-all ${
             added ? "bg-green-500/20 text-green-400 hover:bg-red-500/20 hover:text-red-400" : unavailable ? "bg-surface text-muted cursor-not-allowed" : "bg-surface text-muted hover:bg-accent hover:text-white"
           }`}
-          title={unavailable ? "No longer available" : added ? "Remove from queue" : "Add to queue"}
+          title={unavailable ? "No longer available" : added ? (requestMode ? "Already requested" : "Remove from queue") : (requestMode ? "Request track" : "Add to queue")}
         >
-          {added ? "✓" : "+"}
+          {added ? "✓" : requestMode ? <ArrowUp size={14} /> : "+"}
         </button>
       </div>
     </div>

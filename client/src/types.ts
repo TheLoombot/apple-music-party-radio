@@ -72,6 +72,15 @@ export interface Station {
   listeners?: Listener[]
 }
 
+export interface SuggestedTrack extends Track {
+  key: string
+  suggestedBy: string
+  suggestedByName?: string
+  suggestedAt: number
+  votes: number
+  votedBy: string[]
+}
+
 export interface PoolTrack extends Track {
   lastPlayedAt: number
   addedByUsers: string[]

@@ -3,17 +3,24 @@ import { motion } from "framer-motion"
 import { X } from "lucide-react"
 import { Discovery } from "./Discovery"
 import type { MusicCatalog } from "../services/catalog"
-import type { Track, QueueItem } from "../types"
+import type { Track, QueueItem, SuggestedTrack } from "../types"
 
 interface Props {
   onClose: () => void
   catalog: MusicCatalog
   queuedIsrcs: Set<string>
+  suggestedIsrcs: Set<string>
   queue: QueueItem[]
   onAddTrack: (track: Track) => void
+  suggestions: SuggestedTrack[]
+  isPrivileged: boolean
+  currentUserId: string
+  onVoteSuggestion: (key: string) => void
+  onEnqueueSuggestion?: (key: string) => void
+  onRemoveSuggestion?: (key: string) => void
 }
 
-export function DiscoveryModal({ onClose, catalog, queuedIsrcs, queue, onAddTrack }: Props) {
+export function DiscoveryModal({ onClose, catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTrack, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     document.addEventListener("keydown", handler)
@@ -38,12 +45,27 @@ export function DiscoveryModal({ onClose, catalog, queuedIsrcs, queue, onAddTrac
         onClick={e => e.stopPropagation()}
       >
         <div className="px-4 py-3 border-b border-border flex items-center justify-between flex-shrink-0">
-          <span className="text-xs text-muted font-medium uppercase tracking-wider">Add or Request</span>
+          <span className="text-xs text-muted font-medium uppercase tracking-wider">
+            {isPrivileged ? "Add or Request" : "Request a Track"}
+          </span>
           <button onClick={onClose} className="text-muted hover:text-white transition-colors w-10 h-10 flex items-center justify-center flex-shrink-0">
             <X size={18} />
           </button>
         </div>
-        <Discovery catalog={catalog} queuedIsrcs={queuedIsrcs} queue={queue} onAddTrack={onAddTrack} embedded />
+        <Discovery
+          catalog={catalog}
+          queuedIsrcs={queuedIsrcs}
+          suggestedIsrcs={suggestedIsrcs}
+          queue={queue}
+          onAddTrack={onAddTrack}
+          embedded
+          suggestions={suggestions}
+          isPrivileged={isPrivileged}
+          currentUserId={currentUserId}
+          onVoteSuggestion={onVoteSuggestion}
+          onEnqueueSuggestion={onEnqueueSuggestion}
+          onRemoveSuggestion={onRemoveSuggestion}
+        />
       </motion.div>
     </motion.div>
   )

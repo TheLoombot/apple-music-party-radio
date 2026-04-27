@@ -69,7 +69,18 @@ interface Listener {
 
 interface ConnectedListener extends Listener {
   isDJ: boolean
-  lastMessageAt?: number  // for per-connection chat rate limiting
+  lastMessageAt?: number    // for per-connection chat rate limiting
+  lastSuggestionAt?: number // for per-connection suggest rate limiting (3s)
+  lastVoteAt?: number       // for per-connection vote rate limiting (500ms)
+}
+
+interface SuggestedTrack extends Track {
+  key: string
+  suggestedBy: string
+  suggestedByName?: string
+  suggestedAt: number
+  votes: number
+  votedBy: string[]
 }
 
 interface Station {
@@ -191,7 +202,8 @@ export default class RadioParty implements Party.Server {
         const { queue, pool } = await this.flushExpired()
         const chat = await this.storage<ChatMessage[]>("chat", [])
         const djs = await this.getDJs()
-        conn.send(json({ type: "state", queue, pool, chat, djs }))
+        const suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
+        conn.send(json({ type: "state", queue, pool, chat, djs, suggestions }))
         // Sync live status to index on every connect so stale flags get corrected
         void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl)
         // Re-arm expiration alarm in case the DO restarted and lost it
@@ -491,6 +503,14 @@ export default class RadioParty implements Party.Server {
           sender.send(json({ type: "queue_full", limit: MAX_USER_QUEUE_DEPTH }))
           return
         }
+        // Remove matching suggestion if one exists (track is now in the queue)
+        let suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
+        const matchIdx = suggestions.findIndex(s => sameTrack(s, msg.track))
+        if (matchIdx >= 0) {
+          suggestions.splice(matchIdx, 1)
+          await this.room.storage.put("suggestions", suggestions)
+          this.broadcastSuggestions(suggestions)
+        }
         // After a user track is added, fill robot tail if it fell short
         await this.fillRobotQueue()
         return
@@ -502,6 +522,10 @@ export default class RadioParty implements Party.Server {
       case "clear_pool":       if (!this.isPrivilegedConn(sender)) return; return this.clearPool()
       case "robot_dj":         if (!this.isPrivilegedConn(sender)) return; return this.fillRobotQueue()
       case "reorder_queue":    if (!this.isPrivilegedConn(sender)) return; return this.reorderQueue(msg.keys)
+      case "suggest_track":    return this.handleSuggestTrack(msg, sender)
+      case "vote_suggestion":  return this.handleVoteSuggestion(msg, sender)
+      case "enqueue_suggestion": if (!this.isPrivilegedConn(sender)) return; return this.handleEnqueueSuggestion(msg, sender)
+      case "remove_suggestion":  if (!this.isPrivilegedConn(sender)) return; return this.handleRemoveSuggestion(msg)
       case "chat_message":     return this.handleChatMessage(msg, sender)
     }
   }
@@ -715,6 +739,108 @@ export default class RadioParty implements Party.Server {
     // Broadcast to all other connections; send explicitly to sender
     this.room.broadcast(json({ type: "chat_message", message }), [sender.id])
     sender.send(json({ type: "chat_message", message }))
+  }
+
+  private async handleSuggestTrack(msg: any, sender: Party.Connection) {
+    let listener = this.connListeners.get(sender.id)
+    if (!listener) {
+      if (!msg.userId) return
+      const djs = await this.getDJs()
+      listener = { userId: msg.userId, displayName: msg.displayName ?? msg.userId, isDJ: djs.includes(msg.userId) }
+      this.connListeners.set(sender.id, listener)
+    }
+    const now = Date.now()
+    if (listener.lastSuggestionAt && now - listener.lastSuggestionAt < 3000) return
+    this.connListeners.set(sender.id, { ...listener, lastSuggestionAt: now })
+
+    const track: Track = msg.track
+    if (!track?.platformIds?.apple) return
+
+    const queue = await this.storage<QueueItem[]>("queue", [])
+    if (queue.some(q => sameTrack(q, track))) {
+      sender.send(json({ type: "suggestion_already_queued" }))
+      return
+    }
+
+    let suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
+    const existing = suggestions.find(s => sameTrack(s, track))
+    if (existing) {
+      if (existing.votedBy.includes(listener.userId)) {
+        sender.send(json({ type: "suggestion_already_voted" }))
+        return
+      }
+      existing.votes++
+      existing.votedBy.push(listener.userId)
+      suggestions = sortSuggestions(suggestions)
+      await this.room.storage.put("suggestions", suggestions)
+      this.broadcastSuggestions(suggestions)
+      return
+    }
+
+    if (suggestions.length >= 50) {
+      sender.send(json({ type: "suggestions_full", limit: 50 }))
+      return
+    }
+
+    const newSuggestion: SuggestedTrack = {
+      ...track,
+      key: crypto.randomUUID(),
+      suggestedBy: listener.userId,
+      suggestedByName: listener.displayName,
+      suggestedAt: now,
+      votes: 1,
+      votedBy: [listener.userId],
+    }
+    suggestions = sortSuggestions([...suggestions, newSuggestion])
+    await this.room.storage.put("suggestions", suggestions)
+    this.broadcastSuggestions(suggestions)
+  }
+
+  private async handleVoteSuggestion(msg: any, sender: Party.Connection) {
+    let listener = this.connListeners.get(sender.id)
+    if (!listener) {
+      if (!msg.userId) return
+      const djs = await this.getDJs()
+      listener = { userId: msg.userId, displayName: msg.displayName ?? msg.userId, isDJ: djs.includes(msg.userId) }
+      this.connListeners.set(sender.id, listener)
+    }
+    const now = Date.now()
+    if (listener.lastVoteAt && now - listener.lastVoteAt < 500) return
+    this.connListeners.set(sender.id, { ...listener, lastVoteAt: now })
+
+    let suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
+    const suggestion = suggestions.find(s => s.key === msg.key)
+    if (!suggestion) return
+    if (suggestion.votedBy.includes(listener.userId)) {
+      sender.send(json({ type: "suggestion_already_voted" }))
+      return
+    }
+    suggestion.votes++
+    suggestion.votedBy.push(listener.userId)
+    suggestions = sortSuggestions(suggestions)
+    await this.room.storage.put("suggestions", suggestions)
+    this.broadcastSuggestions(suggestions)
+  }
+
+  private async handleEnqueueSuggestion(msg: any, sender: Party.Connection) {
+    let suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
+    const suggestion = suggestions.find(s => s.key === msg.key)
+    if (!suggestion) return
+    const added = await this.addTrack(suggestion as Track, suggestion.suggestedBy, suggestion.suggestedByName)
+    if (!added) {
+      sender.send(json({ type: "queue_full", limit: MAX_USER_QUEUE_DEPTH }))
+      return
+    }
+    suggestions = suggestions.filter(s => s.key !== msg.key)
+    await this.room.storage.put("suggestions", suggestions)
+    this.broadcastSuggestions(suggestions)
+  }
+
+  private async handleRemoveSuggestion(msg: any) {
+    let suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
+    suggestions = suggestions.filter(s => s.key !== msg.key)
+    await this.room.storage.put("suggestions", suggestions)
+    this.broadcastSuggestions(suggestions)
   }
 
   private hasListeners(): boolean {
@@ -937,6 +1063,10 @@ export default class RadioParty implements Party.Server {
     return raw as T
   }
 
+  private broadcastSuggestions(suggestions: SuggestedTrack[]) {
+    this.room.broadcast(json({ type: "suggestions_update", suggestions }))
+  }
+
   private async broadcastQueue(queue: QueueItem[]) {
     this.room.broadcast(json({ type: "queue_update", queue }))
 
@@ -977,6 +1107,10 @@ function liveUntilFromQueue(queue: QueueItem[]): number {
 
 /** Match two tracks for pool deduplication.
  *  Never match on empty ISRC — that would collapse all ISRC-less tracks into one. */
+function sortSuggestions(s: SuggestedTrack[]): SuggestedTrack[] {
+  return [...s].sort((a, b) => b.votes - a.votes || a.suggestedAt - b.suggestedAt)
+}
+
 function sameTrack(a: Track, b: Track): boolean {
   if (a.isrc && b.isrc) return a.isrc === b.isrc
   if (a.platformIds?.apple && b.platformIds?.apple) return a.platformIds.apple === b.platformIds.apple

@@ -3,12 +3,13 @@ import { AnimatePresence, motion } from "framer-motion"
 import { ChevronRight, ListMusic, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { TrackRow } from "./TrackRow"
+import { SuggestionRow } from "./SuggestionRow"
 import { PlaylistModal } from "./PlaylistModal"
 import { LoadingDots } from "./LoadingDots"
 import type { MusicCatalog } from "../services/catalog"
-import type { Track, PlaylistResult, LibraryPlaylistResult, AlbumResult, QueueItem, SearchItem } from "../types"
+import type { Track, PlaylistResult, LibraryPlaylistResult, AlbumResult, QueueItem, SearchItem, SuggestedTrack } from "../types"
 
-type Tab = "search" | "related" | "charts" | "mfy" | "playlists"
+type Tab = "search" | "related" | "charts" | "mfy" | "playlists" | "suggested"
 type ModalState = { playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult; tracks: Track[] | null }
 
 function pickRandom<T>(arr: T[], n: number): T[] {
@@ -18,12 +19,19 @@ function pickRandom<T>(arr: T[], n: number): T[] {
 interface Props {
   catalog: MusicCatalog
   queuedIsrcs: Set<string>
+  suggestedIsrcs: Set<string>
   queue: QueueItem[]
   onAddTrack: (track: Track) => void
   embedded?: boolean
+  suggestions: SuggestedTrack[]
+  isPrivileged: boolean
+  currentUserId: string
+  onVoteSuggestion: (key: string) => void
+  onEnqueueSuggestion?: (key: string) => void
+  onRemoveSuggestion?: (key: string) => void
 }
 
-export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }: Props) {
+export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTrack, embedded, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
   const [tab, setTab] = useState<Tab>("related")
 
   // ── Search tab state ────────────────────────────────────────────────────────
@@ -173,13 +181,23 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
     }
   }
 
+  // Auto-revert from suggested tab when suggestions list empties
+  useEffect(() => {
+    if (suggestions.length === 0 && tab === "suggested") setTab("related")
+  }, [suggestions.length])
+
   const TAB_LABELS: Record<Tab, string> = {
     search: "Search",
     related: "Related",
     charts: "Top 20",
     mfy: "Top Picks",
     playlists: "Playlists",
+    suggested: "Suggested",
   }
+
+  const visibleTabs: Tab[] = suggestions.length > 0
+    ? ["search", "related", "charts", "mfy", "playlists", "suggested"]
+    : ["search", "related", "charts", "mfy", "playlists"]
 
   return (
     <>
@@ -193,15 +211,18 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
         {/* Tab bar */}
         <div className="border-b border-border">
           <div className="flex items-center">
-            {(["search", "related", "charts", "mfy", "playlists"] as Tab[]).map(t => (
+            {visibleTabs.map(t => (
               <button
                 key={t}
                 onClick={() => handleTabChange(t)}
-                className={`flex-1 px-1 py-3 text-xs font-medium transition-colors border-b-2 -mb-px ${
+                className={`relative flex-1 px-1 py-3 text-xs font-medium transition-colors border-b-2 -mb-px ${
                   tab === t ? "text-white border-accent" : "text-muted hover:text-white border-transparent"
                 }`}
               >
-                {TAB_LABELS[t]}
+                {t === "suggested" ? `Suggested (${suggestions.length})` : TAB_LABELS[t]}
+                {t === "suggested" && tab !== "suggested" && (
+                  <span className="absolute top-1.5 right-1 w-1.5 h-1.5 rounded-full bg-red-400" />
+                )}
               </button>
             ))}
           </div>
@@ -259,9 +280,10 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
                               <TrackRow
                                 key={item.track.platformIds?.apple || item.track.isrc || item.track.name}
                                 track={item.track}
-                                added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.platformIds?.apple ?? "")}
+                                added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(item.track.isrc) || suggestedIsrcs.has(item.track.platformIds?.apple ?? "")))}
                                 onAdd={() => onAddTrack(item.track)}
                                 onAlbumClick={item.track.platformIds?.apple ? () => handleAlbumClick(item.track) : undefined}
+                                requestMode={!isPrivileged}
                               />
                             ) : (
                               <PlaylistRow
@@ -292,9 +314,10 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
                       key={track.platformIds?.apple ?? track.isrc}
                       track={track}
                       rankNumber={i + 1}
-                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
+                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
                       onAdd={() => onAddTrack(track)}
                       onAlbumClick={track.platformIds?.apple ? () => handleAlbumClick(track) : undefined}
+                      requestMode={!isPrivileged}
                     />
                   ))}
                 </ul>
@@ -360,6 +383,26 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
               </div>
             </div>
           )
+        ) : tab === "suggested" ? (
+          <div className={`overflow-y-auto ${embedded ? "flex-1 min-h-0" : "h-[360px]"}`}>
+            {suggestions.length === 0 ? (
+              <div className="p-6 text-center text-muted text-sm">No requests yet</div>
+            ) : (
+              <ul>
+                {suggestions.map(s => (
+                  <SuggestionRow
+                    key={s.key}
+                    suggestion={s}
+                    currentUserId={currentUserId}
+                    isPrivileged={isPrivileged}
+                    onVote={() => onVoteSuggestion(s.key)}
+                    onEnqueue={onEnqueueSuggestion ? () => onEnqueueSuggestion(s.key) : undefined}
+                    onRemove={onRemoveSuggestion ? () => onRemoveSuggestion(s.key) : undefined}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
         ) : /* related tab */ (
           relatedLoading || relatedError || relatedTracks.length === 0 ? (
             <>
@@ -390,9 +433,10 @@ export function Discovery({ catalog, queuedIsrcs, queue, onAddTrack, embedded }:
                   <TrackRow
                     key={track.platformIds?.apple ?? track.isrc}
                     track={track}
-                    added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
+                    added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
                     onAdd={() => onAddTrack(track)}
                     onAlbumClick={track.platformIds?.apple ? () => handleAlbumClick(track) : undefined}
+                    requestMode={!isPrivileged}
                   />
                 ))}
               </ul>

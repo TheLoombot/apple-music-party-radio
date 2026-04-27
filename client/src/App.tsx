@@ -17,7 +17,7 @@ import { stationSocket, indexSocket } from "./services/partykit"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
 import { AppleMusicCatalog } from "./services/catalog"
-import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack, ChatMessage } from "./types"
+import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack, ChatMessage, SuggestedTrack } from "./types"
 
 type AppState = "loading" | "setup" | "naming" | "auth" | "ready"
 
@@ -52,6 +52,8 @@ export default function App() {
   const [renamingDJ, setRenamingDJ] = useState(false)
   const [renameInput, setRenameInput] = useState("")
   const [queueFullAlert, setQueueFullAlert] = useState<number | null>(null)
+  const [suggestions, setSuggestions] = useState<SuggestedTrack[]>([])
+  const [suggestionsFullAlert, setSuggestionsFullAlert] = useState<number | null>(null)
   const [albumModal, setAlbumModal] = useState<{ playlist: AlbumResult; tracks: Track[] | null } | null>(null)
   const renameRef = useRef<HTMLInputElement>(null)
   const albumModalOpRef = useRef(0)
@@ -161,7 +163,10 @@ export default function App() {
     stationSocket.onChatUpdate = setChatMessages
     stationSocket.onDJUpdate = setDJUserIds
     stationSocket.onQueueFull = (limit) => setQueueFullAlert(limit)
+    stationSocket.onSuggestionsUpdate = setSuggestions
+    stationSocket.onSuggestionsFull = (limit) => setSuggestionsFullAlert(limit)
     setDJUserIds([])
+    setSuggestions([])
     playbackLoop.current.start(currentStationId)
     stationSocket.join(user.uid, user.displayName)
     return () => playbackLoop.current.stop()
@@ -225,6 +230,23 @@ export default function App() {
     stationSocket.skipTrack()
   }, [])
 
+  const handleSuggestTrack = useCallback((track: Track) => {
+    if (!user || !track.platformIds?.apple) return
+    stationSocket.suggestTrack(track)
+  }, [user])
+
+  const handleVoteSuggestion = useCallback((key: string) => {
+    stationSocket.voteSuggestion(key)
+  }, [])
+
+  const handleEnqueueSuggestion = useCallback((key: string) => {
+    stationSocket.enqueueSuggestion(key)
+  }, [])
+
+  const handleRemoveSuggestion = useCallback((key: string) => {
+    stationSocket.removeSuggestion(key)
+  }, [])
+
   const handleMuteToggle = useCallback(() => {
     playbackLoop.current.setMuted(!isMuted)
   }, [isMuted])
@@ -279,6 +301,7 @@ export default function App() {
     setPlaybackBlocked(false)
     setChatMessages([])
     setLastReadSentAt(0)
+    setSuggestions([])
     playbackLoop.current.enableAutoplay()
     setCurrentStationId(stationId)
   }, [currentStationId])
@@ -347,6 +370,9 @@ export default function App() {
       .flatMap(i => [i.isrc, i.platformIds?.apple])
       .filter(Boolean) as string[]
   ), [nowPlaying, upNext])
+  const suggestedIsrcs = useMemo(() => new Set(
+    suggestions.flatMap(s => [s.isrc, s.platformIds?.apple].filter(Boolean) as string[])
+  ), [suggestions])
   const userQueue = useMemo(() => upNext.filter(item => item.addedBy !== "robot"), [upNext])
   const robotQueue = useMemo(() => upNext.filter(item => item.addedBy === "robot"), [upNext])
   const unreadCount = useMemo(
@@ -445,6 +471,13 @@ export default function App() {
         <div className="bg-orange-900/50 border-b border-orange-700/40 px-6 py-2 text-xs text-orange-200 flex items-center justify-between gap-2">
           <span>You already have {queueFullAlert} songs queued — remove one before adding more.</span>
           <button onClick={() => setQueueFullAlert(null)} className="text-orange-300 hover:text-white transition-colors ml-4 shrink-0">✕</button>
+        </div>
+      )}
+
+      {suggestionsFullAlert !== null && (
+        <div className="bg-orange-900/50 border-b border-orange-700/40 px-6 py-2 text-xs text-orange-200 flex items-center justify-between gap-2">
+          <span>The request list is full ({suggestionsFullAlert} max) — a DJ needs to review some before more can be added.</span>
+          <button onClick={() => setSuggestionsFullAlert(null)} className="text-orange-300 hover:text-white transition-colors ml-4 shrink-0">✕</button>
         </div>
       )}
 
@@ -552,8 +585,15 @@ export default function App() {
             onClose={() => setDiscoveryModalOpen(false)}
             catalog={catalog.current}
             queuedIsrcs={queuedIsrcs}
+            suggestedIsrcs={suggestedIsrcs}
             queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
-            onAddTrack={handleAddTrack}
+            onAddTrack={isPrivileged ? handleAddTrack : handleSuggestTrack}
+            suggestions={suggestions}
+            isPrivileged={isPrivileged}
+            currentUserId={user.uid}
+            onVoteSuggestion={handleVoteSuggestion}
+            onEnqueueSuggestion={isPrivileged ? handleEnqueueSuggestion : undefined}
+            onRemoveSuggestion={isPrivileged ? handleRemoveSuggestion : undefined}
           />
         )}
       </AnimatePresence>
@@ -581,14 +621,12 @@ export default function App() {
           activeStationCount={activeStationCount}
         />
 
-        {isPrivileged && (
-          <button
-            onClick={() => setDiscoveryModalOpen(true)}
-            className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide"
-          >
-            + ADD
-          </button>
-        )}
+        <button
+          onClick={() => setDiscoveryModalOpen(true)}
+          className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide"
+        >
+          {isPrivileged ? "+ ADD" : "+ REQUEST"}
+        </button>
 
         {(() => {
           const currentStation = stations.find(s => s.id === currentStationId)
