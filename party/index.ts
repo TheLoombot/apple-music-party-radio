@@ -141,11 +141,27 @@ export default class RadioParty implements Party.Server {
 
   /** Send current state to a newly connected client */
   async onConnect(conn: Party.Connection) {
-    this.cachedRoomId = this.room.id
+    // room.id can throw "Party.id is not yet initialized" on the very first connect
+    // while the DO is still starting up (PartyKit local-dev race / hibernation wakeup).
+    // Fall back to the in-memory cache; if neither is available, close with 1013
+    // (Try Again Later) so PartySocket retries once the DO is ready.
+    let roomId: string
+    try {
+      roomId = this.room.id
+    } catch {
+      roomId = this.cachedRoomId ?? ""
+    }
+    if (!roomId) {
+      console.warn("[onConnect] room.id not yet available — closing for retry")
+      conn.close(1013, "Room initializing, please retry")
+      return
+    }
+    this.cachedRoomId = roomId
+
     // Persist roomId on every connect so onAlarm can always recover it after DO hibernation.
     // broadcastQueue also does this, but onConnect covers stations that have never had queue activity.
-    if (this.room.id !== "index") {
-      await this.room.storage.put("roomId", this.room.id)
+    if (roomId !== "index") {
+      await this.room.storage.put("roomId", roomId)
     }
     // Derive and persist the index URL from the connection's WebSocket URL so it
     // survives DO hibernation (where room.env is inaccessible in onAlarm).
@@ -153,7 +169,7 @@ export default class RadioParty implements Party.Server {
     // connection always overwrites any stale URL from a prior dev session.
     // Dev and prod use separate durable storage backends, so localhost URLs in dev
     // storage can never bleed into prod.
-    if (this.room.id !== "index") {
+    if (roomId !== "index") {
       try {
         const wsUrl = new URL(conn.uri)
         const isSecure = wsUrl.protocol === "wss:" || wsUrl.protocol === "https:"
@@ -167,7 +183,7 @@ export default class RadioParty implements Party.Server {
         await this.room.storage.put("indexUrl", indexUrl)
       } catch { /* ignore — fallback to env var */ }
     }
-    if (this.room.id === "index") {
+    if (roomId === "index") {
       const stations = await this.storage<Station[]>("stations", [])
       conn.send(json({ type: "stations_update", stations: this.withPresence(stations) }))
     } else {
@@ -185,7 +201,7 @@ export default class RadioParty implements Party.Server {
         // Proactively top up the robot queue whenever a listener connects
         void this.fillRobotQueue()
       } catch (err) {
-        console.error(`[onConnect] error for room ${this.room.id}:`, err)
+        console.error(`[onConnect] error for room ${roomId}:`, err)
         conn.send(json({ type: "state", queue: [], pool: [], chat: [], djs: [] }))
       }
     }
