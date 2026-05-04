@@ -11,7 +11,8 @@
  *
  * Native queue: we keep the full MusicKit queue in sync with the app queue so
  * that track transitions happen natively without JS needing to fire. On
- * auto-advance, nowPlayingItemDidChange fires and we tell the server.
+ * auto-advance, nowPlayingItemDidChange fires and clears now-playing; the
+ * server's alarm then broadcasts the updated queue which repopulates it.
  * Hard switches (new track[0]) use setQueue + seek. Queue tail changes are
  * synced non-destructively via syncQueueTail (remove stale items, append new).
  */
@@ -77,8 +78,7 @@ export class PlaybackLoop {
     // Recalculate offset at resume time — pendingPlay may have been set seconds/minutes ago
     const now = Date.now()
     if (now >= track.expirationTime) {
-      // Track already expired while waiting — tell server and bail
-      stationSocket.expireTrack(track.key, true)
+      // Track already expired — server alarm will advance the queue
       return
     }
     const startTime = track.expirationTime - track.durationMs
@@ -146,17 +146,17 @@ export class PlaybackLoop {
     const expectedNextId = this.lastKnownQueue[1]?.platformIds?.apple
     if (!expectedNextId || itemId !== expectedNextId) return
 
-    // MusicKit moved forward on its own — tell the server.
-    // Skip if in preview-only mode (Chrome/no FairPlay DRM): the preview auto-advanced
-    // after 30 s but the server track is still live; don't cascade rapid expires.
     if (isPreviewOnly()) {
-      console.warn("[PlaybackLoop] preview-only mode detected — suppressing auto-advance expire")
+      console.warn("[PlaybackLoop] preview-only mode detected — suppressing auto-advance")
       this.onPreviewOnly?.()
       return
     }
+    // Track the native position so handleQueueUpdate can detect the advance.
+    // Clear now-playing immediately; the server's alarm will broadcast the new queue
+    // and handleQueueUpdate will repopulate it when that arrives.
     this.nativeCurrentId = itemId
     if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
-    stationSocket.expireTrack(this.currentTrackKey, true)
+    this.onNowPlayingChange?.(null)
   }
 
   private handleVisibilityChange = async () => {
@@ -244,37 +244,28 @@ export class PlaybackLoop {
     const tail = queue.slice(1)
     const now = Date.now()
 
-    this.onNowPlayingChange?.(track0)
+    // Whether MusicKit has natively advanced past track0 while the server catches up
+    const musicKitAlreadyAdvanced = !!this.nativeCurrentId &&
+      this.nativeCurrentId !== (track0.platformIds.apple ?? null)
 
     // ── HARD SWITCH: track[0] changed ─────────────────────────────────────
     if (track0.key !== this.currentTrackKey) {
       this.currentTrack = track0
       this.currentTrackKey = track0.key
-
-      // Track is already past its end — skip it immediately without playing.
-      // This handles the "catch-up storm" after a long background session where
-      // multiple tracks expire while JS is throttled.
-      if (now >= track0.expirationTime - 500) {
-        if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
-        stationSocket.expireTrack(track0.key, true)
-        return
-      }
+      this.onNowPlayingChange?.(track0)
 
       if (this.expirationTimer) clearTimeout(this.expirationTimer)
-      // +3s grace: lets MusicKit's nowPlayingItemDidChange fire first (which cancels this timer).
-      // This prevents our setQueue from racing with MusicKit's natural auto-advance.
+      // Clear now-playing at expiry — UI feedback; server alarm drives actual advance
       this.expirationTimer = setTimeout(() => {
-        if (this.currentTrackKey === track0.key) {
-          stationSocket.expireTrack(track0.key, true)
-        }
-      }, Math.max(0, track0.expirationTime - Date.now() + 3000))
+        if (this.currentTrackKey === track0.key) this.onNowPlayingChange?.(null)
+      }, Math.max(0, track0.expirationTime - Date.now()))
 
       const wantedId = track0.platformIds.apple ?? null
 
       // MusicKit already auto-advanced to this track natively — don't call play() again.
       // Either nativeCurrentId was set by handleNowPlayingItemChange (fast path),
-      // or we check the live native queue directly (catches the race where expirationTimer
-      // fires and handleQueueUpdate runs before nowPlayingItemDidChange fires).
+      // or we check the live native queue directly (catches the race where handleQueueUpdate
+      // runs before nowPlayingItemDidChange fires).
       const liveId = this.player.getLiveCurrentId()
       if (wantedId && (wantedId === this.nativeCurrentId || wantedId === liveId)) {
         this.nativeCurrentId = wantedId
@@ -299,8 +290,6 @@ export class PlaybackLoop {
       const seq = ++this.playSequence
       this.nativeCurrentId = wantedId
       try {
-        // Pass full tail so setQueue loads the complete queue atomically —
-        // this is what enables native background auto-advance without JS timers.
         await this.player.playAtOffset(track0, offsetSeconds, tail)
         if (this.playSequence !== seq) return
       } catch (err) {
@@ -316,8 +305,18 @@ export class PlaybackLoop {
     }
 
     // ── SOFT UPDATE: same track[0], sync the tail ─────────────────────────
+    if (!musicKitAlreadyAdvanced) {
+      this.onNowPlayingChange?.(track0)
+    }
+    // During the transition window (MusicKit advanced to next track, server catching up),
+    // compute tail relative to where MusicKit actually is to avoid duplicating now-playing
+    let syncTail = tail
+    if (musicKitAlreadyAdvanced && this.nativeCurrentId) {
+      const advancedToIdx = queue.findIndex(q => q.platformIds?.apple === this.nativeCurrentId)
+      if (advancedToIdx >= 0) syncTail = queue.slice(advancedToIdx + 1)
+    }
     try {
-      await this.player.syncQueueTail(tail)
+      await this.player.syncQueueTail(syncTail)
     } catch (err) {
       console.error("[PlaybackLoop] syncQueueTail error:", err)
     }
