@@ -1,9 +1,32 @@
-import { useEffect } from "react"
+import { useEffect, Component } from "react"
+import type { ReactNode, ErrorInfo } from "react"
 import { motion } from "framer-motion"
 import { X } from "lucide-react"
 import { Discovery } from "./Discovery"
 import type { MusicCatalog } from "../services/catalog"
 import type { Track, QueueItem, SuggestedTrack } from "../types"
+
+class DiscoveryErrorBoundary extends Component<{ children: ReactNode; onClose: () => void }, { error: Error | null }> {
+  state = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[DiscoveryModal] crash:", error.message)
+    console.error(error.stack)
+    console.error("Component stack:", info.componentStack)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center flex-1 gap-3 p-6 text-center">
+          <p className="text-red-400 text-sm font-medium">Something went wrong loading this panel.</p>
+          <p className="text-muted text-xs font-mono">{(this.state.error as Error).message}</p>
+          <button onClick={this.props.onClose} className="text-muted text-xs underline">Close</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 interface Props {
   onClose: () => void
@@ -52,20 +75,22 @@ export function DiscoveryModal({ onClose, catalog, queuedIsrcs, suggestedIsrcs, 
             <X size={18} />
           </button>
         </div>
-        <Discovery
-          catalog={catalog}
-          queuedIsrcs={queuedIsrcs}
-          suggestedIsrcs={suggestedIsrcs}
-          queue={queue}
-          onAddTrack={onAddTrack}
-          embedded
-          suggestions={suggestions}
-          isPrivileged={isPrivileged}
-          currentUserId={currentUserId}
-          onVoteSuggestion={onVoteSuggestion}
-          onEnqueueSuggestion={onEnqueueSuggestion}
-          onRemoveSuggestion={onRemoveSuggestion}
-        />
+        <DiscoveryErrorBoundary onClose={onClose}>
+          <Discovery
+            catalog={catalog}
+            queuedIsrcs={queuedIsrcs}
+            suggestedIsrcs={suggestedIsrcs}
+            queue={queue}
+            onAddTrack={onAddTrack}
+            embedded
+            suggestions={suggestions}
+            isPrivileged={isPrivileged}
+            currentUserId={currentUserId}
+            onVoteSuggestion={onVoteSuggestion}
+            onEnqueueSuggestion={onEnqueueSuggestion}
+            onRemoveSuggestion={onRemoveSuggestion}
+          />
+        </DiscoveryErrorBoundary>
       </motion.div>
     </motion.div>
   )
