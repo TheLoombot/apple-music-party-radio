@@ -171,7 +171,13 @@ export default function App() {
     playbackLoop.current.start(currentStationId)
     stationSocket.join(user.uid, user.displayName)
     return () => playbackLoop.current.stop()
-  }, [currentStationId, appState, user])
+  }, [currentStationId, appState, user?.uid]) // user.uid is stable; display name changes handled below
+
+  // Re-send join when display name changes — no reconnect needed
+  useEffect(() => {
+    if (appState !== "ready" || !currentStationId || !user) return
+    stationSocket.join(user.uid, user.displayName)
+  }, [user?.displayName]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
