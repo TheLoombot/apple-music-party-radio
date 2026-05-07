@@ -1,6 +1,21 @@
-import { useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { GripVertical, X } from "lucide-react"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { DJFace, RobotFace } from "./FaceGenerator"
@@ -24,23 +39,103 @@ interface Props {
   onAlbumClick?: (item: QueueItem) => void
 }
 
+interface SortableItemProps {
+  item: QueueItem
+  index: number
+  canReorder: boolean
+  canRemove: boolean
+  currentUser: AppUser
+  onRemove: (item: QueueItem) => void
+  onAlbumClick?: (item: QueueItem) => void
+}
+
+function SortableItem({ item, index, canReorder, canRemove, currentUser, onRemove, onAlbumClick }: SortableItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.key })
+
+  return (
+    <motion.li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: isDragging ? 0.3 : 1, y: 0 }}
+      exit={{ opacity: 0, x: 40, transition: { duration: 0.18 } }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+      className={[
+        "flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 group transition-colors",
+        isDragging ? "relative z-10 shadow-lg bg-surface/80" : "hover:bg-surface/50",
+      ].join(" ")}
+    >
+      {canReorder ? (
+        <GripVertical
+          size={14}
+          {...attributes}
+          {...listeners}
+          className="text-muted/40 group-hover:text-muted/70 flex-shrink-0 cursor-grab active:cursor-grabbing touch-none"
+        />
+      ) : (
+        <span className="text-xs text-muted w-4 text-center flex-shrink-0 tabular-nums">{index + 1}</span>
+      )}
+
+      <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
+        {item.artworkUrl ? (
+          <img src={artworkUrl(item.artworkUrl, 192)} alt="" loading="lazy" className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
+        <p className="text-white text-base font-semibold">{item.name}</p>
+        {onAlbumClick
+          ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{item.albumName}</button>
+          : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
+        <p className="text-muted text-xs mt-2 flex items-center gap-1">
+          queued by{" "}
+          {item.addedBy === "robot"
+            ? <RobotFace size={18} />
+            : <DJFace uid={item.addedBy} size={18} />
+          }
+          <span className="text-white/60">
+            {item.addedBy === "robot" ? "robot"
+              : item.addedBy === currentUser.uid ? currentUser.displayName
+              : item.addedByName ?? item.addedBy}
+          </span>
+        </p>
+      </div>
+
+      <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(item.durationMs)}</span>
+
+      {canRemove && (
+        <button
+          onClick={() => onRemove(item)}
+          className="w-9 h-9 flex items-center justify-center text-muted hover:text-red-400 transition-colors flex-shrink-0"
+          title="Remove from queue"
+        >
+          <X size={15} />
+        </button>
+      )}
+    </motion.li>
+  )
+}
+
 export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, onAlbumClick }: Props) {
   const canRemove = !!onReorder
   const canReorder = !!onReorder && queue.length > 1
   const totalMs = queue.reduce((sum, item) => sum + item.durationMs, 0)
 
-  const [draggedKey, setDraggedKey] = useState<string | null>(null)
-  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    // 250 ms hold on the grip handle initiates drag on touch devices,
+    // giving scroll a chance to claim the gesture first.
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
+  )
 
-  const handleDrop = (targetKey: string) => {
-    if (!draggedKey || draggedKey === targetKey) return
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
     const keys = queue.map(i => i.key)
-    const from = keys.indexOf(draggedKey)
-    const to = keys.indexOf(targetKey)
-    const reordered = [...keys]
-    reordered.splice(from, 1)
-    reordered.splice(to, 0, draggedKey)
-    onReorder!(reordered)
+    onReorder!(arrayMove(keys, keys.indexOf(active.id as string), keys.indexOf(over.id as string)))
   }
 
   return (
@@ -67,96 +162,26 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
         {queue.length === 0 ? (
           <div className="p-6 text-center text-muted text-sm">No tracks queued — search or browse to add or request some</div>
         ) : (
-          <ul>
-            <AnimatePresence initial={false}>
-              {queue.map((item, i) => (
-                <motion.li
-                  key={item.key}
-                  layout
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: 40, transition: { duration: 0.18 } }}
-                  transition={{ duration: 0.22, ease: "easeOut" }}
-                  draggable={canReorder}
-                  onDragStart={(e) => {
-                    setDraggedKey(item.key)
-                    ;(e as any).dataTransfer.effectAllowed = "move"
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    ;(e as any).dataTransfer.dropEffect = "move"
-                    if (dragOverKey !== item.key) setDragOverKey(item.key)
-                  }}
-                  onDragLeave={() => setDragOverKey(null)}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    handleDrop(item.key)
-                    setDraggedKey(null)
-                    setDragOverKey(null)
-                  }}
-                  onDragEnd={() => {
-                    setDraggedKey(null)
-                    setDragOverKey(null)
-                  }}
-                  className={[
-                    "flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 group transition-colors",
-                    canReorder ? "cursor-grab active:cursor-grabbing" : "",
-                    draggedKey === item.key ? "opacity-30" : "opacity-100",
-                    dragOverKey === item.key && draggedKey !== item.key ? "bg-accent/10 border-t-2 border-t-accent" : "hover:bg-surface/50",
-                  ].join(" ")}
-                >
-                  {canReorder ? (
-                    <GripVertical
-                      size={14}
-                      className="text-muted/40 group-hover:text-muted/70 flex-shrink-0 cursor-grab active:cursor-grabbing"
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={queue.map(i => i.key)} strategy={verticalListSortingStrategy}>
+              <ul>
+                <AnimatePresence initial={false}>
+                  {queue.map((item, i) => (
+                    <SortableItem
+                      key={item.key}
+                      item={item}
+                      index={i}
+                      canReorder={canReorder}
+                      canRemove={canRemove}
+                      currentUser={currentUser}
+                      onRemove={onRemove}
+                      onAlbumClick={onAlbumClick}
                     />
-                  ) : (
-                    <span className="text-xs text-muted w-4 text-center flex-shrink-0 tabular-nums">{i + 1}</span>
-                  )}
-
-                  <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
-                    {item.artworkUrl ? (
-                      <img src={artworkUrl(item.artworkUrl, 192)} alt="" loading="lazy" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
-                    <p className="text-white text-base font-semibold">{item.name}</p>
-                    {onAlbumClick
-                      ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{item.albumName}</button>
-                      : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
-                    <p className="text-muted text-xs mt-2 flex items-center gap-1">
-                      queued by{" "}
-                      {item.addedBy === "robot"
-                        ? <RobotFace size={18} />
-                        : <DJFace uid={item.addedBy} size={18} />
-                      }
-                      <span className="text-white/60">
-                        {item.addedBy === "robot" ? "robot"
-                          : item.addedBy === currentUser.uid ? currentUser.displayName
-                          : item.addedByName ?? item.addedBy}
-                      </span>
-                    </p>
-                  </div>
-
-                  <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(item.durationMs)}</span>
-
-                  {canRemove && (
-                    <button
-                      onClick={() => onRemove(item)}
-                      className="w-9 h-9 flex items-center justify-center text-muted hover:text-red-400 transition-colors flex-shrink-0"
-                      title="Remove from queue"
-                    >
-                      <X size={15} />
-                    </button>
-                  )}
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
+                  ))}
+                </AnimatePresence>
+              </ul>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
     </div>
