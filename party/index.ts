@@ -45,6 +45,7 @@ interface QueueItem extends Track {
   addedBy: string
   addedByName?: string   // display name resolved server-side from connListeners
   addedAt: number
+  djBreak?: { message: string }
 }
 
 interface PoolTrack extends Track {
@@ -113,6 +114,20 @@ const MAX_USER_QUEUE_DEPTH = 100
 /** Min milliseconds between chat messages per connection (prevents chat flooding). */
 const CHAT_RATE_LIMIT_MS = 1000
 
+/** Duration of a DJ break inserted between songs. */
+const DJ_BREAK_DURATION_MS = 7000
+
+/** Insert a DJ break after this many music tracks expire naturally. */
+const DJ_BREAK_EVERY_N_TRACKS = 5
+
+const DJ_BREAK_MESSAGES = [
+  "You're listening to {id} radio.",
+  "This is {id} — your non-stop music station.",
+  "Stay tuned. More music coming up on {id} radio.",
+  "{id} radio — keeping the music going.",
+  "This is {id}. Don't touch that dial.",
+]
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 export default class RadioParty implements Party.Server {
@@ -138,6 +153,9 @@ export default class RadioParty implements Party.Server {
 
   // Guard against concurrent fillRobotQueue calls (e.g. rapid skips)
   private robotFilling = false
+
+  // Count of music tracks that have expired since the last DJ break (persisted in storage).
+  private cachedBreakTrackCount: number | null = null
 
   // Set to true while inside onAlarm — context.parties is unavailable in that
   // context, so notifyIndex skips the binding attempt and goes straight to the URL path.
@@ -677,10 +695,9 @@ export default class RadioParty implements Party.Server {
 
     const expired = queue[0]
     queue = queue.slice(1)
-    await this.room.storage.put("queue", queue)
 
-    if (addToPool) {
-      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, ...trackData } = expired
+    if (addToPool && !expired.djBreak) {
+      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, djBreak: _b, ...trackData } = expired
       let pool = await this.storage<PoolTrack[]>("pool", [])
       const existing = pool.find(t => sameTrack(t, trackData))
       const prevUsers = existing?.addedByUsers ?? []
@@ -695,6 +712,22 @@ export default class RadioParty implements Party.Server {
       this.room.broadcast(json({ type: "pool_update", pool }))
     }
 
+    // After a real music track expires, increment the counter and maybe insert a break.
+    if (!expired.djBreak && queue.length > 0) {
+      if (this.cachedBreakTrackCount === null) {
+        this.cachedBreakTrackCount = await this.room.storage.get<number>("djBreakTrackCount") ?? 0
+      }
+      this.cachedBreakTrackCount++
+      if (this.cachedBreakTrackCount >= DJ_BREAK_EVERY_N_TRACKS) {
+        this.cachedBreakTrackCount = 0
+        await this.room.storage.put("djBreakTrackCount", 0)
+        this.insertDJBreak(queue, this.getDJBreakMessage())
+      } else {
+        await this.room.storage.put("djBreakTrackCount", this.cachedBreakTrackCount)
+      }
+    }
+
+    await this.room.storage.put("queue", queue)
     await this.broadcastQueue(queue)
     await this.fillRobotQueue()
   }
@@ -847,6 +880,43 @@ export default class RadioParty implements Party.Server {
     return [...this.room.getConnections()].length > 0
   }
 
+  private getDJBreakMessage(): string {
+    const id = this.getRoomId()
+    const template = DJ_BREAK_MESSAGES[Math.floor(Math.random() * DJ_BREAK_MESSAGES.length)]
+    return template.replace("{id}", id)
+  }
+
+  private makeDJBreakItem(message: string): QueueItem {
+    return {
+      key: crypto.randomUUID(),
+      expirationTime: Date.now() + DJ_BREAK_DURATION_MS,
+      addedBy: "robot",
+      addedByName: undefined,
+      addedAt: Date.now(),
+      djBreak: { message },
+      // Track fields are unused for breaks but required by the interface
+      isrc: "",
+      platformIds: {},
+      addedViaPlatform: "apple",
+      name: "",
+      artistName: "",
+      albumName: "",
+      artworkUrl: "",
+      durationMs: DJ_BREAK_DURATION_MS,
+    }
+  }
+
+  /** Insert a DJ break at position 0 of the queue, recalculating all expiration times from the break end. */
+  private insertDJBreak(queue: QueueItem[], message: string): void {
+    const breakItem = this.makeDJBreakItem(message)
+    queue.splice(0, 0, breakItem)
+    let cursor = breakItem.expirationTime
+    for (let i = 1; i < queue.length; i++) {
+      cursor += queue[i].durationMs
+      queue[i] = { ...queue[i], expirationTime: cursor }
+    }
+  }
+
   /** Proactively fill the robot tail to TARGET_ROBOT_DEPTH tracks.
    *  Robot tracks always live at the end of the queue, after any user-queued tracks.
    *  Batches all additions into a single storage write + broadcast.
@@ -936,7 +1006,13 @@ export default class RadioParty implements Party.Server {
       void this.notifyIndex(liveUntilFromQueue(queue), np.addedBy, np.addedByName, np.name, np.artistName, np.artworkUrl)
       return
     }
-    // Empty queue — fill from pool; broadcastQueue inside fillRobotQueue arms the alarm
+    // Empty queue — check pool has tracks before inserting a welcome break
+    const pool = await this.storage<PoolTrack[]>("pool", [])
+    if (pool.filter(hasAnyPlatformId).length === 0) return
+    // Seed with welcome break so the station opens with a station ID announcement,
+    // then let fillRobotQueue append music tracks after it.
+    const welcomeBreak = this.makeDJBreakItem(`Welcome to ${this.getRoomId()} radio.`)
+    await this.room.storage.put("queue", [welcomeBreak])
     await this.fillRobotQueue()
   }
 
@@ -950,15 +1026,16 @@ export default class RadioParty implements Party.Server {
     let changed = false
 
     while (queue.length > 0 && now >= queue[0].expirationTime) {
-      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, ...trackData } = queue[0]
+      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, djBreak, ...trackData } = queue[0]
       queue = queue.slice(1)
+      changed = true
+      if (djBreak) continue  // DJ breaks don't go in the pool
       const existing = pool.find(t => sameTrack(t, trackData))
       const prevUsers = existing?.addedByUsers ?? []
       const addedByUsers = addedBy && addedBy !== "robot"
         ? [...new Set([...prevUsers, addedBy])]
         : prevUsers
       pool = [{ ...trackData, lastPlayedAt: now, addedByUsers, playCount: (existing?.playCount ?? 0) + 1 }, ...pool.filter(t => !sameTrack(t, trackData))].slice(0, 100)
-      changed = true
     }
 
     if (changed) {
@@ -1081,7 +1158,17 @@ export default class RadioParty implements Party.Server {
     // alarm scenarios), cancelling any pending timers before they fire.
     const liveUntil = liveUntilFromQueue(queue)
     const np = queue[0]
-    await this.notifyIndex(liveUntil, np?.addedBy, np?.addedByName, np?.name, np?.artistName, np?.artworkUrl)
+    // During a DJ break, send undefined for track fields so the index preserves
+    // the previous now-playing metadata rather than blanking the station card.
+    const isBreak = !!np?.djBreak
+    await this.notifyIndex(
+      liveUntil,
+      isBreak ? undefined : np?.addedBy,
+      isBreak ? undefined : np?.addedByName,
+      isBreak ? undefined : np?.name,
+      isBreak ? undefined : np?.artistName,
+      isBreak ? undefined : np?.artworkUrl,
+    )
   }
 }
 

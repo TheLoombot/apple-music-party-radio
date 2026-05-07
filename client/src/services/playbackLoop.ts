@@ -252,13 +252,32 @@ export class PlaybackLoop {
     if (track0.key !== this.currentTrackKey) {
       this.currentTrack = track0
       this.currentTrackKey = track0.key
-      this.onNowPlayingChange?.(track0)
 
       if (this.expirationTimer) clearTimeout(this.expirationTimer)
-      // Clear now-playing at expiry — UI feedback; server alarm drives actual advance
       this.expirationTimer = setTimeout(() => {
         if (this.currentTrackKey === track0.key) this.onNowPlayingChange?.(null)
       }, Math.max(0, track0.expirationTime - Date.now()))
+
+      // ── DJ BREAK: speak the message instead of playing music ──────────
+      if (track0.djBreak) {
+        this.onNowPlayingChange?.(null)
+        if (this.autoplayEnabled) {
+          // Stop any music that MusicKit may have already auto-advanced into
+          this.player.stop()
+          this.nativeCurrentId = null
+          const startTime = track0.expirationTime - track0.durationMs
+          const offsetSeconds = Math.max(0, (now - startTime) / 1000)
+          const remainingSecs = track0.durationMs / 1000 - offsetSeconds
+          // Only speak if we joined early enough to hear a meaningful portion
+          if (remainingSecs > 1 && !this.muted && "speechSynthesis" in window) {
+            window.speechSynthesis.cancel()
+            window.speechSynthesis.speak(new SpeechSynthesisUtterance(track0.djBreak.message))
+          }
+        }
+        return
+      }
+
+      this.onNowPlayingChange?.(track0)
 
       const wantedId = track0.platformIds.apple ?? null
 
@@ -305,6 +324,10 @@ export class PlaybackLoop {
     }
 
     // ── SOFT UPDATE: same track[0], sync the tail ─────────────────────────
+    if (track0.djBreak) {
+      // During a DJ break the player is stopped — don't attempt to sync the MusicKit queue.
+      return
+    }
     if (!musicKitAlreadyAdvanced) {
       this.onNowPlayingChange?.(track0)
     }

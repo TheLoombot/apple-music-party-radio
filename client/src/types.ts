@@ -22,6 +22,7 @@ export interface QueueItem extends Track {
   addedBy: string
   addedByName?: string
   addedAt: number
+  djBreak?: { message: string }
 }
 
 export interface BrowsableResult {
