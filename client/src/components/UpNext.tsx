@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { GripVertical, X } from "lucide-react"
+import { ChevronDown, ChevronUp, GripVertical, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { DJFace, RobotFace } from "./FaceGenerator"
@@ -31,6 +31,16 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
 
   const [draggedKey, setDraggedKey] = useState<string | null>(null)
   const [dragOverKey, setDragOverKey] = useState<string | null>(null)
+
+  const moveItem = (index: number, direction: -1 | 1) => {
+    const newIndex = index + direction
+    if (newIndex < 0 || newIndex >= queue.length) return
+    const keys = queue.map(i => i.key)
+    const reordered = [...keys]
+    const [removed] = reordered.splice(index, 1)
+    reordered.splice(newIndex, 0, removed)
+    onReorder!(reordered)
+  }
 
   const handleDrop = (targetKey: string) => {
     if (!draggedKey || draggedKey === targetKey) return
@@ -105,16 +115,43 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                     dragOverKey === item.key && draggedKey !== item.key ? "bg-accent/10 border-t-2 border-t-accent" : "hover:bg-surface/50",
                   ].join(" ")}
                 >
-                  {canReorder ? (
-                    <GripVertical
-                      size={14}
-                      className="text-muted/40 group-hover:text-muted/70 flex-shrink-0 cursor-grab active:cursor-grabbing"
-                    />
-                  ) : (
-                    <span className="text-xs text-muted w-4 text-center flex-shrink-0 tabular-nums">{i + 1}</span>
-                  )}
+                  {/* Mobile: up/down arrows */}
+                  <div className="md:hidden flex-shrink-0 flex flex-col gap-1.5 h-14">
+                    {canReorder ? (
+                      <>
+                        <button
+                          onClick={() => moveItem(i, -1)}
+                          disabled={i === 0}
+                          className="flex-1 w-10 flex items-center justify-center rounded border border-white/20 text-white/40 disabled:opacity-20 active:bg-white/10 active:border-white/40 active:text-white/80"
+                        >
+                          <ChevronUp size={18} />
+                        </button>
+                        <button
+                          onClick={() => moveItem(i, 1)}
+                          disabled={i === queue.length - 1}
+                          className="flex-1 w-10 flex items-center justify-center rounded border border-white/20 text-white/40 disabled:opacity-20 active:bg-white/10 active:border-white/40 active:text-white/80"
+                        >
+                          <ChevronDown size={18} />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted w-4 text-center tabular-nums self-center">{i + 1}</span>
+                    )}
+                  </div>
 
-                  <div className="w-24 h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
+                  {/* Desktop: drag handle */}
+                  <div className="hidden md:flex flex-shrink-0 items-center">
+                    {canReorder ? (
+                      <GripVertical
+                        size={14}
+                        className="text-muted/40 group-hover:text-muted/70 cursor-grab active:cursor-grabbing"
+                      />
+                    ) : (
+                      <span className="text-xs text-muted w-4 text-center tabular-nums">{i + 1}</span>
+                    )}
+                  </div>
+
+                  <div className="w-14 h-14 md:w-24 md:h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
                     {item.artworkUrl ? (
                       <img src={artworkUrl(item.artworkUrl, 192)} alt="" loading="lazy" className="w-full h-full object-cover" />
                     ) : (
@@ -124,17 +161,17 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
 
                   <div className="flex-1 min-w-0">
                     <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
-                    <p className="text-white text-base font-semibold">{item.name}</p>
+                    <p className="text-white text-sm md:text-base font-semibold truncate">{item.name}</p>
                     {onAlbumClick
                       ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{item.albumName}</button>
                       : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
-                    <p className="text-muted text-xs mt-2 flex items-center gap-1">
-                      queued by{" "}
+                    <p className="text-muted text-xs mt-1 flex items-center gap-1 flex-wrap">
+                      <span className="whitespace-nowrap">queued by</span>
                       {item.addedBy === "robot"
-                        ? <RobotFace size={18} />
-                        : <DJFace uid={item.addedBy} size={18} />
+                        ? <RobotFace size={16} />
+                        : <DJFace uid={item.addedBy} size={16} />
                       }
-                      <span className="text-white/60">
+                      <span className="text-white/60 truncate">
                         {item.addedBy === "robot" ? "robot"
                           : item.addedBy === currentUser.uid ? currentUser.displayName
                           : item.addedByName ?? item.addedBy}
@@ -142,17 +179,19 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                     </p>
                   </div>
 
-                  <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(item.durationMs)}</span>
-
-                  {canRemove && (
-                    <button
-                      onClick={() => onRemove(item)}
-                      className="w-9 h-9 flex items-center justify-center text-muted hover:text-red-400 transition-colors flex-shrink-0"
-                      title="Remove from queue"
-                    >
-                      <X size={15} />
-                    </button>
-                  )}
+                  {/* Duration + remove: stacked on mobile, inline on desktop */}
+                  <div className="flex-shrink-0 flex flex-col md:flex-row items-end md:items-center justify-between md:gap-3 self-stretch py-0.5 md:py-0 md:self-auto">
+                    <span className="text-xs md:text-sm text-muted tabular-nums">{formatDuration(item.durationMs)}</span>
+                    {canRemove && (
+                      <button
+                        onClick={() => onRemove(item)}
+                        className="w-7 h-7 md:w-9 md:h-9 flex items-center justify-center text-muted hover:text-red-400 transition-colors"
+                        title="Remove from queue"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
                 </motion.li>
               ))}
             </AnimatePresence>
