@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, GripVertical, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { DJFace, RobotFace } from "./FaceGenerator"
+import { RetroMicIcon } from "./RetroMicIcon"
 import type { QueueItem, AppUser } from "../types"
 
 function formatTotalDuration(ms: number): string {
@@ -152,7 +153,11 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                   </div>
 
                   <div className="w-14 h-14 md:w-24 md:h-24 rounded flex-shrink-0 overflow-hidden bg-surface">
-                    {item.artworkUrl ? (
+                    {item.djBreak ? (
+                      <div className="w-full h-full flex items-center justify-center bg-surface">
+                        <RetroMicIcon className="w-3/4 h-3/4" />
+                      </div>
+                    ) : item.artworkUrl ? (
                       <img src={artworkUrl(item.artworkUrl, 192)} alt="" loading="lazy" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-muted text-sm">♪</div>
@@ -160,23 +165,29 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
-                    <p className="text-white text-sm md:text-base font-semibold truncate">{item.name}</p>
-                    {onAlbumClick
-                      ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{item.albumName}</button>
-                      : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
-                    <p className="text-muted text-xs mt-1 flex items-center gap-1 flex-wrap">
-                      <span className="whitespace-nowrap">queued by</span>
-                      {item.addedBy === "robot"
-                        ? <RobotFace size={16} />
-                        : <DJFace uid={item.addedBy} size={16} />
-                      }
-                      <span className="text-white/60 truncate">
-                        {item.addedBy === "robot" ? "robot"
-                          : item.addedBy === currentUser.uid ? currentUser.displayName
-                          : item.addedByName ?? item.addedBy}
-                      </span>
-                    </p>
+                    {item.djBreak ? (
+                      <p className="text-muted/70 text-xs">DJ break</p>
+                    ) : (
+                      <>
+                        <p className="text-muted/70 text-xs truncate">{item.artistName}</p>
+                        <p className="text-white text-sm md:text-base font-semibold truncate">{item.name}</p>
+                        {onAlbumClick
+                          ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{item.albumName}</button>
+                          : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
+                        <p className="text-muted text-xs mt-1 flex items-center gap-1 flex-wrap">
+                          <span className="whitespace-nowrap">queued by</span>
+                          {item.addedBy === "robot"
+                            ? <RobotFace size={16} />
+                            : <DJFace uid={item.addedBy} size={16} />
+                          }
+                          <span className="text-white/60 truncate">
+                            {item.addedBy === "robot" ? "robot"
+                              : item.addedBy === currentUser.uid ? currentUser.displayName
+                              : item.addedByName ?? item.addedBy}
+                          </span>
+                        </p>
+                      </>
+                    )}
                   </div>
 
                   {/* Duration + remove: stacked on mobile, inline on desktop */}

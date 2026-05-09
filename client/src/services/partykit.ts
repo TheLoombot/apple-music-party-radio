@@ -143,6 +143,10 @@ export class StationSocket {
     this.send({ type: "robot_dj" })
   }
 
+  testDJBreak(message: string) {
+    this.send({ type: "test_dj_break", message })
+  }
+
   sendChatMessage(text: string) {
     this.send({ type: "chat_message", text, ...this.lastJoinParams })
   }

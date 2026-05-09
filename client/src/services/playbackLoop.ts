@@ -33,6 +33,7 @@ export class PlaybackLoop {
   private muted = false
   private expirationTimer: ReturnType<typeof setTimeout> | null = null
   private nowPlayingItemTeardown: (() => void) | null = null
+  private speechUnlocked = false
 
   onNowPlayingChange?: (item: QueueItem | null) => void
   onQueueChange?: (upNext: QueueItem[]) => void
@@ -72,6 +73,14 @@ export class PlaybackLoop {
   async resume() {
     this.autoplayEnabled = true
     this.setMuted(false)
+    // iOS blocks speechSynthesis from non-gesture contexts. Prime it here while
+    // we're inside a user-gesture callstack so DJ break TTS works later.
+    if ("speechSynthesis" in window && !this.speechUnlocked) {
+      this.speechUnlocked = true
+      const primer = new SpeechSynthesisUtterance("")
+      primer.volume = 0
+      window.speechSynthesis.speak(primer)
+    }
     if (!this.pendingPlay) return
     const { track, tail } = this.pendingPlay
     this.pendingPlay = null
@@ -250,6 +259,8 @@ export class PlaybackLoop {
 
     // ── HARD SWITCH: track[0] changed ─────────────────────────────────────
     if (track0.key !== this.currentTrackKey) {
+      // Stop any TTS still speaking from a previous DJ break
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel()
       this.currentTrack = track0
       this.currentTrackKey = track0.key
 
@@ -258,17 +269,16 @@ export class PlaybackLoop {
         if (this.currentTrackKey === track0.key) this.onNowPlayingChange?.(null)
       }, Math.max(0, track0.expirationTime - Date.now()))
 
-      // ── DJ BREAK: speak the message instead of playing music ──────────
+      // ── DJ BREAK: stop music, speak the message, wait for server alarm ──
+      // player.stop() silences MusicKit for the break duration.
+      // The next track starts only when the server alarm expires this item
+      // and broadcasts the updated queue — same alarm chain as regular tracks.
       if (track0.djBreak) {
-        this.onNowPlayingChange?.(null)
+        this.onNowPlayingChange?.(track0)
         if (this.autoplayEnabled) {
-          // Stop any music that MusicKit may have already auto-advanced into
           this.player.stop()
           this.nativeCurrentId = null
-          const startTime = track0.expirationTime - track0.durationMs
-          const offsetSeconds = Math.max(0, (now - startTime) / 1000)
-          const remainingSecs = track0.durationMs / 1000 - offsetSeconds
-          // Only speak if we joined early enough to hear a meaningful portion
+          const remainingSecs = (track0.expirationTime - now) / 1000
           if (remainingSecs > 1 && !this.muted && "speechSynthesis" in window) {
             window.speechSynthesis.cancel()
             window.speechSynthesis.speak(new SpeechSynthesisUtterance(track0.djBreak.message))

@@ -117,9 +117,6 @@ const CHAT_RATE_LIMIT_MS = 1000
 /** Duration of a DJ break inserted between songs. */
 const DJ_BREAK_DURATION_MS = 7000
 
-/** Insert a DJ break after this many music tracks expire naturally. */
-const DJ_BREAK_EVERY_N_TRACKS = 5
-
 const DJ_BREAK_MESSAGES = [
   "You're listening to {id} radio.",
   "This is {id} — your non-stop music station.",
@@ -153,9 +150,6 @@ export default class RadioParty implements Party.Server {
 
   // Guard against concurrent fillRobotQueue calls (e.g. rapid skips)
   private robotFilling = false
-
-  // Count of music tracks that have expired since the last DJ break (persisted in storage).
-  private cachedBreakTrackCount: number | null = null
 
   // Set to true while inside onAlarm — context.parties is unavailable in that
   // context, so notifyIndex skips the binding attempt and goes straight to the URL path.
@@ -268,7 +262,16 @@ export default class RadioParty implements Party.Server {
           // If the DO was hibernated for a while, multiple tracks may have expired.
           // Expiring them one-at-a-time leaves liveUntilFromQueue pointing at a past
           // timestamp through the entire catch-up sequence, making the station look offline.
+          const expiredItem = queue[0]
           const { queue: cleanQueue } = await this.flushExpired()
+
+          // Insert a DJ break when exactly one music track expired naturally.
+          // Skip during catch-up sweeps (multiple items expired at once).
+          if (!expiredItem.djBreak && cleanQueue.length > 0 && cleanQueue.length === queue.length - 1) {
+            this.insertDJBreak(cleanQueue, this.getDJBreakMessage())
+            await this.room.storage.put("queue", cleanQueue)
+          }
+
           if (cleanQueue.length > 0) {
             // Broadcast current state and arm next alarm (broadcastQueue handles both)
             await this.broadcastQueue(cleanQueue)
@@ -539,6 +542,7 @@ export default class RadioParty implements Party.Server {
       case "remove_from_pool": if (!this.isPrivilegedConn(sender)) return; return this.removeFromPool(msg.isrc)
       case "clear_pool":       if (!this.isPrivilegedConn(sender)) return; return this.clearPool()
       case "robot_dj":         if (!this.isPrivilegedConn(sender)) return; return this.fillRobotQueue()
+      case "test_dj_break":    return this.handleTestDJBreak(msg.message)
       case "reorder_queue":    if (!this.isPrivilegedConn(sender)) return; return this.reorderQueue(msg.keys)
       case "suggest_track":    return this.handleSuggestTrack(msg, sender)
       case "vote_suggestion":  return this.handleVoteSuggestion(msg, sender)
@@ -673,6 +677,21 @@ export default class RadioParty implements Party.Server {
     await this.broadcastQueue(newQueue)
   }
 
+  private async handleTestDJBreak(message: string) {
+    if (!message?.trim()) return
+    const queue = await this.storage<QueueItem[]>("queue", [])
+    if (queue.length === 0) return
+    // Insert at position 1 (after currently playing track) so playback isn't interrupted
+    const breakItem = this.makeDJBreakItem(message.trim())
+    breakItem.expirationTime = queue[0].expirationTime + DJ_BREAK_DURATION_MS
+    queue.splice(1, 0, breakItem)
+    for (let i = 2; i < queue.length; i++) {
+      queue[i] = { ...queue[i], expirationTime: queue[i].expirationTime + DJ_BREAK_DURATION_MS }
+    }
+    await this.room.storage.put("queue", queue)
+    await this.broadcastQueue(queue)
+  }
+
   private async skipTrack() {
     const queue = await this.storage<QueueItem[]>("queue", [])
     if (queue.length === 0) return
@@ -712,19 +731,9 @@ export default class RadioParty implements Party.Server {
       this.room.broadcast(json({ type: "pool_update", pool }))
     }
 
-    // After a real music track expires, increment the counter and maybe insert a break.
+    // After every real music track expires, insert a DJ break before the next track.
     if (!expired.djBreak && queue.length > 0) {
-      if (this.cachedBreakTrackCount === null) {
-        this.cachedBreakTrackCount = await this.room.storage.get<number>("djBreakTrackCount") ?? 0
-      }
-      this.cachedBreakTrackCount++
-      if (this.cachedBreakTrackCount >= DJ_BREAK_EVERY_N_TRACKS) {
-        this.cachedBreakTrackCount = 0
-        await this.room.storage.put("djBreakTrackCount", 0)
-        this.insertDJBreak(queue, this.getDJBreakMessage())
-      } else {
-        await this.room.storage.put("djBreakTrackCount", this.cachedBreakTrackCount)
-      }
+      this.insertDJBreak(queue, this.getDJBreakMessage())
     }
 
     await this.room.storage.put("queue", queue)

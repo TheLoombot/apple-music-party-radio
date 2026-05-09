@@ -5,6 +5,7 @@ import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { ArtworkModal } from "./ArtworkModal"
 import { DJFace, RobotFace } from "./FaceGenerator"
+import { RetroMicIcon } from "./RetroMicIcon"
 import type { QueueItem, AppUser } from "../types"
 import type { MusicCatalog } from "../services/catalog"
 
@@ -221,13 +222,17 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           >
             {/* Full-width album art */}
             <motion.div
-              key={track.isrc || track.platformIds?.apple}
+              key={track.isrc || track.platformIds?.apple || track.key}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
               className="w-full aspect-square bg-surface"
             >
-              {track.artworkUrl ? (
+              {track.djBreak ? (
+                <div className="w-full h-full flex items-center justify-center bg-surface">
+                  <RetroMicIcon className="w-1/2 h-1/2" />
+                </div>
+              ) : track.artworkUrl ? (
                 <button onClick={() => setArtworkOpen(true)} className="block w-full h-full cursor-zoom-in">
                   <img src={artworkUrl(track.artworkUrl, 400)} alt={track.albumName} className="w-full h-full object-cover" />
                 </button>
@@ -258,23 +263,32 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               transition={{ duration: 0.25, delay: 0.05 }}
               className="px-4 pt-1 pb-3"
             >
-              <p className="text-muted/70 text-sm">{track.artistName}</p>
-              <p className="text-white text-xl font-bold">{track.name}</p>
-              {onAlbumClick
-                ? <button onClick={onAlbumClick} className="text-muted/50 text-sm mt-0.5 hover:text-red-400 transition-colors text-left">{track.albumName}</button>
-                : <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>}
-              <p className="text-muted text-sm mt-2 flex items-center gap-1.5">
-                spun by{" "}
-                {track.addedBy === "robot"
-                  ? <RobotFace size={20} />
-                  : <DJFace uid={track.addedBy} size={20} />
-                }
-                <span className="text-white/60">
-                  {track.addedBy === "robot" ? "robot"
-                    : track.addedBy === currentUser.uid ? currentUser.displayName
-                    : track.addedByName ?? track.addedBy}
-                </span>
-              </p>
+              {track.djBreak ? (
+                <>
+                  <p className="text-muted/70 text-sm uppercase tracking-widest font-medium">DJ Interlude</p>
+                  <p className="text-white text-xl font-bold mt-0.5">"{track.djBreak.message}"</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-muted/70 text-sm">{track.artistName}</p>
+                  <p className="text-white text-xl font-bold">{track.name}</p>
+                  {onAlbumClick
+                    ? <button onClick={onAlbumClick} className="text-muted/50 text-sm mt-0.5 hover:text-red-400 transition-colors text-left">{track.albumName}</button>
+                    : <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>}
+                  <p className="text-muted text-sm mt-2 flex items-center gap-1.5">
+                    spun by{" "}
+                    {track.addedBy === "robot"
+                      ? <RobotFace size={20} />
+                      : <DJFace uid={track.addedBy} size={20} />
+                    }
+                    <span className="text-white/60">
+                      {track.addedBy === "robot" ? "robot"
+                        : track.addedBy === currentUser.uid ? currentUser.displayName
+                        : track.addedByName ?? track.addedBy}
+                    </span>
+                  </p>
+                </>
+              )}
             </motion.div>
 
             {/* Controls */}

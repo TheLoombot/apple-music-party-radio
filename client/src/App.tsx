@@ -9,6 +9,7 @@ import { StationModal } from "./components/StationModal"
 import { ChatModal } from "./components/ChatModal"
 import { DiscoveryModal } from "./components/DiscoveryModal"
 import { ListenersPanel } from "./components/ListenersPanel"
+import { DJBreakTester } from "./components/DJBreakTester"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized, getMusicKit } from "./services/musickit"
 import { getUserStorefront } from "./services/appleMusic"
@@ -380,8 +381,8 @@ export default function App() {
   const suggestedIsrcs = useMemo(() => new Set(
     suggestions.flatMap(s => [s.isrc, s.platformIds?.apple].filter(Boolean) as string[])
   ), [suggestions])
-  const userQueue = useMemo(() => upNext.filter(item => item.addedBy !== "robot"), [upNext])
-  const robotQueue = useMemo(() => upNext.filter(item => item.addedBy === "robot"), [upNext])
+  const userQueue = useMemo(() => upNext.filter(item => item.addedBy !== "robot" || item.djBreak), [upNext])
+  const robotQueue = useMemo(() => upNext.filter(item => item.addedBy === "robot" && !item.djBreak), [upNext])
   const unreadCount = useMemo(
     () => chatMessages.filter(m => m.userId !== user?.uid && m.sentAt > lastReadSentAt).length,
     [chatMessages, lastReadSentAt, user?.uid]
@@ -700,6 +701,8 @@ export default function App() {
           )}
         </div>
       </footer>
+
+      {import.meta.env.DEV && <DJBreakTester />}
     </div>
   )
 }
