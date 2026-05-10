@@ -67,6 +67,7 @@ export class PlaybackLoop {
     this.lastKnownQueue = []
     this.pendingPlay = null
     if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel()
     // intentionally keep autoplayEnabled — once the user has tapped, don't ask again
   }
 
@@ -259,8 +260,6 @@ export class PlaybackLoop {
 
     // ── HARD SWITCH: track[0] changed ─────────────────────────────────────
     if (track0.key !== this.currentTrackKey) {
-      // Stop any TTS still speaking from a previous DJ break
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel()
       this.currentTrack = track0
       this.currentTrackKey = track0.key
 
@@ -308,12 +307,24 @@ export class PlaybackLoop {
       }
 
       const startTime = track0.expirationTime - track0.durationMs
-      const offsetSeconds = Math.max(0, Math.min((now - startTime) / 1000, track0.durationMs / 1000 - 0.5))
+      let offsetSeconds = Math.max(0, Math.min((now - startTime) / 1000, track0.durationMs / 1000 - 0.5))
 
       if (!this.autoplayEnabled) {
         this.pendingPlay = { track: track0, tail }
         this.onPlaybackBlocked?.()
         return
+      }
+
+      // If TTS from a preceding DJ break is still speaking, wait for it to finish
+      // before starting music so the speech isn't cut off by playAtOffset's setQueue call.
+      if ("speechSynthesis" in window && window.speechSynthesis.speaking) {
+        await new Promise<void>(resolve => {
+          const poll = () => window.speechSynthesis.speaking ? setTimeout(poll, 50) : resolve()
+          poll()
+        })
+        const waited = Date.now()
+        if (waited >= track0.expirationTime) return
+        offsetSeconds = Math.max(0, Math.min((waited - startTime) / 1000, track0.durationMs / 1000 - 0.5))
       }
 
       const seq = ++this.playSequence
