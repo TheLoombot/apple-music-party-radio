@@ -306,7 +306,7 @@ export default function App() {
   const handleSelectStation = useCallback((stationId: string) => {
     if (stationId === currentStationId) {
       if (!stationSelected) {
-        playbackLoop.current.enableAutoplay()
+        playbackLoop.current.resume()
         setStationSelected(true)
       }
       return
