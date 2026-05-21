@@ -82,9 +82,11 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
         <div className="p-3 border-b border-border">
           <div className="relative">
             <input
-              type="text"
+              type="search"
+              enterKeyHint="search"
               value={query}
               onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur() }}
               placeholder="Search music…"
               className="w-full bg-surface text-white placeholder-muted rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent pr-8"
             />
