@@ -122,17 +122,35 @@ export function isPreviewOnly(): boolean {
 
 export async function playTrackAtOffset(catalogId: string, offsetSeconds: number, tailIds?: string[]): Promise<void> {
   const music = getMusicKit()
+  const needsSeek = offsetSeconds > 1
+
+  if (needsSeek) {
+    // Mute before play to suppress audio from position 0 before seek completes
+    ;(music as any).volume = 0
+    const audio = document.querySelector("audio")
+    if (audio) audio.muted = true
+  }
+
   if (tailIds && tailIds.length > 0) {
     await music.setQueue({ songs: [catalogId, ...tailIds] })
   } else {
     await music.setQueue({ song: catalogId })
   }
   await music.play()
-  if (offsetSeconds > 1) {
+
+  if (needsSeek) {
     await waitForPlaybackState(music, 2, 2000)
     const currentPos = (music as any).currentPlaybackTime ?? 0
     if (Math.abs(offsetSeconds - currentPos) > 3) {
       await music.seekToTime(offsetSeconds)
+    }
+    // Fade in — unmute audio element first so iOS hears it
+    const audioEl = document.querySelector("audio")
+    if (audioEl) audioEl.muted = false
+    const steps = 8
+    for (let i = 1; i <= steps; i++) {
+      ;(music as any).volume = i / steps
+      await new Promise(r => setTimeout(r, 200 / steps))
     }
   }
 }

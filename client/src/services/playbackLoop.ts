@@ -60,6 +60,7 @@ export class PlaybackLoop {
     this.nowPlayingItemTeardown = null
     stationSocket.onQueueUpdate = undefined
     stationSocket.disconnect()
+    this.player.stop()
     this.currentTrack = null
     this.currentTrackKey = null
     this.nativeCurrentId = null
