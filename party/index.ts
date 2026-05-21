@@ -516,7 +516,8 @@ export default class RadioParty implements Party.Server {
         return
       }
       case "remove_track":     if (!this.isPrivilegedConn(sender)) return; return this.removeTrack(msg.key)
-      case "skip_track":       if (!this.isPrivilegedConn(sender)) return; return this.skipTrack()
+      case "skip_track":                  if (!this.isPrivilegedConn(sender)) return; return this.skipTrack()
+      case "skip_and_remove_from_pool":   if (!this.isPrivilegedConn(sender)) return; return this.skipAndRemoveFromPool()
       case "expire_track":     return this.expireTrack(msg.key, msg.addToPool)  // clients self-report their own track advance
       case "remove_from_pool": if (!this.isPrivilegedConn(sender)) return; return this.removeFromPool(msg.isrc)
       case "clear_pool":       if (!this.isPrivilegedConn(sender)) return; return this.clearPool()
@@ -668,6 +669,31 @@ export default class RadioParty implements Party.Server {
 
     await this.room.storage.put("queue", newQueue)
     await this.broadcastQueue(newQueue)
+    await this.fillRobotQueue()
+  }
+
+  private async skipAndRemoveFromPool() {
+    const queue = await this.storage<QueueItem[]>("queue", [])
+    if (queue.length === 0) return
+
+    const skipped = queue[0]
+    const [, ...rest] = queue
+    let cursor = Date.now()
+    const newQueue = rest.map(item => {
+      cursor += item.durationMs
+      return { ...item, expirationTime: cursor }
+    })
+
+    await this.room.storage.put("queue", newQueue)
+    await this.broadcastQueue(newQueue)
+
+    let pool = await this.storage<PoolTrack[]>("pool", [])
+    const newPool = pool.filter(p => !sameTrack(p, skipped))
+    if (newPool.length !== pool.length) {
+      await this.room.storage.put("pool", newPool)
+      this.room.broadcast(json({ type: "pool_update", pool: newPool }))
+    }
+
     await this.fillRobotQueue()
   }
 

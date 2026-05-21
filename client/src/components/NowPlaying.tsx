@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Volume2, VolumeX, SkipForward, Library, Pencil, ChevronDown } from "lucide-react"
+import { Volume2, VolumeX, SkipForward, Library, Pencil, ChevronDown, Ban } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { ArtworkModal } from "./ArtworkModal"
@@ -14,6 +14,7 @@ interface Props {
   currentUser: AppUser
   canSkip: boolean
   onSkip: () => void
+  onSkipAndBan?: () => void
   onMuteToggle: () => void
   isMuted: boolean
   isBlocked: boolean
@@ -144,7 +145,7 @@ function useMediaSession(
   }, [track?.key, isPlaying, canSkip])
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, onRenameStation, onOpenStationModal, activeStationCount }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, onRenameStation, onOpenStationModal, activeStationCount }: Props) {
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
   const quiet = isMuted || isBlocked
@@ -305,6 +306,16 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 >
                   <SkipForward size={18} />
                   <span>SKIP</span>
+                </button>
+              )}
+              {canSkip && onSkipAndBan && (
+                <button
+                  onClick={onSkipAndBan}
+                  className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide text-white transition-all hover:text-red-400 flex items-center justify-center gap-2"
+                  title="Skip and remove from pool"
+                >
+                  <Ban size={18} />
+                  <span>BAN</span>
                 </button>
               )}
               {onOpenPool && (

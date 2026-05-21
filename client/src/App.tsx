@@ -240,6 +240,10 @@ export default function App() {
     stationSocket.skipTrack()
   }, [])
 
+  const handleSkipAndBan = useCallback(() => {
+    stationSocket.skipAndRemoveFromPool()
+  }, [])
+
   const handleSuggestTrack = useCallback((track: Track) => {
     if (!user || !track.platformIds?.apple) return
     stationSocket.suggestTrack(track)
@@ -458,6 +462,16 @@ export default function App() {
     || stations.find(s => s.id === currentStationId)?.ownerUid === user.uid
   const isPrivileged = isOwnStation || djUserIds.includes(user.uid)
 
+  const nowPlayingIsInPool = useMemo(() => {
+    if (!nowPlaying) return false
+    return pool.some(p => {
+      if (nowPlaying.isrc && p.isrc) return nowPlaying.isrc === p.isrc
+      if (nowPlaying.platformIds?.apple && p.platformIds?.apple) return nowPlaying.platformIds.apple === p.platformIds.apple
+      if (nowPlaying.platformIds?.spotify && p.platformIds?.spotify) return nowPlaying.platformIds.spotify === p.platformIds.spotify
+      return false
+    })
+  }, [nowPlaying, pool])
+
   return (
     <div className="min-h-screen bg-surface flex flex-col">
 
@@ -635,6 +649,7 @@ export default function App() {
           currentUser={user}
           canSkip={isPrivileged}
           onSkip={handleSkip}
+          onSkipAndBan={isPrivileged && nowPlayingIsInPool ? handleSkipAndBan : undefined}
           isMuted={isMuted}
           onMuteToggle={handleMuteToggle}
           isBlocked={playbackBlocked}

@@ -123,6 +123,10 @@ export class StationSocket {
     this.send({ type: "skip_track" })
   }
 
+  skipAndRemoveFromPool() {
+    this.send({ type: "skip_and_remove_from_pool" })
+  }
+
   expireTrack(key: string, addToPool: boolean) {
     this.send({ type: "expire_track", key, addToPool })
   }
