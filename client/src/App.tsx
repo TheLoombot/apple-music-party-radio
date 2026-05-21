@@ -6,6 +6,7 @@ import { UpNext } from "./components/UpNext"
 import { RobotQueue } from "./components/RobotQueue"
 import { PoolModal } from "./components/PoolModal"
 import { StationModal } from "./components/StationModal"
+import { StationList } from "./components/StationList"
 import { ChatModal } from "./components/ChatModal"
 import { DiscoveryModal } from "./components/DiscoveryModal"
 import { ListenersPanel } from "./components/ListenersPanel"
@@ -30,6 +31,7 @@ export default function App() {
   const [nameInput, setNameInput] = useState("")
   const [stations, setStations] = useState<Station[]>([])
   const [currentStationId, setCurrentStationId] = useState("")
+  const [stationSelected, setStationSelected] = useState(() => !!window.location.pathname.slice(import.meta.env.BASE_URL.length))
   const [nowPlaying, setNowPlaying] = useState<QueueItem | null>(null)
   const [upNext, setUpNext] = useState<QueueItem[]>([])
   const [pool, setPool] = useState<PoolTrack[]>([])
@@ -135,6 +137,7 @@ export default function App() {
         setChatMessages([])
         setLastReadSentAt(Date.now())
         playbackLoop.current.enableAutoplay()
+        setStationSelected(true)
         setCurrentStationId(stationId)
       }
     }
@@ -301,7 +304,13 @@ export default function App() {
   }, [user, currentStationId])
 
   const handleSelectStation = useCallback((stationId: string) => {
-    if (stationId === currentStationId) return
+    if (stationId === currentStationId) {
+      if (!stationSelected) {
+        playbackLoop.current.enableAutoplay()
+        setStationSelected(true)
+      }
+      return
+    }
     window.history.pushState(null, "", `${import.meta.env.BASE_URL}${stationId}`)
     setNowPlaying(null)
     setUpNext([])
@@ -310,8 +319,9 @@ export default function App() {
     setLastReadSentAt(Date.now())
     setSuggestions([])
     playbackLoop.current.enableAutoplay()
+    setStationSelected(true)
     setCurrentStationId(stationId)
-  }, [currentStationId])
+  }, [currentStationId, stationSelected])
 
   const handleRemoveStation = useCallback((stationId: string) => {
     indexSocket.removeStation(stationId)
@@ -606,6 +616,23 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main layout — single centered column */}
+      {!stationSelected ? (
+        <div className="flex-1 max-w-[480px] w-full mx-auto px-4 py-6 space-y-4">
+          <p className="text-center text-muted text-sm">Choose a station to start listening</p>
+          <div className="bg-panel rounded-xl overflow-hidden">
+            <StationList
+              stations={stations}
+              currentStationId={currentStationId}
+              userId={user.uid}
+              userDisplayName={user.displayName}
+              ownedStationIds={ownedStationIds}
+              onSelect={handleSelectStation}
+              onRemove={handleRemoveStation}
+              onCreateStation={() => setCreateModalOpen(true)}
+            />
+          </div>
+        </div>
+      ) : (
       <div className="flex-1 max-w-[480px] w-full mx-auto px-4 py-4 space-y-4">
 
         <NowPlaying
@@ -673,6 +700,7 @@ export default function App() {
         />
 
       </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-border/50 max-w-[480px] w-full mx-auto px-4 py-3 flex items-center justify-between">
