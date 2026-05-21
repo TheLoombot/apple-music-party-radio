@@ -398,6 +398,15 @@ export default function App() {
     () => stations.filter(s => s.liveUntil > Date.now() && s.id !== currentStationId).length,
     [stations, currentStationId]
   )
+  const nowPlayingIsInPool = useMemo(() => {
+    if (!nowPlaying) return false
+    return pool.some(p => {
+      if (nowPlaying.isrc && p.isrc) return nowPlaying.isrc === p.isrc
+      if (nowPlaying.platformIds?.apple && p.platformIds?.apple) return nowPlaying.platformIds.apple === p.platformIds.apple
+      if (nowPlaying.platformIds?.spotify && p.platformIds?.spotify) return nowPlaying.platformIds.spotify === p.platformIds.spotify
+      return false
+    })
+  }, [nowPlaying, pool])
 
   if (appState === "setup") return <SetupScreen error={setupError} />
 
@@ -461,16 +470,6 @@ export default function App() {
   const isOwnStation = ownedStationIds.includes(currentStationId)
     || stations.find(s => s.id === currentStationId)?.ownerUid === user.uid
   const isPrivileged = isOwnStation || djUserIds.includes(user.uid)
-
-  const nowPlayingIsInPool = useMemo(() => {
-    if (!nowPlaying) return false
-    return pool.some(p => {
-      if (nowPlaying.isrc && p.isrc) return nowPlaying.isrc === p.isrc
-      if (nowPlaying.platformIds?.apple && p.platformIds?.apple) return nowPlaying.platformIds.apple === p.platformIds.apple
-      if (nowPlaying.platformIds?.spotify && p.platformIds?.spotify) return nowPlaying.platformIds.spotify === p.platformIds.spotify
-      return false
-    })
-  }, [nowPlaying, pool])
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
