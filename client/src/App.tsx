@@ -130,6 +130,15 @@ export default function App() {
         playbackLoop.current.enableAutoplay()
         setStationSelected(true)
         setCurrentStationId(stationId)
+      } else {
+        playbackLoop.current.stop()
+        setNowPlaying(null)
+        setUpNext([])
+        setPlaybackBlocked(false)
+        setChatMessages([])
+        setSuggestions([])
+        setCurrentStationId("")
+        setStationSelected(false)
       }
     }
     window.addEventListener("popstate", onPopState)
