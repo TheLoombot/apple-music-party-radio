@@ -192,7 +192,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
     charts: "Top 20",
     mfy: "Top Picks",
     playlists: "Playlists",
-    suggested: "Suggested",
+    suggested: "Requests",
   }
 
   const visibleTabs: Tab[] = suggestions.length > 0
@@ -219,7 +219,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                   tab === t ? "text-white border-accent" : "text-muted hover:text-white border-transparent"
                 }`}
               >
-                {t === "suggested" ? `Suggested (${suggestions.length})` : TAB_LABELS[t]}
+                {t === "suggested" ? `Requests (${suggestions.length})` : TAB_LABELS[t]}
                 {t === "suggested" && tab !== "suggested" && (
                   <span className="absolute top-1.5 right-1 w-1.5 h-1.5 rounded-full bg-red-400" />
                 )}
