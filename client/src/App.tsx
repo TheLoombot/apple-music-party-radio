@@ -96,20 +96,11 @@ export default function App() {
     indexSocket.onConnectionChange = setServerConnected
     indexSocket.onStationsUpdate = (newStations) => {
       setStations(newStations)
-      // On first update, auto-select a station if none is set
+      // On first update, auto-select only if a station is already in the URL
       if (!didSetInitialStation) {
         didSetInitialStation = true
-        setCurrentStationId(prev => {
-          if (prev) return prev
-          // URL path takes priority — allows direct links to a station
-          const pathStation = window.location.pathname.slice(import.meta.env.BASE_URL.length)
-          if (pathStation) return pathStation
-          // Prefer own live station, then any live station, then first in list
-          const owned = getOwnedStationIds()
-          const ownLive = newStations.find(s => owned.includes(s.id) && s.liveUntil > Date.now())
-          const firstLive = newStations.find(s => s.liveUntil > Date.now())
-          return ownLive?.id ?? firstLive?.id ?? newStations[0]?.id ?? ""
-        })
+        const pathStation = window.location.pathname.slice(import.meta.env.BASE_URL.length)
+        if (pathStation) setCurrentStationId(pathStation)
       }
     }
     indexSocket.connect()
@@ -304,13 +295,7 @@ export default function App() {
   }, [user, currentStationId])
 
   const handleSelectStation = useCallback((stationId: string) => {
-    if (stationId === currentStationId) {
-      if (!stationSelected) {
-        playbackLoop.current.resume()
-        setStationSelected(true)
-      }
-      return
-    }
+    if (stationId === currentStationId) return
     window.history.pushState(null, "", `${import.meta.env.BASE_URL}${stationId}`)
     setNowPlaying(null)
     setUpNext([])
@@ -321,7 +306,7 @@ export default function App() {
     playbackLoop.current.enableAutoplay()
     setStationSelected(true)
     setCurrentStationId(stationId)
-  }, [currentStationId, stationSelected])
+  }, [currentStationId])
 
   const handleRemoveStation = useCallback((stationId: string) => {
     indexSocket.removeStation(stationId)
