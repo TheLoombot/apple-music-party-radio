@@ -337,7 +337,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
       <AnimatePresence>
         {artworkOpen && track?.artworkUrl && (
           <ArtworkModal
-            src={artworkUrl(track.artworkUrl, 1500)}
+            src={artworkUrl(track.artworkUrl, 750)}
             alt={track.albumName}
             onClose={closeArtwork}
             catalog={catalog}

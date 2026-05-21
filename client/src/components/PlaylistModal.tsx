@@ -184,7 +184,7 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
       <AnimatePresence>
         {artworkOpen && displayPlaylist.artworkUrl && (
           <ArtworkModal
-            src={artworkUrl(displayPlaylist.artworkUrl, 1500)}
+            src={artworkUrl(displayPlaylist.artworkUrl, 750)}
             alt={displayPlaylist.name}
             onClose={closeArtwork}
             catalog={catalog}

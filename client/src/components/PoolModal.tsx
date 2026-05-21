@@ -278,7 +278,7 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
       <AnimatePresence>
         {artworkOpen && album?.artworkUrl && (
           <ArtworkModal
-            src={artworkUrl(album.artworkUrl, 1500)}
+            src={artworkUrl(album.artworkUrl, 750)}
             alt={album.name}
             onClose={closeArtwork}
             catalog={catalog}
