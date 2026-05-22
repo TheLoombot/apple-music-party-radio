@@ -120,15 +120,27 @@ export function isPreviewOnly(): boolean {
   } catch { return false }
 }
 
+const muteAudio = (music: MusicKit.MusicKitInstance) => {
+  ;(music as any).volume = 0
+  const audio = document.querySelector("audio")
+  if (audio) audio.muted = true
+}
+
+const unmuteAudio = (music: MusicKit.MusicKitInstance) => {
+  const audio = document.querySelector("audio")
+  if (audio) audio.muted = false
+  ;(music as any).volume = 1
+}
+
 export async function playTrackAtOffset(catalogId: string, offsetSeconds: number, tailIds?: string[]): Promise<void> {
   const music = getMusicKit()
   const needsSeek = offsetSeconds > 1
 
   if (needsSeek) {
-    // Mute before play to suppress audio from position 0 before seek completes
-    ;(music as any).volume = 0
-    const audio = document.querySelector("audio")
-    if (audio) audio.muted = true
+    muteAudio(music)
+  } else {
+    // Restore volume in case a prior fadeOut left it at 0
+    unmuteAudio(music)
   }
 
   if (tailIds && tailIds.length > 0) {
@@ -136,6 +148,10 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
   } else {
     await music.setQueue({ song: catalogId })
   }
+
+  // setQueue may create a new audio element — re-apply mute before play
+  if (needsSeek) muteAudio(music)
+
   await music.play()
 
   if (needsSeek) {
