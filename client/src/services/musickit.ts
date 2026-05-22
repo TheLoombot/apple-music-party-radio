@@ -136,11 +136,11 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
   const music = getMusicKit()
   const needsSeek = offsetSeconds > 1
 
-  if (needsSeek) {
-    muteAudio(music)
-  } else {
+  if (!needsSeek) {
     // Restore volume in case a prior fadeOut left it at 0
     unmuteAudio(music)
+  } else {
+    muteAudio(music)
   }
 
   if (tailIds && tailIds.length > 0) {
@@ -149,18 +149,36 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
     await music.setQueue({ song: catalogId })
   }
 
-  // setQueue may create a new audio element — re-apply mute before play
-  if (needsSeek) muteAudio(music)
+  if (needsSeek) {
+    muteAudio(music)
+
+    // Intercept the underlying audio element's play() so we can set currentTime
+    // before audio starts outputting. MusicKit resets audio.muted on iOS before
+    // calling audio.play() internally, making muting alone unreliable.
+    // By setting currentTime in the interceptor, the audio starts from offsetSeconds
+    // with no audible frames from position 0.
+    const el = document.querySelector("audio") as HTMLAudioElement | null
+    if (el) {
+      const nativePlay = el.play.bind(el)
+      ;(el as any).play = function () {
+        delete (el as any).play  // restore prototype before calling
+        el.currentTime = offsetSeconds
+        return nativePlay()
+      }
+    }
+  }
 
   await music.play()
 
   if (needsSeek) {
+    muteAudio(music)  // re-apply in case play() reset it (belt-and-suspenders for desktop)
     await waitForPlaybackState(music, 2, 2000)
     const currentPos = (music as any).currentPlaybackTime ?? 0
+    // If the interceptor fired, we're already at offsetSeconds; only re-seek if position is off
     if (Math.abs(offsetSeconds - currentPos) > 3) {
       await music.seekToTime(offsetSeconds)
     }
-    // Fade in — unmute audio element first so iOS hears it
+    // Fade in
     const audioEl = document.querySelector("audio")
     if (audioEl) audioEl.muted = false
     const steps = 8
