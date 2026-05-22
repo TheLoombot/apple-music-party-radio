@@ -714,7 +714,13 @@ export default function App() {
       <footer className="border-t border-border/50 max-w-[480px] w-full mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs text-muted/40">
           <span>🎵</span>
-          <span>Party Radio</span>
+          <button
+            onClick={() => {
+              window.history.pushState(null, "", import.meta.env.BASE_URL || "/")
+              window.dispatchEvent(new PopStateEvent("popstate"))
+            }}
+            className="hover:text-white transition-colors"
+          >Party Radio</button>
           <span className="font-mono text-muted/25">{__COMMIT__}</span>
         </div>
         <div className="text-xs">
