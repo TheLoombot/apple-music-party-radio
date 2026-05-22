@@ -256,10 +256,12 @@ export class PlaybackLoop {
       this.onNowPlayingChange?.(track0)
 
       if (this.expirationTimer) clearTimeout(this.expirationTimer)
-      // Clear now-playing at expiry — UI feedback; server alarm drives actual advance
+      // Clear now-playing after expiry — UI feedback; server alarm drives actual advance.
+      // Minimum 3 s grace so a near-expired or already-expired track doesn't immediately
+      // blank the UI before the next queue update arrives.
       this.expirationTimer = setTimeout(() => {
         if (this.currentTrackKey === track0.key) this.onNowPlayingChange?.(null)
-      }, Math.max(0, track0.expirationTime - Date.now()))
+      }, Math.max(3000, track0.expirationTime - Date.now()))
 
       const wantedId = track0.platformIds.apple ?? null
 
