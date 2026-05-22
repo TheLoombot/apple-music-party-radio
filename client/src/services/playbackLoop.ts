@@ -31,7 +31,6 @@ export class PlaybackLoop {
   private lastKnownQueue: QueueItem[] = []
   private autoplayEnabled = false
   private muted = false
-  private expirationTimer: ReturnType<typeof setTimeout> | null = null
   private nowPlayingItemTeardown: (() => void) | null = null
 
   onNowPlayingChange?: (item: QueueItem | null) => void
@@ -66,7 +65,6 @@ export class PlaybackLoop {
     this.nativeCurrentId = null
     this.lastKnownQueue = []
     this.pendingPlay = null
-    if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
     // intentionally keep autoplayEnabled — once the user has tapped, don't ask again
   }
 
@@ -156,7 +154,6 @@ export class PlaybackLoop {
     // Clear now-playing immediately; the server's alarm will broadcast the new queue
     // and handleQueueUpdate will repopulate it when that arrives.
     this.nativeCurrentId = itemId
-    if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
     this.onNowPlayingChange?.(null)
   }
 
@@ -233,8 +230,7 @@ export class PlaybackLoop {
       this.currentTrackKey = null
       this.nativeCurrentId = null
       this.pendingPlay = null
-      if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
-      this.player.stop()
+        this.player.stop()
       // Robot queue is now server-managed. Send a fallback ping in case the server
       // missed filling (e.g. pool was empty at expiry time but tracks were added since).
       stationSocket.triggerRobotDJ()
@@ -255,14 +251,7 @@ export class PlaybackLoop {
       this.currentTrackKey = track0.key
       this.onNowPlayingChange?.(track0)
 
-      if (this.expirationTimer) clearTimeout(this.expirationTimer)
-      // Clear now-playing after expiry — UI feedback; server alarm drives actual advance.
-      // Minimum 3 s grace so a near-expired or already-expired track doesn't immediately
-      // blank the UI before the next queue update arrives.
-      this.expirationTimer = setTimeout(() => {
-        if (this.currentTrackKey === track0.key) this.onNowPlayingChange?.(null)
-      }, Math.max(3000, track0.expirationTime - Date.now()))
-
+  
       const wantedId = track0.platformIds.apple ?? null
 
       // MusicKit already auto-advanced to this track natively — don't call play() again.
@@ -298,8 +287,7 @@ export class PlaybackLoop {
       } catch (err) {
         if (err instanceof UnavailableError) {
           console.warn("[PlaybackLoop] track unavailable, skipping:", track0.name)
-          if (this.expirationTimer) { clearTimeout(this.expirationTimer); this.expirationTimer = null }
-          stationSocket.expireTrack(track0.key, false)
+                stationSocket.expireTrack(track0.key, false)
         } else {
           console.error("[PlaybackLoop] playback error:", err)
         }
