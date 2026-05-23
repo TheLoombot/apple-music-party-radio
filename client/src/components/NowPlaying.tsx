@@ -293,7 +293,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
         <div className="px-3 pt-2.5 pb-1 relative flex items-center justify-center min-h-[32px]">
           <button
             onClick={onOpenStationModal}
-            className="text-white/55 text-sm font-semibold hover:text-white transition-colors flex items-center gap-1 max-w-[calc(100%-2.5rem)]"
+            className="text-white text-base font-bold hover:text-accent transition-colors flex items-center gap-1 max-w-[calc(100%-2.5rem)]"
           >
             <span className="truncate">{stationName}</span>
             {(activeStationCount ?? 0) > 0 && (
