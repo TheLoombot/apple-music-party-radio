@@ -88,6 +88,7 @@ interface Station {
   displayName: string
   storefront: string
   liveUntil: number   // Unix ms; 0 = not live; client computes isLive as liveUntil > Date.now()
+  frequency?: number  // FM frequency 66.6–109.9, assigned at creation
   ownerUid?: string   // stored at creation time; undefined for legacy rooms until migrated
   nowPlayingAddedBy?: string
   nowPlayingAddedByName?: string
@@ -424,12 +425,14 @@ export default class RadioParty implements Party.Server {
       displayName: msg.displayName,
       storefront: msg.storefront,
       liveUntil: existing?.liveUntil ?? 0,
+      frequency: msg.frequency != null ? msg.frequency : (existing?.frequency ?? randomFrequency()),
       ownerUid: msg.ownerUid ?? existing?.ownerUid,
     }
 
     if (idx >= 0) stations[idx] = meta
     else stations.push(meta)
 
+    stations.sort((a, b) => (a.frequency ?? 0) - (b.frequency ?? 0))
     await this.room.storage.put("stations", stations)
     this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
 
@@ -1142,6 +1145,12 @@ function sameTrack(a: Track, b: Track): boolean {
   if (a.platformIds?.apple && b.platformIds?.apple) return a.platformIds.apple === b.platformIds.apple
   if (a.platformIds?.spotify && b.platformIds?.spotify) return a.platformIds.spotify === b.platformIds.spotify
   return false
+}
+
+function randomFrequency(): number {
+  // FM band 66.6–109.9 with one decimal of precision (434 possible values)
+  const raw = Math.floor(Math.random() * 434) + 666
+  return raw / 10
 }
 
 function json(data: object): string {

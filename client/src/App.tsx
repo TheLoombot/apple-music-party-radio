@@ -300,11 +300,11 @@ export default function App() {
     setRenamingDJ(false)
   }, [user, renameInput])
 
-  const handleRenameStation = useCallback((newName: string) => {
+  const handleRenameStation = useCallback((newName: string, newFreq: number) => {
     if (!user || !currentStationId) return
     const name = newName.trim() || currentStationId
     setStationName(currentStationId, name)
-    indexSocket.register(currentStationId, name, user.storefront, user.uid)
+    indexSocket.register(currentStationId, name, user.storefront, user.uid, newFreq)
   }, [user, currentStationId])
 
   const handleSelectStation = useCallback((stationId: string) => {
@@ -398,6 +398,21 @@ export default function App() {
     () => stations.filter(s => s.liveUntil > Date.now() && s.id !== currentStationId).length,
     [stations, currentStationId]
   )
+  const liveStations = useMemo(
+    () => stations.filter(s => s.liveUntil > Date.now()).sort((a, b) => (a.frequency ?? 0) - (b.frequency ?? 0)),
+    [stations]
+  )
+  const currentLiveIdx = liveStations.findIndex(s => s.id === currentStationId)
+  const handlePrevStation = useCallback(() => {
+    if (liveStations.length <= 1) return
+    const idx = currentLiveIdx <= 0 ? liveStations.length - 1 : currentLiveIdx - 1
+    handleSelectStation(liveStations[idx].id)
+  }, [liveStations, currentLiveIdx, handleSelectStation])
+  const handleNextStation = useCallback(() => {
+    if (liveStations.length <= 1) return
+    const idx = currentLiveIdx >= liveStations.length - 1 ? 0 : currentLiveIdx + 1
+    handleSelectStation(liveStations[idx].id)
+  }, [liveStations, currentLiveIdx, handleSelectStation])
   const nowPlayingIsInPool = useMemo(() => {
     if (!nowPlaying) return false
     return pool.some(p => {
@@ -470,6 +485,12 @@ export default function App() {
   const isOwnStation = ownedStationIds.includes(currentStationId)
     || stations.find(s => s.id === currentStationId)?.ownerUid === user.uid
   const isPrivileged = isOwnStation || djUserIds.includes(user.uid)
+  const currentStation = stations.find(s => s.id === currentStationId)
+  const stationOwnerName = (() => {
+    if (!currentStation?.ownerUid) return undefined
+    if (currentStation.ownerUid === user.uid) return "You"
+    return currentStation.listeners?.find(l => l.userId === currentStation.ownerUid)?.displayName
+  })()
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
@@ -658,9 +679,13 @@ export default function App() {
           catalog={catalog.current}
           stationName={stations.find(s => s.id === currentStationId)?.displayName || currentStationId}
           isOwner={isOwnStation}
+          ownerName={stationOwnerName}
           onRenameStation={isOwnStation ? handleRenameStation : undefined}
           onOpenStationModal={() => setStationModalOpen(true)}
           activeStationCount={activeStationCount}
+          frequency={stations.find(s => s.id === currentStationId)?.frequency}
+          onPrevStation={liveStations.length > 1 ? handlePrevStation : undefined}
+          onNextStation={liveStations.length > 1 ? handleNextStation : undefined}
         />
 
         <button
@@ -673,7 +698,6 @@ export default function App() {
         </button>
 
         {(() => {
-          const currentStation = stations.find(s => s.id === currentStationId)
           return (
             <ListenersPanel
               listeners={currentStation?.listeners ?? []}
