@@ -80,25 +80,27 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
 
         {/* Search input */}
         <div className="p-3 border-b border-border">
-          <div className="relative">
-            <input
-              type="search"
-              enterKeyHint="search"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur() }}
-              placeholder="Search music…"
-              className="w-full bg-surface text-white placeholder-muted rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent pr-8"
-            />
-            {query && (
-              <button
-                onClick={() => setQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white text-lg leading-none"
-              >
-                ×
-              </button>
-            )}
-          </div>
+          <form onSubmit={e => { e.preventDefault(); (e.currentTarget.querySelector("input") as HTMLInputElement)?.blur() }}>
+            <div className="relative">
+              <input
+                type="search"
+                enterKeyHint="search"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search music…"
+                className="w-full bg-surface text-white placeholder-muted rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-accent pr-8"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-white text-lg leading-none"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </form>
         </div>
 
         {/* Results */}
