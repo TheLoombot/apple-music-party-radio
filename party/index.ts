@@ -349,6 +349,7 @@ export default class RadioParty implements Party.Server {
             stations[idx] = {
               ...stations[idx],
               liveUntil,
+              frequency: stations[idx].frequency ?? randomFrequency(),
               nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
               nowPlayingAddedByName: msg.nowPlayingAddedByName ?? undefined,
               // When the queue empties (liveUntil === 0), clear stale now-playing metadata.
@@ -361,7 +362,36 @@ export default class RadioParty implements Party.Server {
             await this.room.storage.put("stations", stations)
             this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
           } else {
-            console.warn(`[station_status] unknown station "${msg.id}" — not in registry, update dropped`)
+            // Station is alive but not in the registry — index DO was likely evicted and
+            // rebuilt without it. Revive a stub entry so updates aren't dropped, then
+            // bootstrap the station so it re-registers with full details on next connect.
+            console.warn(`[station_status] unknown station "${msg.id}" — auto-reviving`)
+            const liveUntil = msg.liveUntil ?? 0
+            const isLive = liveUntil > 0
+            const stub: Station = {
+              id: msg.id,
+              displayName: msg.id,
+              storefront: "us",
+              liveUntil,
+              frequency: randomFrequency(),
+              nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
+              nowPlayingAddedByName: msg.nowPlayingAddedByName ?? undefined,
+              nowPlayingTrackName: isLive ? (msg.nowPlayingTrackName ?? undefined) : undefined,
+              nowPlayingArtistName: isLive ? (msg.nowPlayingArtistName ?? undefined) : undefined,
+              nowPlayingArtworkUrl: isLive ? (msg.nowPlayingArtworkUrl ?? undefined) : undefined,
+            }
+            stations.push(stub)
+            stations.sort((a, b) => (a.frequency ?? 0) - (b.frequency ?? 0))
+            await this.room.storage.put("stations", stations)
+            this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
+            const host = (this.room.env as any)?.PARTYKIT_HOST ?? "localhost:1999"
+            const protocol = host.startsWith("localhost") ? "http" : "https"
+            const bootstrapUrl = `${protocol}://${host}/parties/main/${encodeURIComponent(msg.id)}/bootstrap`
+            void this.room.context.parties.main.get(msg.id).fetch(bootstrapUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            }).catch((e: unknown) => console.error(`[bootstrap] failed for revived station "${msg.id}":`, e))
           }
         } else if (msg.type === "station_presence") {
           this.presenceMap.set(msg.id, msg.listeners ?? [])
@@ -885,7 +915,12 @@ export default class RadioParty implements Party.Server {
     this.robotFilling = true
     try {
       const queue = await this.storage<QueueItem[]>("queue", [])
-      const pool = (await this.storage<PoolTrack[]>("pool", [])).filter(hasAnyPlatformId)
+      const rawPool = await this.storage<PoolTrack[]>("pool", [])
+      const pool = rawPool.filter(t => !!t.platformIds?.apple)
+      if (pool.length < rawPool.length) {
+        await this.room.storage.put("pool", pool)
+        this.room.broadcast(json({ type: "pool_update", pool }))
+      }
       if (pool.length === 0) return
 
       // Count robot tracks already in the tail (positions 1+, not counting now-playing)

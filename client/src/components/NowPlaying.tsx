@@ -156,8 +156,8 @@ const DIG_H = 40
 const T = 3.2
 const DIG_GAP = 5
 const DOT_W = 5
-const SEG_ON = "#00e676"
-const SEG_OFF = "rgba(0,230,118,0.12)"
+const SEG_ON = "#ff9800"
+const SEG_OFF = "rgba(255,152,0,0.15)"
 
 const SEGS: [number, number, number, number][] = [
   [T, 0, DIG_W - 2 * T, T],
@@ -206,7 +206,7 @@ function SevenSegDisplay({ value }: { value: string }) {
   return (
     <div
       className="flex items-end select-none"
-      style={{ gap: `${DIG_GAP}px`, filter: `drop-shadow(0 0 4px ${SEG_ON}) drop-shadow(0 0 10px ${SEG_ON})` }}
+      style={{ gap: `${DIG_GAP}px`, filter: `drop-shadow(0 0 6px ${SEG_ON}) drop-shadow(0 0 14px ${SEG_ON})` }}
     >
       {chars.map((ch, i) => ch === "." ? <SegDot key={i} /> : <SegChar key={i} ch={ch} />)}
     </div>

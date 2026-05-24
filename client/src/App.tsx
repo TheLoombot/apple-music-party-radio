@@ -211,7 +211,7 @@ export default function App() {
 
   const handleAddTrack = useCallback((track: Track) => {
     if (!user) return
-    if (!track.platformIds?.apple) return  // no playable Apple ID — don't add
+    if (!track.platformIds?.apple) return
     const fullQueue = [...(nowPlaying ? [nowPlaying] : []), ...upNext]
     const existing = fullQueue.find(i =>
       (track.isrc && i.isrc === track.isrc) ||
@@ -359,6 +359,7 @@ export default function App() {
     setOwnedStationIds(getOwnedStationIds())
     indexSocket.register(slug, slug, user.storefront, user.uid)
     setCreateModalOpen(false)
+    setStationModalOpen(false)
     setNewSlug("")
     setSlugStatus("idle")
     setIsCreatingStation(false)
@@ -526,47 +527,6 @@ export default function App() {
         </div>
       )}
 
-      {createModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80" onClick={() => setCreateModalOpen(false)}>
-          <div className="bg-panel rounded-2xl p-8 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <h2 className="text-white font-bold text-lg mb-1">Create a station</h2>
-            <p className="text-muted text-sm mb-6">Pick a unique slug for your station's URL.</p>
-            <div className="relative mb-2">
-              <input
-                autoFocus
-                type="text"
-                value={newSlug}
-                onChange={e => setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30))}
-                onKeyDown={e => { if (e.key === "Enter") handleCreateStation(); if (e.key === "Escape") setCreateModalOpen(false) }}
-                placeholder="my-cool-station"
-                className="w-full bg-surface text-white placeholder-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-accent pr-24"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs">
-                {slugStatus === "checking" && <span className="text-muted">checking…</span>}
-                {slugStatus === "available" && <span className="text-green-400">available</span>}
-                {slugStatus === "taken" && <span className="text-red-400">taken</span>}
-              </span>
-            </div>
-            <p className="text-muted/60 text-xs mb-6">Lowercase letters, numbers, and hyphens only.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setCreateModalOpen(false)}
-                className="flex-1 py-3 rounded-xl bg-surface text-muted font-semibold text-sm transition-colors hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateStation}
-                disabled={slugStatus !== "available" || isCreatingStation}
-                className="flex-1 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white font-semibold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isCreatingStation ? "Creating…" : "Create"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <AnimatePresence>
         {albumModal && (
           <PlaylistModal
@@ -612,6 +572,47 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      {createModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80" onClick={() => setCreateModalOpen(false)}>
+          <div className="bg-panel rounded-2xl p-8 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h2 className="text-white font-bold text-lg mb-1">Create a station</h2>
+            <p className="text-muted text-sm mb-6">Pick a unique slug for your station's URL.</p>
+            <div className="relative mb-2">
+              <input
+                autoFocus
+                type="text"
+                value={newSlug}
+                onChange={e => setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30))}
+                onKeyDown={e => { if (e.key === "Enter") handleCreateStation(); if (e.key === "Escape") setCreateModalOpen(false) }}
+                placeholder="my-cool-station"
+                className="w-full bg-surface text-white placeholder-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-accent pr-24"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs">
+                {slugStatus === "checking" && <span className="text-muted">checking…</span>}
+                {slugStatus === "available" && <span className="text-green-400">available</span>}
+                {slugStatus === "taken" && <span className="text-red-400">taken</span>}
+              </span>
+            </div>
+            <p className="text-muted/60 text-xs mb-6">Lowercase letters, numbers, and hyphens only.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setCreateModalOpen(false)}
+                className="flex-1 py-3 rounded-xl bg-surface text-muted font-semibold text-sm transition-colors hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateStation}
+                disabled={slugStatus !== "available" || isCreatingStation}
+                className="flex-1 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white font-semibold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isCreatingStation ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {chatModalOpen && (

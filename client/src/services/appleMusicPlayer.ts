@@ -3,6 +3,8 @@ import { UnavailableError } from "./player"
 import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
 
+const isNotFound = (err: any) => err?.errorCode === "NOT_FOUND" || String(err).includes("NOT_FOUND")
+
 export class AppleMusicPlayer implements MusicPlayer {
   async playAtOffset(track: QueueItem, offsetSeconds: number, tail?: QueueItem[]): Promise<void> {
     const appleId = track.platformIds.apple
@@ -11,17 +13,32 @@ export class AppleMusicPlayer implements MusicPlayer {
     try {
       await playTrackAtOffset(appleId, offsetSeconds, tailIds)
     } catch (err: any) {
-      // MusicKit throws NOT_FOUND when a catalog ID can't be resolved in the user's storefront
-      if (err?.errorCode === "NOT_FOUND" || String(err).includes("NOT_FOUND")) {
-        throw new UnavailableError("apple", track)
+      if (!isNotFound(err)) throw err
+      // NOT_FOUND on a multi-track setQueue can mean a tail track is bad, not the main track.
+      // Retry with no tail — if it succeeds the main track is fine and syncQueueTail
+      // will clean up the tail on the next queue update.
+      if (tailIds && tailIds.length > 0) {
+        try {
+          await playTrackAtOffset(appleId, offsetSeconds, [])
+          return
+        } catch (retryErr: any) {
+          if (!isNotFound(retryErr)) throw retryErr
+        }
       }
-      throw err
+      throw new UnavailableError("apple", track)
     }
   }
 
   async syncQueueTail(tailTracks: QueueItem[]): Promise<void> {
     const tailIds = tailTracks.map(t => t.platformIds.apple).filter((id): id is string => !!id)
-    await syncQueueTail(tailIds)
+    try {
+      await syncQueueTail(tailIds)
+    } catch (err: any) {
+      // A tail track's catalog ID isn't resolvable in this storefront — non-fatal.
+      // Current playback is unaffected; the track will be skipped via expireTrack
+      // when it becomes now-playing.
+      if (!isNotFound(err)) throw err
+    }
   }
 
   stop() {

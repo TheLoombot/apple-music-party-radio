@@ -287,7 +287,7 @@ export class PlaybackLoop {
       } catch (err) {
         if (err instanceof UnavailableError) {
           console.warn("[PlaybackLoop] track unavailable, skipping:", track0.name)
-                stationSocket.expireTrack(track0.key, false)
+          stationSocket.expireTrack(track0.key, false)
         } else {
           console.error("[PlaybackLoop] playback error:", err)
         }

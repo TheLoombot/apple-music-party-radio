@@ -11,9 +11,17 @@ function headers(): HeadersInit {
 function normalizeTrack(item: any): Track | null {
   if (!item?.attributes) return null
   const a = item.attributes
+  // playParams absent = not streamable in this storefront
+  let streamable = !!a.playParams
+  // offers present = Apple explicitly tells us what access types are available.
+  // If offers is returned but contains no streaming/plus entry, the track is
+  // catalog-present (hence has playParams) but purchase-only or region-locked.
+  if (streamable && Array.isArray(a.offers)) {
+    streamable = a.offers.some((o: any) => o.type === "streaming" || o.type === "plus")
+  }
   return {
     isrc: a.isrc ?? "",
-    platformIds: { apple: item.id },
+    platformIds: streamable ? { apple: item.id } : {},
     addedViaPlatform: "apple",
     name: a.name ?? "",
     artistName: a.artistName ?? "",
@@ -32,7 +40,7 @@ export async function getUserStorefront(): Promise<string> {
 
 export async function searchCatalog(term: string, storefront = "us"): Promise<SearchItem[]> {
   if (!term.trim()) return []
-  const params = new URLSearchParams({ term, types: "songs,albums,playlists", limit: "8" })
+  const params = new URLSearchParams({ term, types: "songs,albums,playlists", limit: "8", extend: "offers" })
   const res = await fetch(
     `https://api.music.apple.com/v1/catalog/${storefront}/search?${params}`,
     { headers: headers() }
@@ -42,7 +50,7 @@ export async function searchCatalog(term: string, storefront = "us"): Promise<Se
 
   const songs: SearchItem[] = (data.results?.songs?.data ?? [])
     .map((item: any) => { const t = normalizeTrack(item); return t ? { kind: "song" as const, track: t } : null })
-    .filter((x: SearchItem | null): x is SearchItem => x !== null)
+    .filter((x: SearchItem | null): x is SearchItem => x !== null && !!x.track.platformIds?.apple)
 
   const albums: SearchItem[] = (data.results?.albums?.data ?? []).map((item: any) => {
     const rd: string | undefined = item.attributes?.releaseDate
@@ -82,7 +90,7 @@ export async function searchCatalog(term: string, storefront = "us"): Promise<Se
 
 export async function getAlbumTracks(albumId: string, storefront = "us"): Promise<Track[]> {
   const res = await fetch(
-    `https://api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}/tracks?limit=30`,
+    `https://api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}/tracks?limit=30&extend=offers`,
     { headers: headers() }
   )
   if (!res.ok) return []
@@ -92,7 +100,7 @@ export async function getAlbumTracks(albumId: string, storefront = "us"): Promis
 
 export async function getPlaylistTracks(playlistId: string, storefront = "us"): Promise<Track[]> {
   const res = await fetch(
-    `https://api.music.apple.com/v1/catalog/${storefront}/playlists/${playlistId}/tracks?limit=100`,
+    `https://api.music.apple.com/v1/catalog/${storefront}/playlists/${playlistId}/tracks?limit=100&extend=offers`,
     { headers: headers() }
   )
   if (!res.ok) return []
@@ -151,15 +159,20 @@ export async function getLibraryPlaylists(): Promise<LibraryPlaylistResult[]> {
 
 export async function getLibraryPlaylistTracks(playlistId: string): Promise<Track[]> {
   const res = await fetch(
-    `https://api.music.apple.com/v1/me/library/playlists/${playlistId}/tracks?limit=100&include=catalog`,
+    `https://api.music.apple.com/v1/me/library/playlists/${playlistId}/tracks?limit=100&include=catalog&fields[songs]=isrc,name,artistName,albumName,artwork,durationInMillis,playParams,offers`,
     { headers: headers() }
   )
   if (!res.ok) return []
   const data = await res.json()
   return (data.data ?? []).map((item: any): Track => {
     // Prefer catalog relationship — gives the correct storefront-specific catalog ID.
+    // Only use it if the track is actually streamable (has playParams); otherwise fall through
+    // so a purchased copy's catalogId can serve as the playable ID instead.
     const catalogItem = item.relationships?.catalog?.data?.[0]
-    if (catalogItem) return normalizeTrack(catalogItem)!
+    if (catalogItem) {
+      const normalized = normalizeTrack(catalogItem)
+      if (normalized?.platformIds?.apple) return normalized
+    }
     // Fall back to playParams.catalogId for purchased tracks not in the catalog.
     const available = normalizeLibraryTrack(item)
     if (available) return available
@@ -196,7 +209,7 @@ export async function getCharts(storefront = "us"): Promise<ChartResult[]> {
   return (data.results?.songs ?? []).map((chart: any) => ({
     id: chart.chart as string,
     name: chart.name as string,
-    tracks: (chart.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null)
+    tracks: (chart.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null && !!t.platformIds?.apple)
   }))
 }
 

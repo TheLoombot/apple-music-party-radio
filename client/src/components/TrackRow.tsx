@@ -38,7 +38,7 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
 
       <div className="flex-1 min-w-0">
         {unavailable
-          ? <p className="text-muted text-xs truncate">No longer available</p>
+          ? <p className="text-amber-500/70 text-xs truncate">Not available in Apple Music</p>
           : !hideArtist && <p className="text-muted/70 text-xs truncate">{track.artistName}</p>}
         <p className={`text-base font-semibold ${unavailable ? "text-muted/50 line-through" : "text-white"}`}>{track.name}</p>
         {!unavailable && trackNumber == null && (
@@ -66,7 +66,7 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
           className={`w-9 h-9 rounded-full flex items-center justify-center text-base transition-all ${
             added ? "bg-green-500/20 text-green-400 hover:bg-red-500/20 hover:text-red-400" : unavailable ? "bg-surface text-muted cursor-not-allowed" : "bg-surface text-muted hover:bg-accent hover:text-white"
           }`}
-          title={unavailable ? "No longer available" : added ? (requestMode ? "Already requested" : "Remove from queue") : (requestMode ? "Request track" : "Add to queue")}
+          title={unavailable ? "Not available in Apple Music" : added ? (requestMode ? "Already requested" : "Remove from queue") : (requestMode ? "Request track" : "Add to queue")}
         >
           {added ? "✓" : requestMode ? <ArrowUp size={14} /> : "+"}
         </button>
