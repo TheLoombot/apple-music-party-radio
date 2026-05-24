@@ -48,9 +48,10 @@ export async function searchCatalog(term: string, storefront = "us"): Promise<Se
   if (!res.ok) return []
   const data = await res.json()
 
-  const songs: SearchItem[] = (data.results?.songs?.data ?? [])
-    .map((item: any) => { const t = normalizeTrack(item); return t ? { kind: "song" as const, track: t } : null })
-    .filter((x: SearchItem | null): x is SearchItem => x !== null && !!x.track.platformIds?.apple)
+  type SongItem = { kind: "song"; track: Track }
+  const songs: SongItem[] = (data.results?.songs?.data ?? [])
+    .map((item: any): SongItem | null => { const t = normalizeTrack(item); return t ? { kind: "song", track: t } : null })
+    .filter((x: SongItem | null): x is SongItem => x !== null && !!x.track.platformIds?.apple)
 
   const albums: SearchItem[] = (data.results?.albums?.data ?? []).map((item: any) => {
     const rd: string | undefined = item.attributes?.releaseDate
