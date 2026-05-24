@@ -151,10 +151,14 @@ export class PlaybackLoop {
       return
     }
     // Track the native position so handleQueueUpdate can detect the advance.
-    // Clear now-playing immediately; the server's alarm will broadcast the new queue
-    // and handleQueueUpdate will repopulate it when that arrives.
+    // Advance nowPlaying immediately to the next track — avoids a blank "station is quiet"
+    // window while waiting for the server's alarm to broadcast the updated queue.
+    // Soft updates that arrive before the hard-switch (same track0.key, tail change)
+    // will see musicKitAlreadyAdvanced=true and correctly leave nowPlaying alone.
     this.nativeCurrentId = itemId
-    this.onNowPlayingChange?.(null)
+    const nextTrack = this.lastKnownQueue.find(q => q.platformIds?.apple === itemId) ?? null
+    console.debug("[PlaybackLoop] native auto-advance → nowPlaying", nextTrack?.name ?? null)
+    this.onNowPlayingChange?.(nextTrack)
   }
 
   private handleVisibilityChange = async () => {
@@ -298,6 +302,8 @@ export class PlaybackLoop {
     // ── SOFT UPDATE: same track[0], sync the tail ─────────────────────────
     if (!musicKitAlreadyAdvanced) {
       this.onNowPlayingChange?.(track0)
+    } else {
+      console.debug("[PlaybackLoop] soft update: native already advanced, holding nowPlaying", { nativeCurrentId: this.nativeCurrentId, track0: track0.name })
     }
     // During the transition window (MusicKit advanced to next track, server catching up),
     // compute tail relative to where MusicKit actually is to avoid duplicating now-playing
