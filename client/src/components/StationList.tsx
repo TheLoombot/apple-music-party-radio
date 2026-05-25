@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Trash2, Mic } from "lucide-react"
+import { Trash2 } from "lucide-react"
 import type { Station } from "../types"
 import { DJFace, RobotFace } from "./FaceGenerator"
 import { artworkUrl } from "../services/musickit"
@@ -65,10 +65,14 @@ function StationRow({
           )}
         </div>
 
-        {/* Station name */}
+        {/* Frequency + station name */}
         <div className="flex-1 min-w-0">
-          <p className={`text-sm truncate flex items-center gap-1 ${active ? "text-accent" : isLive ? "text-white" : "text-white/50"}`}>
-            {isOwn && <Mic size={10} className="flex-shrink-0 text-muted/40" />}
+          {station.frequency != null && (
+            <p className={`text-base font-mono font-bold truncate ${active ? "text-accent" : isLive ? "text-white" : "text-white/50"}`}>
+              {station.frequency.toFixed(1)}
+            </p>
+          )}
+          <p className={`text-xs truncate ${active ? "text-accent/70" : isLive ? "text-white/50" : "text-white/30"}`}>
             {station.displayName || station.id}
           </p>
         </div>
@@ -131,17 +135,18 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
     return () => clearTimeout(timer)
   }, [stations])
 
+  const byFreq = (a: Station, b: Station) => (a.frequency ?? 0) - (b.frequency ?? 0)
+
   const yourStations = stations
     .filter(s => ownedStationIds.includes(s.id))
-    .sort((a, b) => a.id.localeCompare(b.id))
+    .sort(byFreq)
 
   const otherStations = stations
     .filter(s => !ownedStationIds.includes(s.id))
     .sort((a, b) => {
-      // live first, then alphabetical
       if (a.liveUntil > now && b.liveUntil <= now) return -1
       if (a.liveUntil <= now && b.liveUntil > now) return 1
-      return a.id.localeCompare(b.id)
+      return byFreq(a, b)
     })
 
   const renderRow = (station: Station) => (

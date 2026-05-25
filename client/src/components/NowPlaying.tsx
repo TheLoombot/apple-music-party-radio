@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Volume2, VolumeX, SkipForward, Library, Info, ChevronDown, ChevronsLeft, ChevronsRight, Ban } from "lucide-react"
+import { Volume2, VolumeX, SkipForward, Library, Info, ChevronDown, Rewind, FastForward, Ban } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { ArtworkModal } from "./ArtworkModal"
@@ -100,6 +100,8 @@ function useMediaSession(
   onSkip: () => void,
   onPlay: () => void,
   onPause: () => void,
+  onPrevStation: (() => void) | undefined,
+  onNextStation: (() => void) | undefined,
 ) {
   useEffect(() => {
     if (!("mediaSession" in navigator)) return
@@ -141,12 +143,13 @@ function useMediaSession(
 
     navigator.mediaSession.setActionHandler("play", onPlay)
     navigator.mediaSession.setActionHandler("pause", onPause)
-    navigator.mediaSession.setActionHandler("nexttrack", canSkip ? onSkip : null)
-    navigator.mediaSession.setActionHandler("previoustrack", null)
+    // prev/next station takes priority over skip when multiple stations are available
+    navigator.mediaSession.setActionHandler("previoustrack", onPrevStation ?? null)
+    navigator.mediaSession.setActionHandler("nexttrack", onNextStation ?? (canSkip ? onSkip : null))
     navigator.mediaSession.setActionHandler("seekto", () => {})
     navigator.mediaSession.setActionHandler("seekbackward", () => {})
     navigator.mediaSession.setActionHandler("seekforward", () => {})
-  }, [track?.key, isPlaying, canSkip])
+  }, [track?.key, isPlaying, canSkip, !!onPrevStation, !!onNextStation])
 }
 
 // ── 7-segment LED display ────────────────────────────────────────────────────
@@ -260,7 +263,25 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
   const [infoOpen, setInfoOpen] = useState(false)
   const [nameInput, setNameInput] = useState("")
   const [freqInput, setFreqInput] = useState("")
+  const [navBusy, setNavBusy] = useState(false)
+  const navCooldownRef = useRef<ReturnType<typeof setTimeout>>()
   const displayFreq = useFrequencyScan(frequency)
+
+  const handlePrevNav = useCallback(() => {
+    if (navBusy || !onPrevStation) return
+    setNavBusy(true)
+    onPrevStation()
+    navCooldownRef.current = setTimeout(() => setNavBusy(false), 1000)
+  }, [navBusy, onPrevStation])
+
+  const handleNextNav = useCallback(() => {
+    if (navBusy || !onNextStation) return
+    setNavBusy(true)
+    onNextStation()
+    navCooldownRef.current = setTimeout(() => setNavBusy(false), 1000)
+  }, [navBusy, onNextStation])
+
+  useEffect(() => () => clearTimeout(navCooldownRef.current), [])
 
   const openInfo = useCallback(() => {
     setNameInput(stationName)
@@ -284,6 +305,8 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
     onSkip,
     isBlocked ? onResume : onMuteToggle,
     isBlocked ? () => {} : onMuteToggle,
+    onPrevStation ? handlePrevNav : undefined,
+    onNextStation ? handleNextNav : undefined,
   )
 
   return (
@@ -313,12 +336,16 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
         {/* Frequency + nav row */}
         <div className="flex items-center px-1 pb-3 pt-1">
           <button
-            onClick={onPrevStation}
-            disabled={!onPrevStation}
-            className={`w-14 h-14 flex items-center justify-center rounded-lg active:scale-90 transition-all flex-shrink-0 ${onPrevStation ? "text-white/60 hover:text-white" : "invisible"}`}
+            onClick={handlePrevNav}
+            disabled={!onPrevStation || navBusy}
+            className={`w-14 h-12 flex items-center justify-center rounded-lg flex-shrink-0 transition-all
+              border border-white/10 bg-surface
+              shadow-[0_3px_0_rgba(0,0,0,0.5)]
+              active:shadow-none active:translate-y-[3px]
+              ${!onPrevStation ? "invisible" : navBusy ? "text-white/25 cursor-not-allowed shadow-none translate-y-[3px]" : "text-white/70 hover:text-white hover:border-white/20"}`}
             title="Previous station"
           >
-            <ChevronsLeft size={36} strokeWidth={2.5} />
+            <Rewind size={30} strokeWidth={2} fill="currentColor" stroke="none" />
           </button>
           <div className="flex-1 flex items-center justify-center">
             {displayFreq != null
@@ -327,12 +354,16 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             }
           </div>
           <button
-            onClick={onNextStation}
-            disabled={!onNextStation}
-            className={`w-14 h-14 flex items-center justify-center rounded-lg active:scale-90 transition-all flex-shrink-0 ${onNextStation ? "text-white/60 hover:text-white" : "invisible"}`}
+            onClick={handleNextNav}
+            disabled={!onNextStation || navBusy}
+            className={`w-14 h-12 flex items-center justify-center rounded-lg flex-shrink-0 transition-all
+              border border-white/10 bg-surface
+              shadow-[0_3px_0_rgba(0,0,0,0.5)]
+              active:shadow-none active:translate-y-[3px]
+              ${!onNextStation ? "invisible" : navBusy ? "text-white/25 cursor-not-allowed shadow-none translate-y-[3px]" : "text-white/70 hover:text-white hover:border-white/20"}`}
             title="Next station"
           >
-            <ChevronsRight size={36} strokeWidth={2.5} />
+            <FastForward size={30} strokeWidth={2} fill="currentColor" stroke="none" />
           </button>
         </div>
       </div>
