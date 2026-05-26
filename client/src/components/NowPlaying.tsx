@@ -149,7 +149,7 @@ function useMediaSession(
     navigator.mediaSession.setActionHandler("seekto", () => {})
     navigator.mediaSession.setActionHandler("seekbackward", () => {})
     navigator.mediaSession.setActionHandler("seekforward", () => {})
-  }, [track?.key, isPlaying, canSkip, !!onPrevStation, !!onNextStation])
+  }, [track?.key, isPlaying, canSkip, onSkip, onPlay, onPause, onPrevStation, onNextStation])
 }
 
 // ── 7-segment LED display ────────────────────────────────────────────────────

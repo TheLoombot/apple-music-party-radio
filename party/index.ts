@@ -260,7 +260,12 @@ export default class RadioParty implements Party.Server {
           await this.fillRobotQueue()
           if (cleanQueue.length === 0) {
             const refilled = await this.storage<QueueItem[]>("queue", [])
-            if (refilled.length === 0) await this.notifyIndex(0)
+            if (refilled.length === 0) {
+              // Pool also empty — station genuinely has nothing to play.
+              // Only now broadcast the empty queue so clients show "station is quiet".
+              this.room.broadcast(json({ type: "queue_update", queue: [] }))
+              await this.notifyIndex(0)
+            }
           }
         } else {
           // Alarm fired early (Cloudflare may do this) — reschedule for the correct time.
@@ -1032,8 +1037,12 @@ export default class RadioParty implements Party.Server {
     if (changed) {
       await this.room.storage.put("queue", queue)
       await this.room.storage.put("pool", pool)
-      // Notify any already-connected clients of the cleaned-up state
-      this.room.broadcast(json({ type: "queue_update", queue }))
+      // Suppress empty queue broadcast — fillRobotQueue will immediately refill and broadcast.
+      // Broadcasting an empty queue here would briefly blank nowPlaying on all clients
+      // whenever the DO wakes from hibernation with all tracks expired.
+      if (queue.length > 0) {
+        this.room.broadcast(json({ type: "queue_update", queue }))
+      }
       this.room.broadcast(json({ type: "pool_update", pool }))
     }
 

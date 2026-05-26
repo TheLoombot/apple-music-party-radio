@@ -158,8 +158,14 @@ export class PlaybackLoop {
     // Soft updates that arrive before the hard-switch (same track0.key, tail change)
     // will see musicKitAlreadyAdvanced=true and correctly leave nowPlaying alone.
     this.nativeCurrentId = itemId
-    const nextTrack = this.lastKnownQueue.find(q => q.platformIds?.apple === itemId) ?? null
-    console.debug("[PlaybackLoop] native auto-advance → nowPlaying", nextTrack?.name ?? null)
+    const nextTrack = this.lastKnownQueue.find(q => q.platformIds?.apple === itemId)
+    if (!nextTrack) {
+      // This shouldn't happen since we just checked expectedNextId === itemId, but if
+      // lastKnownQueue has since changed, don't blank nowPlaying — server update will fix it.
+      console.warn("[PlaybackLoop] auto-advance to", itemId, "not in queue — holding nowPlaying")
+      return
+    }
+    console.debug("[PlaybackLoop] native auto-advance → nowPlaying", nextTrack.name)
     this.onNowPlayingChange?.(nextTrack)
   }
 
