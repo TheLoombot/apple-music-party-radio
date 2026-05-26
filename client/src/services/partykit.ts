@@ -225,8 +225,8 @@ export class IndexSocket {
     if (s) { s.onclose = null; s.close() }
   }
 
-  register(id: string, displayName: string, storefront: string, ownerUid?: string, frequency?: number) {
-    this.socket?.send(JSON.stringify({ type: "register", id, displayName, storefront, ownerUid, frequency }))
+  register(id: string, displayName: string, storefront: string, ownerUid?: string, frequency?: number, ownerDisplayName?: string) {
+    this.socket?.send(JSON.stringify({ type: "register", id, displayName, storefront, ownerUid, frequency, ownerDisplayName }))
   }
 
   removeStation(id: string) {

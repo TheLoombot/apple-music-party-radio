@@ -89,7 +89,8 @@ export class PlaybackLoop {
       if (this.playSequence !== seq) return
     } catch (err) {
       if (err instanceof UnavailableError) {
-        console.warn("[PlaybackLoop] track unavailable on resume:", track.name)
+        console.warn("[PlaybackLoop] track unavailable on resume, skipping:", track.name, track.key)
+        stationSocket.expireTrack(track.key, false)
       } else {
         console.error("[PlaybackLoop] resume error:", err)
       }
@@ -116,7 +117,8 @@ export class PlaybackLoop {
       if (this.playSequence !== seq) return
     } catch (err) {
       if (err instanceof UnavailableError) {
-        console.warn("[PlaybackLoop] refresh: track unavailable:", track.name)
+        console.warn("[PlaybackLoop] track unavailable on refresh, skipping:", track.name, track.key)
+        stationSocket.expireTrack(track.key, false)
       } else {
         console.error("[PlaybackLoop] refresh error:", err)
       }
@@ -217,7 +219,8 @@ export class PlaybackLoop {
       if (this.playSequence !== seq) return
     } catch (err) {
       if (err instanceof UnavailableError) {
-        console.warn("[PlaybackLoop] track unavailable on tab focus:", track.name)
+        console.warn("[PlaybackLoop] track unavailable on tab focus, skipping:", track.name, track.key)
+        stationSocket.expireTrack(track.key, false)
       } else {
         console.error("[PlaybackLoop] tab focus restore error:", err)
       }

@@ -113,7 +113,7 @@ export default function App() {
         indexSocket.removeStation(stationId)
         removeOwnedStationId(stationId)
       } else {
-        indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid)
+        indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid, undefined, user.displayName)
       }
     }
     setOwnedStationIds(getOwnedStationIds())
@@ -295,7 +295,7 @@ export default function App() {
     setUser(prev => prev ? { ...prev, displayName: name } : prev)
     // Re-register owned stations using their own stored names (not the DJ name)
     for (const stationId of getOwnedStationIds()) {
-      indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid)
+      indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid, undefined, name)
     }
     setRenamingDJ(false)
   }, [user, renameInput])
@@ -304,7 +304,7 @@ export default function App() {
     if (!user || !currentStationId) return
     const name = newName.trim() || currentStationId
     setStationName(currentStationId, name)
-    indexSocket.register(currentStationId, name, user.storefront, user.uid, newFreq)
+    indexSocket.register(currentStationId, name, user.storefront, user.uid, newFreq, user.displayName)
   }, [user, currentStationId])
 
   const handleSelectStation = useCallback((stationId: string) => {
@@ -357,7 +357,7 @@ export default function App() {
     setStationName(slug, slug)
     addOwnedStationId(slug)
     setOwnedStationIds(getOwnedStationIds())
-    indexSocket.register(slug, slug, user.storefront, user.uid)
+    indexSocket.register(slug, slug, user.storefront, user.uid, undefined, user.displayName)
     setCreateModalOpen(false)
     setStationModalOpen(false)
     setNewSlug("")
@@ -490,7 +490,9 @@ export default function App() {
   const stationOwnerName = (() => {
     if (!currentStation?.ownerUid) return undefined
     if (currentStation.ownerUid === user.uid) return "You"
-    return currentStation.listeners?.find(l => l.userId === currentStation.ownerUid)?.displayName
+    return currentStation.ownerDisplayName
+      ?? currentStation.listeners?.find(l => l.userId === currentStation.ownerUid)?.displayName
+      ?? "Unknown"
   })()
 
   return (

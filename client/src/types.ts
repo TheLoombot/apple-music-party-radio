@@ -63,8 +63,9 @@ export interface Station {
   displayName: string
   storefront: string
   liveUntil: number    // Unix ms; station is live if liveUntil > Date.now()
-  frequency?: number   // FM frequency 66.6–109.9, assigned at creation
-  ownerUid?: string    // set at creation; undefined for legacy rooms until migrated
+  frequency?: number        // FM frequency 66.6–109.9, assigned at creation
+  ownerUid?: string         // set at creation; undefined for legacy rooms until migrated
+  ownerDisplayName?: string // persisted on register so it's known even when owner is offline
   nowPlayingAddedBy?: string
   nowPlayingAddedByName?: string
   nowPlayingTrackName?: string

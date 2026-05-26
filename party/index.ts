@@ -88,8 +88,9 @@ interface Station {
   displayName: string
   storefront: string
   liveUntil: number   // Unix ms; 0 = not live; client computes isLive as liveUntil > Date.now()
-  frequency?: number  // FM frequency 66.6–109.9, assigned at creation
-  ownerUid?: string   // stored at creation time; undefined for legacy rooms until migrated
+  frequency?: number        // FM frequency 66.6–109.9, assigned at creation
+  ownerUid?: string         // stored at creation time; undefined for legacy rooms until migrated
+  ownerDisplayName?: string // persisted on register so it's known even when owner is offline
   nowPlayingAddedBy?: string
   nowPlayingAddedByName?: string
   nowPlayingTrackName?: string
@@ -457,6 +458,7 @@ export default class RadioParty implements Party.Server {
       liveUntil: existing?.liveUntil ?? 0,
       frequency: msg.frequency != null ? msg.frequency : (existing?.frequency ?? randomFrequency()),
       ownerUid: msg.ownerUid ?? existing?.ownerUid,
+      ownerDisplayName: msg.ownerDisplayName ?? existing?.ownerDisplayName,
     }
 
     if (idx >= 0) stations[idx] = meta
@@ -918,6 +920,8 @@ export default class RadioParty implements Party.Server {
       const rawPool = await this.storage<PoolTrack[]>("pool", [])
       const pool = rawPool.filter(t => !!t.platformIds?.apple)
       if (pool.length < rawPool.length) {
+        const removed = rawPool.filter(t => !t.platformIds?.apple)
+        console.warn(`[fillRobotQueue] removing ${removed.length} pool track(s) with no Apple ID:`, removed.map(t => `"${t.name}" (isrc=${t.isrc || "none"})`).join(", "))
         await this.room.storage.put("pool", pool)
         this.room.broadcast(json({ type: "pool_update", pool }))
       }
