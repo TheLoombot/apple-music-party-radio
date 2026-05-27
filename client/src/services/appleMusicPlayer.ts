@@ -6,20 +6,22 @@ import type { QueueItem } from "../types"
 const isNotFound = (err: any) => err?.errorCode === "NOT_FOUND" || String(err).includes("NOT_FOUND")
 
 export class AppleMusicPlayer implements MusicPlayer {
-  async playAtOffset(track: QueueItem, offsetSeconds: number, tail?: QueueItem[]): Promise<void> {
+  async playAtOffset(track: QueueItem, offsetSeconds: number, tail?: QueueItem[], isCancelled?: () => boolean): Promise<void> {
     const appleId = track.platformIds.apple
     if (!appleId) throw new UnavailableError("apple", track)
+    if (isCancelled?.()) return
     const tailIds = tail?.map(t => t.platformIds.apple).filter((id): id is string => !!id)
     try {
-      await playTrackAtOffset(appleId, offsetSeconds, tailIds)
+      await playTrackAtOffset(appleId, offsetSeconds, tailIds, isCancelled)
     } catch (err: any) {
       if (!isNotFound(err)) throw err
       // NOT_FOUND on a multi-track setQueue can mean a tail track is bad, not the main track.
       // Retry with no tail — if it succeeds the main track is fine and syncQueueTail
       // will clean up the tail on the next queue update.
       if (tailIds && tailIds.length > 0) {
+        if (isCancelled?.()) return
         try {
-          await playTrackAtOffset(appleId, offsetSeconds, [])
+          await playTrackAtOffset(appleId, offsetSeconds, [], isCancelled)
           return
         } catch (retryErr: any) {
           if (!isNotFound(retryErr)) throw retryErr
@@ -29,10 +31,11 @@ export class AppleMusicPlayer implements MusicPlayer {
     }
   }
 
-  async syncQueueTail(tailTracks: QueueItem[]): Promise<void> {
+  async syncQueueTail(tailTracks: QueueItem[], isCancelled?: () => boolean): Promise<void> {
+    if (isCancelled?.()) return
     const tailIds = tailTracks.map(t => t.platformIds.apple).filter((id): id is string => !!id)
     try {
-      await syncQueueTail(tailIds)
+      await syncQueueTail(tailIds, isCancelled)
     } catch (err: any) {
       // A tail track's catalog ID isn't resolvable in this storefront — non-fatal.
       // Current playback is unaffected; the track will be skipped via expireTrack

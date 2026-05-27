@@ -8,10 +8,13 @@ export class UnavailableError extends Error {
 }
 
 export interface MusicPlayer {
-  /** Load and play a track at the given time offset, optionally preloading the tail queue */
-  playAtOffset(track: QueueItem, offsetSeconds: number, tail?: QueueItem[]): Promise<void>
-  /** Sync the native queue tail (positions 1+) to match the given tracks */
-  syncQueueTail(tailTracks: QueueItem[]): Promise<void>
+  /** Load and play a track at the given time offset, optionally preloading the tail queue.
+   *  isCancelled() is polled between async steps — return true to bail out before play() runs
+   *  (prevents stale playAtOffset calls from audibly starting after a station switch). */
+  playAtOffset(track: QueueItem, offsetSeconds: number, tail?: QueueItem[], isCancelled?: () => boolean): Promise<void>
+  /** Sync the native queue tail (positions 1+) to match the given tracks.
+   *  isCancelled() lets a newer sync supersede an in-flight one. */
+  syncQueueTail(tailTracks: QueueItem[], isCancelled?: () => boolean): Promise<void>
   /** Return the Apple ID of the track currently at the native player's queue position, or null */
   getLiveCurrentId(): string | null
   stop(): void

@@ -57,6 +57,9 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<SuggestedTrack[]>([])
   const [suggestionsFullAlert, setSuggestionsFullAlert] = useState<number | null>(null)
   const [albumModal, setAlbumModal] = useState<{ playlist: AlbumResult; tracks: Track[] | null } | null>(null)
+  // True between entering a station and receiving its first queue snapshot from the server.
+  // Lets NowPlaying distinguish "tuning in" from "confirmed empty queue".
+  const [stationLoading, setStationLoading] = useState<boolean>(() => !!window.location.pathname.slice(import.meta.env.BASE_URL.length))
   const renameRef = useRef<HTMLInputElement>(null)
   const albumModalOpRef = useRef(0)
   const playbackLoop = useRef(new PlaybackLoop(new AppleMusicPlayer()))
@@ -124,6 +127,7 @@ export default function App() {
       if (stationId) {
         setNowPlaying(null)
         setUpNext([])
+        setStationLoading(true)
         setPlaybackBlocked(false)
         setChatMessages([])
         setLastReadSentAt(Date.now())
@@ -134,6 +138,7 @@ export default function App() {
         playbackLoop.current.stop()
         setNowPlaying(null)
         setUpNext([])
+        setStationLoading(false)
         setPlaybackBlocked(false)
         setChatMessages([])
         setSuggestions([])
@@ -158,9 +163,9 @@ export default function App() {
   // Start playback loop when station changes
   useEffect(() => {
     if (appState !== "ready" || !currentStationId || !user) return
-    playbackLoop.current.onNowPlayingChange = setNowPlaying
+    playbackLoop.current.onNowPlayingChange = (item) => { setStationLoading(false); setNowPlaying(item) }
     playbackLoop.current.onPreviewOnly = () => setPreviewOnly(true)
-    playbackLoop.current.onQueueChange = setUpNext
+    playbackLoop.current.onQueueChange = (upNext) => { setStationLoading(false); setUpNext(upNext) }
     playbackLoop.current.onPlaybackBlocked = () => setPlaybackBlocked(true)
     playbackLoop.current.onMutedChange = setIsMuted
     stationSocket.onPoolUpdate = setPool
@@ -312,6 +317,7 @@ export default function App() {
     window.history.pushState(null, "", `${import.meta.env.BASE_URL}${stationId}`)
     setNowPlaying(null)
     setUpNext([])
+    setStationLoading(true)
     setPlaybackBlocked(false)
     setChatMessages([])
     setLastReadSentAt(Date.now())
@@ -689,6 +695,7 @@ export default function App() {
           frequency={stations.find(s => s.id === currentStationId)?.frequency}
           onPrevStation={liveStations.length > 1 ? handlePrevStation : undefined}
           onNextStation={liveStations.length > 1 ? handleNextStation : undefined}
+          loading={stationLoading}
         />
 
         <button

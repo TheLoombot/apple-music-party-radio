@@ -26,12 +26,20 @@ export class PlaybackLoop {
   private currentTrack: QueueItem | null = null
   private currentTrackKey: string | null = null
   private nativeCurrentId: string | null = null  // Apple ID we last set as queue[0]
-  private playSequence = 0                        // guards against stale async writes
+  private playSequence = 0                        // guards stale playAtOffset; bumped by play paths + stop/empty
+  private tailSequence = 0                        // guards stale syncQueueTail; bumped by every play/tail path + stop/empty
   private pendingPlay: { track: QueueItem; tail: QueueItem[] } | null = null
   private lastKnownQueue: QueueItem[] = []
   private autoplayEnabled = false
   private muted = false
   private nowPlayingItemTeardown: (() => void) | null = null
+  // Latest-wins serializer for queue updates: drops intermediate updates so MusicKit
+  // operations from a stale handler can't race with a newer handler.
+  private latestQueueUpdate: QueueItem[] | null = null
+  private processingQueueUpdate = false
+  // Reconciliation tick: detects drift between MusicKit's actual playing track and
+  // the UI's expected track (e.g. when an auto-advance event was missed/filtered).
+  private reconcileTimer: ReturnType<typeof setInterval> | null = null
 
   onNowPlayingChange?: (item: QueueItem | null) => void
   onQueueChange?: (upNext: QueueItem[]) => void
@@ -51,9 +59,16 @@ export class PlaybackLoop {
     stationSocket.connect(stationId)
     document.addEventListener("visibilitychange", this.handleVisibilityChange)
     this.nowPlayingItemTeardown = onNowPlayingItemChange(this.handleNowPlayingItemChange)
+    this.reconcileTimer = setInterval(this.reconcileTick, 1500)
   }
 
   stop() {
+    // Bump both sequences first — this signals any in-flight playAtOffset/syncQueueTail to
+    // bail at their next cancel checkpoint, so a stale setQueue+play from the previous
+    // station can't audibly start after we've moved on.
+    ++this.playSequence
+    ++this.tailSequence
+    if (this.reconcileTimer) { clearInterval(this.reconcileTimer); this.reconcileTimer = null }
     document.removeEventListener("visibilitychange", this.handleVisibilityChange)
     this.nowPlayingItemTeardown?.()
     this.nowPlayingItemTeardown = null
@@ -65,6 +80,11 @@ export class PlaybackLoop {
     this.nativeCurrentId = null
     this.lastKnownQueue = []
     this.pendingPlay = null
+    this.latestQueueUpdate = null
+    // Intentionally NOT resetting processingQueueUpdate — if an IIFE is mid-await, letting it
+    // exit naturally via its finally block keeps a single IIFE in flight. Resetting here would
+    // allow a second IIFE to spawn on the next queue_update and race with the first.
+    this.lastSeenDriftId = null
     // intentionally keep autoplayEnabled — once the user has tapped, don't ask again
   }
 
@@ -83,9 +103,10 @@ export class PlaybackLoop {
     const startTime = track.expirationTime - track.durationMs
     const offsetSeconds = Math.max(0, Math.min((now - startTime) / 1000, track.durationMs / 1000 - 0.5))
     const seq = ++this.playSequence
+    ++this.tailSequence  // play path also supersedes any in-flight tail sync
     this.nativeCurrentId = track.platformIds.apple ?? null
     try {
-      await this.player.playAtOffset(track, offsetSeconds, tail)
+      await this.player.playAtOffset(track, offsetSeconds, tail, () => this.playSequence !== seq)
       if (this.playSequence !== seq) return
     } catch (err) {
       if (err instanceof UnavailableError) {
@@ -111,9 +132,10 @@ export class PlaybackLoop {
     const offsetSeconds = Math.max(0, Math.min((now - startTime) / 1000, track.durationMs / 1000 - 0.5))
     const tail = this.lastKnownQueue.slice(1)
     const seq = ++this.playSequence
+    ++this.tailSequence  // play path also supersedes any in-flight tail sync
     this.nativeCurrentId = track.platformIds.apple ?? null
     try {
-      await this.player.playAtOffset(track, offsetSeconds, tail)
+      await this.player.playAtOffset(track, offsetSeconds, tail, () => this.playSequence !== seq)
       if (this.playSequence !== seq) return
     } catch (err) {
       if (err instanceof UnavailableError) {
@@ -144,8 +166,19 @@ export class PlaybackLoop {
     if (!itemId || !this.currentTrackKey) return
     if (itemId === this.nativeCurrentId) return  // same track reloaded (e.g. after setQueue)
 
+    // Match against the FULL queue, not just queue[1]. If MusicKit's actual queue has
+    // drifted from the server's (sync race, stress), it may auto-advance to a track
+    // further down. Updating the UI to the truth is better than holding stale.
+    const matched = this.lastKnownQueue.find(q => q.platformIds?.apple === itemId)
+    if (!matched) {
+      console.warn("[PlaybackLoop] nowPlayingItemDidChange to", itemId, "not in lastKnownQueue — reconcile tick will retry")
+      return
+    }
+
     const expectedNextId = this.lastKnownQueue[1]?.platformIds?.apple
-    if (!expectedNextId || itemId !== expectedNextId) return
+    if (itemId !== expectedNextId) {
+      console.warn("[PlaybackLoop] unexpected native advance — expected", expectedNextId, "got", itemId, "(", matched.name, ") — applying anyway")
+    }
 
     if (isPreviewOnly()) {
       console.warn("[PlaybackLoop] preview-only mode detected — suppressing auto-advance")
@@ -153,20 +186,40 @@ export class PlaybackLoop {
       return
     }
     // Track the native position so handleQueueUpdate can detect the advance.
-    // Advance nowPlaying immediately to the next track — avoids a blank "station is quiet"
+    // Advance nowPlaying immediately — avoids a blank "station is quiet"
     // window while waiting for the server's alarm to broadcast the updated queue.
-    // Soft updates that arrive before the hard-switch (same track0.key, tail change)
-    // will see musicKitAlreadyAdvanced=true and correctly leave nowPlaying alone.
     this.nativeCurrentId = itemId
-    const nextTrack = this.lastKnownQueue.find(q => q.platformIds?.apple === itemId)
-    if (!nextTrack) {
-      // This shouldn't happen since we just checked expectedNextId === itemId, but if
-      // lastKnownQueue has since changed, don't blank nowPlaying — server update will fix it.
-      console.warn("[PlaybackLoop] auto-advance to", itemId, "not in queue — holding nowPlaying")
+    console.debug("[PlaybackLoop] native advance → nowPlaying", matched.name)
+    this.onNowPlayingChange?.(matched)
+  }
+
+  // Reconcile tick: catches divergence between MusicKit's actual playing track and
+  // our `nativeCurrentId`. Backstop for missed nowPlayingItemDidChange events or
+  // native queue drift. Requires seeing the same liveId on two consecutive ticks
+  // before acting — avoids false positives during setQueue/play transitions where
+  // MusicKit's nowPlayingItem can briefly reflect a stale track.
+  private lastSeenDriftId: string | null = null
+  private reconcileTick = () => {
+    if (!this.autoplayEnabled || !this.currentTrack) return
+    if (this.processingQueueUpdate) { this.lastSeenDriftId = null; return }  // state in flux
+    const liveId = this.player.getLiveCurrentId()
+    if (!liveId || liveId === this.nativeCurrentId) {
+      this.lastSeenDriftId = null
       return
     }
-    console.debug("[PlaybackLoop] native auto-advance → nowPlaying", nextTrack.name)
-    this.onNowPlayingChange?.(nextTrack)
+    // Two-tick confirmation: only reconcile if we saw the same drift previously.
+    if (this.lastSeenDriftId !== liveId) {
+      this.lastSeenDriftId = liveId
+      return
+    }
+    const matched = this.lastKnownQueue.find(q => q.platformIds?.apple === liveId)
+    if (!matched) { this.lastSeenDriftId = null; return }  // unknown track — ignore
+    console.warn("[PlaybackLoop] reconcile drift: live", liveId, "≠ expected", this.nativeCurrentId, "→ advancing UI to", matched.name)
+    this.currentTrack = matched
+    this.currentTrackKey = matched.key
+    this.nativeCurrentId = liveId
+    this.onNowPlayingChange?.(matched)
+    this.lastSeenDriftId = null
   }
 
   private handleVisibilityChange = async () => {
@@ -195,8 +248,9 @@ export class PlaybackLoop {
       // Track matches (or not found in lastKnownQueue) — sync tail only.
       const tail = this.lastKnownQueue.slice(1)
       if (tail.length > 0) {
+        const seq = ++this.tailSequence
         try {
-          await this.player.syncQueueTail(tail)
+          await this.player.syncQueueTail(tail, () => this.tailSequence !== seq)
         } catch (err) {
           console.error("[PlaybackLoop] visibility restore syncQueueTail error:", err)
         }
@@ -219,9 +273,10 @@ export class PlaybackLoop {
     const offsetSeconds = Math.max(0, Math.min((now - startTime) / 1000, track.durationMs / 1000 - 0.5))
     const tail = this.lastKnownQueue.slice(1)
     const seq = ++this.playSequence
+    ++this.tailSequence  // play path also supersedes any in-flight tail sync
     this.nativeCurrentId = wantedId ?? null
     try {
-      await this.player.playAtOffset(track, offsetSeconds, tail)
+      await this.player.playAtOffset(track, offsetSeconds, tail, () => this.playSequence !== seq)
       if (this.playSequence !== seq) return
     } catch (err) {
       if (err instanceof UnavailableError) {
@@ -233,7 +288,29 @@ export class PlaybackLoop {
     }
   }
 
-  private handleQueueUpdate = async (queue: QueueItem[]) => {
+  // Latest-wins dispatcher. PartyKit can deliver bursts of queue_updates; without
+  // serialization, two `processQueueUpdate` invocations race on MusicKit ops
+  // (one mid-setQueue while another runs syncQueueTail), leaving the native
+  // queue diverged from the server's. We coalesce: the freshest pending queue
+  // is processed, intermediates are dropped.
+  private handleQueueUpdate = (queue: QueueItem[]): Promise<void> => {
+    this.latestQueueUpdate = queue
+    if (this.processingQueueUpdate) return Promise.resolve()
+    this.processingQueueUpdate = true
+    return (async () => {
+      try {
+        while (this.latestQueueUpdate) {
+          const q = this.latestQueueUpdate
+          this.latestQueueUpdate = null
+          await this.processQueueUpdate(q)
+        }
+      } finally {
+        this.processingQueueUpdate = false
+      }
+    })()
+  }
+
+  private async processQueueUpdate(queue: QueueItem[]) {
     this.onQueueChange?.(queue.slice(1))
     this.lastKnownQueue = queue
 
@@ -243,7 +320,9 @@ export class PlaybackLoop {
       this.currentTrackKey = null
       this.nativeCurrentId = null
       this.pendingPlay = null
-        this.player.stop()
+      ++this.playSequence  // any in-flight playAtOffset should bail before audibly starting
+      ++this.tailSequence  // ditto for syncQueueTail
+      this.player.stop()
       // Robot queue is now server-managed. Send a fallback ping in case the server
       // missed filling (e.g. pool was empty at expiry time but tracks were added since).
       stationSocket.triggerRobotDJ()
@@ -264,19 +343,27 @@ export class PlaybackLoop {
       this.currentTrackKey = track0.key
       this.onNowPlayingChange?.(track0)
 
-  
       const wantedId = track0.platformIds.apple ?? null
 
       // MusicKit already auto-advanced to this track natively — don't call play() again.
       // Either nativeCurrentId was set by handleNowPlayingItemChange (fast path),
       // or we check the live native queue directly (catches the race where handleQueueUpdate
       // runs before nowPlayingItemDidChange fires).
+      //
+      // BUT: only trust the liveId path when MusicKit is actually playing. After a
+      // station switch, musicKit.stop() halts playback but does NOT clear queue.items
+      // or nowPlayingItem, so getLiveCurrentId() returns the previous station's track.
+      // Trusting it would skip setQueue+play and leave the audio silent (or stale).
       const liveId = this.player.getLiveCurrentId()
-      if (wantedId && (wantedId === this.nativeCurrentId || wantedId === liveId)) {
+      const playerActuallyPlaying = this.player.isPlaying()
+      if (wantedId && (wantedId === this.nativeCurrentId || (wantedId === liveId && playerActuallyPlaying))) {
         this.nativeCurrentId = wantedId
         console.debug("[PlaybackLoop] native auto-advance detected, skipping setQueue", { wantedId, liveId, nativeCurrentId: this.nativeCurrentId })
+        // Hard switch (even when skipping setQueue) supersedes prior plays/syncs.
+        ++this.playSequence
+        const seq = ++this.tailSequence
         try {
-          await this.player.syncQueueTail(tail)
+          await this.player.syncQueueTail(tail, () => this.tailSequence !== seq)
         } catch (err) {
           console.error("[PlaybackLoop] syncQueueTail after auto-advance error:", err)
         }
@@ -293,9 +380,10 @@ export class PlaybackLoop {
       }
 
       const seq = ++this.playSequence
+      ++this.tailSequence  // play path also supersedes any in-flight tail sync
       this.nativeCurrentId = wantedId
       try {
-        await this.player.playAtOffset(track0, offsetSeconds, tail)
+        await this.player.playAtOffset(track0, offsetSeconds, tail, () => this.playSequence !== seq)
         if (this.playSequence !== seq) return
       } catch (err) {
         if (err instanceof UnavailableError) {
@@ -321,8 +409,11 @@ export class PlaybackLoop {
       const advancedToIdx = queue.findIndex(q => q.platformIds?.apple === this.nativeCurrentId)
       if (advancedToIdx >= 0) syncTail = queue.slice(advancedToIdx + 1)
     }
+    // Soft update only bumps tailSequence — must NOT cancel an in-flight playAtOffset
+    // (e.g. a resume() the user just clicked) for the same track[0].
+    const seq = ++this.tailSequence
     try {
-      await this.player.syncQueueTail(syncTail)
+      await this.player.syncQueueTail(syncTail, () => this.tailSequence !== seq)
     } catch (err) {
       console.error("[PlaybackLoop] syncQueueTail error:", err)
     }

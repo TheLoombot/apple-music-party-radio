@@ -31,6 +31,9 @@ interface Props {
   frequency?: number
   onPrevStation?: () => void
   onNextStation?: () => void
+  /** True between switching/joining a station and receiving its first queue snapshot.
+   *  Lets us distinguish "haven't heard from the server yet" from "confirmed empty queue". */
+  loading?: boolean
 }
 
 function useProgress(track: QueueItem | null) {
@@ -254,7 +257,7 @@ function useFrequencyScan(frequency: number | undefined) {
   return displayFreq
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading }: Props) {
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
   const quiet = isMuted || isBlocked
@@ -485,6 +488,20 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 </button>
               )}
             </div>
+          </motion.div>
+        ) : loading ? (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="p-8 text-center text-muted"
+          >
+            <div className="text-4xl mb-3">📡</div>
+            <p className="text-sm">
+              Tuning in<span className="loading-dot-1">.</span><span className="loading-dot-2">.</span><span className="loading-dot-3">.</span>
+            </p>
           </motion.div>
         ) : (
           <motion.div

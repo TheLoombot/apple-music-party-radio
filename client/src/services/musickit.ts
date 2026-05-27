@@ -132,7 +132,7 @@ const unmuteAudio = (music: MusicKit.MusicKitInstance) => {
   ;(music as any).volume = 1
 }
 
-export async function playTrackAtOffset(catalogId: string, offsetSeconds: number, tailIds?: string[]): Promise<void> {
+export async function playTrackAtOffset(catalogId: string, offsetSeconds: number, tailIds?: string[], isCancelled?: () => boolean): Promise<void> {
   const music = getMusicKit()
   const needsSeek = offsetSeconds > 1
 
@@ -143,11 +143,19 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
     muteAudio(music)
   }
 
+  if (isCancelled?.()) return
+
   if (tailIds && tailIds.length > 0) {
     await music.setQueue({ songs: [catalogId, ...tailIds] })
   } else {
     await music.setQueue({ song: catalogId })
   }
+
+  // Critical cancel point: if the caller superseded us (station switch, new playAtOffset,
+  // or stop()), bail BEFORE play(). The setQueue side-effect on MusicKit's internal queue
+  // will be overwritten by the next setQueue. Without this, audio for a stale track starts
+  // playing while the UI has already moved on — the exact "song doesn't match Now Playing" bug.
+  if (isCancelled?.()) return
 
   if (needsSeek) {
     muteAudio(music)
@@ -170,14 +178,23 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
 
   await music.play()
 
+  // After play() — if cancelled, stop the audio we just started so a stale call
+  // doesn't leak audibly.
+  if (isCancelled?.()) {
+    try { music.stop() } catch {}
+    return
+  }
+
   if (needsSeek) {
     muteAudio(music)  // re-apply in case play() reset it (belt-and-suspenders for desktop)
     await waitForPlaybackState(music, 2, 2000)
+    if (isCancelled?.()) { try { music.stop() } catch {}; return }
     const currentPos = (music as any).currentPlaybackTime ?? 0
     // If the interceptor fired, we're already at offsetSeconds; only re-seek if position is off
     if (Math.abs(offsetSeconds - currentPos) > 3) {
       await music.seekToTime(offsetSeconds)
     }
+    if (isCancelled?.()) { try { music.stop() } catch {}; return }
     // Fade in
     const audioEl = document.querySelector("audio")
     if (audioEl) audioEl.muted = false
@@ -218,7 +235,8 @@ function waitForPlaybackState(music: MusicKit.MusicKitInstance, targetState: num
   })
 }
 
-export async function syncQueueTail(tailIds: string[]): Promise<void> {
+export async function syncQueueTail(tailIds: string[], isCancelled?: () => boolean): Promise<void> {
+  if (isCancelled?.()) return
   const music = getMusicKit()
   const nativeQueue = music.queue
   const items = nativeQueue.items
@@ -241,6 +259,7 @@ export async function syncQueueTail(tailIds: string[]): Promise<void> {
     const toAdd = tailIds.slice(nativeTailIds.length)
     console.debug("[MusicKit queue] syncQueueTail prefix-append", { adding: toAdd })
     for (const id of toAdd) {
+      if (isCancelled?.()) return
       await music.playLater({ song: id })
     }
     return
@@ -260,8 +279,11 @@ export async function syncQueueTail(tailIds: string[]): Promise<void> {
   }
   await Promise.all(removes)
 
+  if (isCancelled?.()) return
+
   // Append wanted items in order
   for (const id of tailIds) {
+    if (isCancelled?.()) return
     await music.playLater({ song: id })
   }
 
