@@ -359,8 +359,9 @@ export class PlaybackLoop {
       if (wantedId && (wantedId === this.nativeCurrentId || (wantedId === liveId && playerActuallyPlaying))) {
         this.nativeCurrentId = wantedId
         console.debug("[PlaybackLoop] native auto-advance detected, skipping setQueue", { wantedId, liveId, nativeCurrentId: this.nativeCurrentId })
-        // Hard switch (even when skipping setQueue) supersedes prior plays/syncs.
-        ++this.playSequence
+        // Do NOT bump playSequence here — this branch starts no new play, so cancelling
+        // any in-flight playAtOffset (e.g. handleVisibilityChange's rehydrate) would
+        // leave audio silent. Only the tail sync is "new", so only tailSequence bumps.
         const seq = ++this.tailSequence
         try {
           await this.player.syncQueueTail(tail, () => this.tailSequence !== seq)

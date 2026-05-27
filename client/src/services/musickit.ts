@@ -242,6 +242,17 @@ export async function syncQueueTail(tailIds: string[], isCancelled?: () => boole
   const items = nativeQueue.items
   const position = nativeQueue.position
 
+  // Guard: if MusicKit has no current track (transient state during a track
+  // transition, or after a failed setQueue), don't touch the queue. The remove
+  // loop below uses `i > position`, which when position === -1 removes EVERY
+  // item including the current — leaving the queue with no current track and
+  // no audio. The next playAtOffset (e.g. from the next queue_update's hard
+  // switch) will rebuild the queue correctly.
+  if (position < 0) {
+    console.debug("[MusicKit queue] syncQueueTail skipped — position < 0 (MusicKit between tracks)")
+    return
+  }
+
   // What's currently in the native queue after the playing track
   const nativeTailIds = items.slice(position + 1).map(item => String(item.id))
 
