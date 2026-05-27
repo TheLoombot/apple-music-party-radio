@@ -7,10 +7,12 @@ import { SuggestionRow } from "./SuggestionRow"
 import { PlaylistModal } from "./PlaylistModal"
 import { LoadingDots } from "./LoadingDots"
 import type { MusicCatalog } from "../services/catalog"
-import type { Track, PlaylistResult, LibraryPlaylistResult, AlbumResult, QueueItem, SearchItem, SuggestedTrack } from "../types"
+import type { Track, PlaylistResult, LibraryPlaylistResult, LibraryAlbumResult, AlbumResult, QueueItem, SearchItem, SuggestedTrack, HeavyRotationItem } from "../types"
 
-type Tab = "search" | "related" | "charts" | "mfy" | "playlists" | "suggested"
-type ModalState = { playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult; tracks: Track[] | null }
+type Drillable = PlaylistResult | LibraryPlaylistResult | AlbumResult | LibraryAlbumResult
+
+type Tab = "search" | "related" | "charts" | "heavy" | "playlists" | "suggested"
+type ModalState = { playlist: Drillable; tracks: Track[] | null }
 
 function pickRandom<T>(arr: T[], n: number): T[] {
   return [...arr].sort(() => Math.random() - 0.5).slice(0, n)
@@ -60,13 +62,12 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
     return () => clearTimeout(debounceRef.current)
   }, [query, catalog])
 
-  // ── Charts / MFY state ──────────────────────────────────────────────────────
+  // ── Charts / Heavy Rotation state ───────────────────────────────────────────
   const [chartTracks, setChartTracks] = useState<Track[]>([])
   const [chartsLoading, setChartsLoading] = useState(true)
 
-  const allPlaylists = useRef<(PlaylistResult | AlbumResult)[]>([])
-  const [playlists, setPlaylists] = useState<(PlaylistResult | AlbumResult)[]>([])
-  const [mfyLoading, setMfyLoading] = useState(true)
+  const [heavyItems, setHeavyItems] = useState<HeavyRotationItem[]>([])
+  const [heavyLoading, setHeavyLoading] = useState(true)
 
   const [modal, setModal] = useState<ModalState | null>(null)
   const modalOpRef = useRef(0)
@@ -90,23 +91,20 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
       setChartTracks(c[0]?.tracks ?? [])
       setChartsLoading(false)
     })
-    catalog.getRecommendedPlaylists().then(p => {
-      allPlaylists.current = p
-      setPlaylists(pickRandom(p, 3))
-      setMfyLoading(false)
+    catalog.getHeavyRotation().then(items => {
+      setHeavyItems(items)
+      setHeavyLoading(false)
     })
   }, [catalog])
 
-  const refreshMfy = () => setPlaylists(pickRandom(allPlaylists.current, 3))
-
-  const handleSelectPlaylist = async (playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult) => {
+  const handleSelectPlaylist = async (playlist: Drillable) => {
     const op = ++modalOpRef.current
     setModal({ playlist, tracks: null })
-    const tracks = playlist.kind === "library-playlist"
-      ? await catalog.getLibraryPlaylistTracks(playlist.id)
-      : playlist.kind === "album"
-      ? await catalog.getAlbumTracks(playlist.id)
-      : await catalog.getPlaylistTracks(playlist.id)
+    const tracks =
+      playlist.kind === "library-playlist" ? await catalog.getLibraryPlaylistTracks(playlist.id)
+    : playlist.kind === "library-album"    ? await catalog.getLibraryAlbumTracks(playlist.id)
+    : playlist.kind === "album"            ? await catalog.getAlbumTracks(playlist.id)
+    :                                        await catalog.getPlaylistTracks(playlist.id)
     if (modalOpRef.current === op) setModal({ playlist, tracks })
   }
 
@@ -190,14 +188,14 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
     search: "Search",
     related: "Related",
     charts: "Top 20",
-    mfy: "Top Picks",
+    heavy: "Heavy Rotation",
     playlists: "Playlists",
     suggested: "Requests",
   }
 
   const visibleTabs: Tab[] = suggestions.length > 0
-    ? ["search", "related", "charts", "mfy", "playlists", "suggested"]
-    : ["search", "related", "charts", "mfy", "playlists"]
+    ? ["search", "related", "charts", "heavy", "playlists", "suggested"]
+    : ["search", "related", "charts", "heavy", "playlists"]
 
   return (
     <>
@@ -324,27 +322,30 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
               )}
             </div>
           </>
-        ) : tab === "mfy" ? (
-          mfyLoading ? (
+        ) : tab === "heavy" ? (
+          heavyLoading ? (
             <div className="p-6 text-center text-muted text-sm"><LoadingDots /></div>
-          ) : playlists.length === 0 ? (
-            <div className="p-6 text-center text-muted text-sm">No recommendations available</div>
+          ) : heavyItems.length === 0 ? (
+            <div className="p-6 text-center text-muted text-sm">No heavy rotation history yet</div>
           ) : (
-            <>
+            <div className={`overflow-y-auto ${embedded ? "flex-1 min-h-0" : "h-[360px]"}`}>
               <ul>
-                {playlists.map(playlist => (
-                  <PlaylistRow key={playlist.id} playlist={playlist} onSelect={() => handleSelectPlaylist(playlist)} />
-                ))}
+                {heavyItems.map(item =>
+                  item.kind === "song" ? (
+                    <TrackRow
+                      key={item.track.platformIds?.apple ?? item.track.isrc ?? item.track.name}
+                      track={item.track}
+                      added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(item.track.isrc) || suggestedIsrcs.has(item.track.platformIds?.apple ?? "")))}
+                      onAdd={() => onAddTrack(item.track)}
+                      onAlbumClick={item.track.platformIds?.apple ? () => handleAlbumClick(item.track) : undefined}
+                      requestMode={!isPrivileged}
+                    />
+                  ) : (
+                    <PlaylistRow key={`${item.kind}:${item.id}`} playlist={item} onSelect={() => handleSelectPlaylist(item)} />
+                  )
+                )}
               </ul>
-              <div className="px-4 py-3 border-t border-border/50 flex-shrink-0">
-                <button
-                  onClick={refreshMfy}
-                  className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide"
-                >
-                  ↻ Shuffle
-                </button>
-              </div>
-            </>
+            </div>
           )
         ) : tab === "playlists" ? (
           loadingLibrary ? (
@@ -405,58 +406,66 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
           </div>
         ) : /* related tab */ (
           relatedLoading || relatedError || relatedTracks.length === 0 ? (
-            <>
-              <ul>
-                <TrackRowSkeleton animate={relatedLoading} />
-                <TrackRowSkeleton animate={relatedLoading} />
-                <TrackRowSkeleton animate={relatedLoading} />
-              </ul>
-              {(relatedError || relatedTracks.length === 0) && !relatedLoading && (
-                <p className="px-4 py-3 text-xs text-muted border-t border-border/50">
-                  {queue.length === 0 ? "Add tracks to the queue to get suggestions." : "None found."}
-                </p>
-              )}
-              <div className="px-4 py-3 border-t border-border/50 flex-shrink-0">
-                <button
-                  onClick={refreshRelated}
-                  disabled={relatedLoading}
-                  className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide disabled:opacity-30"
-                >
-                  {relatedLoading ? <LoadingDots /> : "↻ Refresh"}
-                </button>
+            <div className={`${embedded ? "flex-1 min-h-0" : ""} flex flex-col`}>
+              <div className={`${embedded ? "flex-1 min-h-0" : ""} overflow-y-auto`}>
+                <ul>
+                  <TrackRowSkeleton animate={relatedLoading} />
+                  <TrackRowSkeleton animate={relatedLoading} />
+                  <TrackRowSkeleton animate={relatedLoading} />
+                </ul>
               </div>
-            </>
+              <div className="flex-shrink-0">
+                {(relatedError || relatedTracks.length === 0) && !relatedLoading && (
+                  <p className="px-4 py-3 text-xs text-muted border-t border-border/50">
+                    {queue.length === 0 ? "Add tracks to the queue to get suggestions." : "None found."}
+                  </p>
+                )}
+                <div className="px-4 py-3 border-t border-border/50">
+                  <button
+                    onClick={refreshRelated}
+                    disabled={relatedLoading}
+                    className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide disabled:opacity-30"
+                  >
+                    {relatedLoading ? <LoadingDots /> : "↻ Refresh"}
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : (
-            <>
-              <ul>
-                {relatedTracks.map(track => (
-                  <TrackRow
-                    key={track.platformIds?.apple ?? track.isrc}
-                    track={track}
-                    added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
-                    onAdd={() => onAddTrack(track)}
-                    onAlbumClick={track.platformIds?.apple ? () => handleAlbumClick(track) : undefined}
-                    requestMode={!isPrivileged}
-                  />
-                ))}
-              </ul>
-              {relatedSeed && relatedPlaylist && (
-                <p className="px-4 py-3 text-xs text-muted border-t border-border/50">
-                  <span className="text-white/70">{relatedSeed.name}</span>
-                  <span className="text-muted/60"> appears on </span>
-                  <button onClick={() => handleSelectPlaylist(relatedPlaylist)} className="text-white/70 hover:text-red-400 transition-colors">{relatedPlaylist.name}</button>
-                  <span className="text-muted/60"> alongside these tracks</span>
-                </p>
-              )}
-              <div className="px-4 py-3 border-t border-border/50 flex-shrink-0">
-                <button
-                  onClick={refreshRelated}
-                  className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide"
-                >
-                  ↻ Refresh
-                </button>
+            <div className={`${embedded ? "flex-1 min-h-0" : ""} flex flex-col`}>
+              <div className={`${embedded ? "flex-1 min-h-0" : ""} overflow-y-auto`}>
+                <ul>
+                  {relatedTracks.map(track => (
+                    <TrackRow
+                      key={track.platformIds?.apple ?? track.isrc}
+                      track={track}
+                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
+                      onAdd={() => onAddTrack(track)}
+                      onAlbumClick={track.platformIds?.apple ? () => handleAlbumClick(track) : undefined}
+                      requestMode={!isPrivileged}
+                    />
+                  ))}
+                </ul>
               </div>
-            </>
+              <div className="flex-shrink-0">
+                {relatedSeed && relatedPlaylist && (
+                  <p className="px-4 py-3 text-xs text-muted border-t border-border/50">
+                    <span className="text-white/70">{relatedSeed.name}</span>
+                    <span className="text-muted/60"> appears on </span>
+                    <button onClick={() => handleSelectPlaylist(relatedPlaylist)} className="text-white/70 hover:text-red-400 transition-colors">{relatedPlaylist.name}</button>
+                    <span className="text-muted/60"> alongside these tracks</span>
+                  </p>
+                )}
+                <div className="px-4 py-3 border-t border-border/50">
+                  <button
+                    onClick={refreshRelated}
+                    className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide"
+                  >
+                    ↻ Refresh
+                  </button>
+                </div>
+              </div>
+            </div>
           )
         )}
       </div>
@@ -493,7 +502,7 @@ function TrackRowSkeleton({ animate }: { animate: boolean }) {
 }
 
 function PlaylistRow({ playlist, onSelect }: {
-  playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult
+  playlist: Drillable
   onSelect: () => void
 }) {
   const trackCount = 'trackCount' in playlist && playlist.trackCount != null

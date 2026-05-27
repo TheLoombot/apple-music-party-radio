@@ -1,5 +1,5 @@
 import { getMusicUserToken, artworkUrl } from "./musickit"
-import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult, AlbumResult } from "../types"
+import type { Track, SearchItem, LibraryPlaylistResult, LibraryAlbumResult, PlaylistResult, AlbumResult, HeavyRotationItem } from "../types"
 
 function headers(): HeadersInit {
   return {
@@ -165,32 +165,46 @@ export async function getLibraryPlaylistTracks(playlistId: string): Promise<Trac
   )
   if (!res.ok) return []
   const data = await res.json()
-  return (data.data ?? []).map((item: any): Track => {
-    // Prefer catalog relationship — gives the correct storefront-specific catalog ID.
-    // Only use it if the track is actually streamable (has playParams); otherwise fall through
-    // so a purchased copy's catalogId can serve as the playable ID instead.
-    const catalogItem = item.relationships?.catalog?.data?.[0]
-    if (catalogItem) {
-      const normalized = normalizeTrack(catalogItem)
-      if (normalized?.platformIds?.apple) return normalized
-    }
-    // Fall back to playParams.catalogId for purchased tracks not in the catalog.
-    const available = normalizeLibraryTrack(item)
-    if (available) return available
-    // No playable ID at all (local file, DRM-only) — return with empty platformIds
-    // so the UI can display it as unavailable rather than hiding it entirely.
-    const a = item.attributes ?? {}
-    return {
-      isrc: a.isrc ?? "",
-      platformIds: {},
-      addedViaPlatform: "apple",
-      name: a.name ?? "",
-      artistName: a.artistName ?? "",
-      albumName: a.albumName ?? "",
-      artworkUrl: a.artwork?.url ?? "",
-      durationMs: a.durationInMillis ?? 0,
-    }
-  })
+  return (data.data ?? []).map(normalizeLibraryTrackWithCatalog)
+}
+
+export async function getLibraryAlbumTracks(albumId: string): Promise<Track[]> {
+  const res = await fetch(
+    `https://api.music.apple.com/v1/me/library/albums/${albumId}/tracks?limit=100&include=catalog&fields[songs]=isrc,name,artistName,albumName,artwork,durationInMillis,playParams,offers`,
+    { headers: headers() }
+  )
+  if (!res.ok) return []
+  const data = await res.json()
+  return (data.data ?? []).map(normalizeLibraryTrackWithCatalog)
+}
+
+// Shared between library playlists and library albums — both return `library-songs`
+// items with an optional `catalog` relationship.
+function normalizeLibraryTrackWithCatalog(item: any): Track {
+  // Prefer catalog relationship — gives the correct storefront-specific catalog ID.
+  // Only use it if the track is actually streamable (has playParams); otherwise fall through
+  // so a purchased copy's catalogId can serve as the playable ID instead.
+  const catalogItem = item.relationships?.catalog?.data?.[0]
+  if (catalogItem) {
+    const normalized = normalizeTrack(catalogItem)
+    if (normalized?.platformIds?.apple) return normalized
+  }
+  // Fall back to playParams.catalogId for purchased tracks not in the catalog.
+  const available = normalizeLibraryTrack(item)
+  if (available) return available
+  // No playable ID at all (local file, DRM-only) — return with empty platformIds
+  // so the UI can display it as unavailable rather than hiding it entirely.
+  const a = item.attributes ?? {}
+  return {
+    isrc: a.isrc ?? "",
+    platformIds: {},
+    addedViaPlatform: "apple",
+    name: a.name ?? "",
+    artistName: a.artistName ?? "",
+    albumName: a.albumName ?? "",
+    artworkUrl: a.artwork?.url ?? "",
+    durationMs: a.durationInMillis ?? 0,
+  }
 }
 
 export interface ChartResult {
@@ -265,47 +279,78 @@ export async function getAlbumForSong(songId: string, storefront = "us"): Promis
   }
 }
 
-export async function getRecommendedPlaylists(): Promise<(PlaylistResult | AlbumResult)[]> {
-  const res = await fetch(
-    "https://api.music.apple.com/v1/me/recommendations",
-    { headers: headers() }
-  )
-  if (!res.ok) return []
-  const data = await res.json()
-
-  const seen = new Set<string>()
-  const results: (PlaylistResult | AlbumResult)[] = []
-
-  for (const rec of data.data ?? []) {
-    if (rec.attributes?.kind !== "music-recommendations") continue
-    for (const item of rec.relationships?.contents?.data ?? []) {
-      if (!["playlists", "albums"].includes(item.type) || seen.has(item.id)) continue
-      seen.add(item.id)
-      const a = item.attributes
-      if (item.type === "albums") {
-        const rd: string | undefined = a?.releaseDate
-        results.push({
-          kind: "album",
-          id: item.id,
-          name: a?.name ?? "",
-          subtitle: a?.artistName ?? "",
-          artworkUrl: a?.artwork?.url ?? "",
-          releaseYear: rd ? new Date(rd).getFullYear() : undefined,
-        })
-      } else {
-        const plmd: string | undefined = a?.lastModifiedDate
-        results.push({
-          kind: "playlist",
-          id: item.id,
-          name: a?.name ?? "",
-          subtitle: a?.curatorName ?? a?.description?.short ?? "",
-          artworkUrl: a?.artwork?.url ?? "",
-          lastModifiedAt: plmd ? new Date(plmd).getTime() : undefined,
-        })
-      }
-    }
+/** Fetches the user's heavy-rotation items as a mixed list (songs render as
+ *  tracks, albums/playlists as drillable cards). The endpoint returns:
+ *  albums, playlists, library-albums, library-playlists, songs, and stations.
+ *  Stations are skipped — we don't render them. */
+export async function getHeavyRotation(): Promise<HeavyRotationItem[]> {
+  const url = "https://api.music.apple.com/v1/me/history/heavy-rotation"
+  const h = headers() as Record<string, string>
+  console.debug("[heavyRotation] GET", url, "headers:", {
+    Authorization: h.Authorization ? `Bearer …${h.Authorization.slice(-8)}` : "(missing)",
+    "Music-User-Token": h["Music-User-Token"] ? `…${h["Music-User-Token"].slice(-8)}` : "(missing)",
+  })
+  const res = await fetch(url, { headers: h })
+  if (!res.ok) {
+    console.warn("[heavyRotation] HTTP", res.status, res.statusText)
+    return []
   }
-  return results
+  const data = await res.json()
+  console.debug("[heavyRotation] raw response:", data)
+  const items = (data.data ?? []) as Array<{ id: string; type: string; attributes?: any }>
+
+  const out: HeavyRotationItem[] = []
+  for (const item of items) {
+    const a = item.attributes ?? {}
+    const artworkUrl = a.artwork?.url ?? ""
+    if (item.type === "albums") {
+      const rd: string | undefined = a.releaseDate
+      out.push({
+        kind: "album",
+        id: item.id,
+        name: a.name ?? "",
+        subtitle: a.artistName ?? "",
+        artworkUrl,
+        releaseYear: rd ? new Date(rd).getFullYear() : undefined,
+      })
+    } else if (item.type === "playlists") {
+      const lmd: string | undefined = a.lastModifiedDate
+      out.push({
+        kind: "playlist",
+        id: item.id,
+        name: a.name ?? "",
+        subtitle: a.curatorName ?? a.description?.short ?? "",
+        artworkUrl,
+        lastModifiedAt: lmd ? new Date(lmd).getTime() : undefined,
+      })
+    } else if (item.type === "library-albums") {
+      out.push({
+        kind: "library-album",
+        id: item.id,
+        name: a.name ?? "",
+        subtitle: a.artistName ?? "",
+        artworkUrl,
+        trackCount: a.trackCount ?? undefined,
+      })
+    } else if (item.type === "library-playlists") {
+      out.push({
+        kind: "library-playlist",
+        id: item.id,
+        name: a.name ?? "",
+        subtitle: a.description?.standard ?? "",
+        artworkUrl,
+        trackCount: a.trackCount ?? undefined,
+      })
+    } else if (item.type === "songs" || item.type === "library-songs") {
+      // Catalog songs map cleanly via normalizeTrack; library-songs need the
+      // library normalization path (and may not have a streamable catalog id).
+      const track = item.type === "songs" ? normalizeTrack(item) : normalizeLibraryTrack(item)
+      if (track) out.push({ kind: "song", track })
+    }
+    // stations: skipped — no drill-in target in this app
+  }
+  console.debug(`[heavyRotation] mapped ${out.length} renderable items from ${items.length} raw items`)
+  return out
 }
 
 export interface AlbumEditorialInfo {

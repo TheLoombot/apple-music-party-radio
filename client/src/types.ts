@@ -47,10 +47,24 @@ export interface LibraryPlaylistResult extends BrowsableResult {
   lastModifiedAt?: number  // Unix ms
 }
 
+export interface LibraryAlbumResult extends BrowsableResult {
+  kind: "library-album"
+  trackCount?: number
+}
+
 export type SearchItem =
   | { kind: "song"; track: Track }
   | AlbumResult
   | PlaylistResult
+
+/** A single entry returned by the heavy-rotation endpoint. Items render as
+ *  TrackRow for songs and PlaylistRow (drill-in) for the rest. */
+export type HeavyRotationItem =
+  | { kind: "song"; track: Track }
+  | AlbumResult
+  | PlaylistResult
+  | LibraryAlbumResult
+  | LibraryPlaylistResult
 
 export interface Listener {
   userId: string

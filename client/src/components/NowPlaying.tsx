@@ -496,12 +496,17 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="p-8 text-center text-muted"
           >
-            <div className="text-4xl mb-3">📡</div>
-            <p className="text-sm">
-              Tuning in<span className="loading-dot-1">.</span><span className="loading-dot-2">.</span><span className="loading-dot-3">.</span>
-            </p>
+            {/* Match the playing state's vertical footprint so switching stations
+                doesn't shrink/jump the panel. The art-equivalent square holds the
+                indicator; the spacer below stands in for progress + info + controls. */}
+            <div className="w-full aspect-square bg-surface flex flex-col items-center justify-center text-muted gap-3">
+              <div className="text-4xl">📡</div>
+              <p className="text-sm">
+                Tuning in<span className="loading-dot-1">.</span><span className="loading-dot-2">.</span><span className="loading-dot-3">.</span>
+              </p>
+            </div>
+            <div className="h-[14rem]" aria-hidden />
           </motion.div>
         ) : (
           <motion.div

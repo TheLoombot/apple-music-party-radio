@@ -4,14 +4,15 @@ import {
   getPlaylistTracks,
   getLibraryPlaylists,
   getLibraryPlaylistTracks,
+  getLibraryAlbumTracks,
   getCharts,
-  getRecommendedPlaylists,
+  getHeavyRotation,
   getRelatedPlaylistsForSong,
   getAlbumForSong,
   getAlbumEditorial,
   getPlaylistEditorial,
 } from "./appleMusic"
-import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult, AlbumResult } from "../types"
+import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult, AlbumResult, HeavyRotationItem } from "../types"
 export type { ChartResult, AlbumEditorialInfo } from "./appleMusic"
 
 export interface MusicCatalog {
@@ -20,8 +21,9 @@ export interface MusicCatalog {
   getPlaylistTracks(playlistId: string): Promise<Track[]>
   getLibraryPlaylists(): Promise<LibraryPlaylistResult[]>
   getLibraryPlaylistTracks(playlistId: string): Promise<Track[]>
+  getLibraryAlbumTracks(albumId: string): Promise<Track[]>
   getCharts(): Promise<import("./appleMusic").ChartResult[]>
-  getRecommendedPlaylists(): Promise<(PlaylistResult | AlbumResult)[]>
+  getHeavyRotation(): Promise<HeavyRotationItem[]>
   getRelatedPlaylists(songId: string): Promise<PlaylistResult[]>
   getAlbumForTrack(songId: string): Promise<AlbumResult | null>
   getAlbumEditorial(albumId: string): Promise<import("./appleMusic").AlbumEditorialInfo>
@@ -43,8 +45,9 @@ export class AppleMusicCatalog implements MusicCatalog {
   getPlaylistTracks(id: string) { return this.cached(`playlist:${id}`, () => getPlaylistTracks(id, this.storefront)) }
   getLibraryPlaylists() { return getLibraryPlaylists() }
   getLibraryPlaylistTracks(id: string) { return getLibraryPlaylistTracks(id) }
+  getLibraryAlbumTracks(id: string) { return this.cached(`library-album:${id}`, () => getLibraryAlbumTracks(id)) }
   getCharts() { return getCharts(this.storefront) }
-  getRecommendedPlaylists() { return getRecommendedPlaylists() }
+  getHeavyRotation() { return this.cached("heavyRotation", () => getHeavyRotation()) }
   getRelatedPlaylists(songId: string) { return getRelatedPlaylistsForSong(songId, this.storefront) }
   getAlbumForTrack(songId: string) { return this.cached(`albumFor:${songId}`, () => getAlbumForSong(songId, this.storefront)) }
   getAlbumEditorial(albumId: string) { return getAlbumEditorial(albumId, this.storefront) }

@@ -7,13 +7,13 @@ import { TrackRow } from "./TrackRow"
 import { LoadingDots } from "./LoadingDots"
 import { ArtworkModal } from "./ArtworkModal"
 import { relativeTime } from "../utils"
-import type { Track, PlaylistResult, LibraryPlaylistResult, AlbumResult } from "../types"
+import type { Track, PlaylistResult, LibraryPlaylistResult, AlbumResult, LibraryAlbumResult } from "../types"
 import type { MusicCatalog } from "../services/catalog"
 
-type NavEntry = { playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult; tracks: Track[] | null; scrollTop: number }
+type NavEntry = { playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult | LibraryAlbumResult; tracks: Track[] | null; scrollTop: number }
 
 interface Props {
-  playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult
+  playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult | LibraryAlbumResult
   tracks: Track[] | null
   queuedIsrcs: Set<string>
   onAddTrack: (track: Track) => void
@@ -33,6 +33,7 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
   const isAtRoot = navStack.length === 0
   const displayPlaylist = isAtRoot ? playlist : navCurrent!.playlist
   const displayTracks = isAtRoot ? tracks : navCurrent!.tracks
+  const isAlbumish = displayPlaylist.kind === "album" || displayPlaylist.kind === "library-album"
 
   // Restore scroll position after nav changes settle
   useEffect(() => {
@@ -104,7 +105,7 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
                   <img src={artworkUrl(displayPlaylist.artworkUrl, 64)} alt="" className="w-full h-full object-cover" />
                 </button>
               : <div className="w-full h-full flex items-center justify-center text-muted">
-                  {displayPlaylist.kind === "album" ? <Disc3 size={20} /> : <ListMusic size={20} />}
+                  {isAlbumish ? <Disc3 size={20} /> : <ListMusic size={20} />}
                 </div>
             }
           </div>
@@ -147,12 +148,12 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
                   <TrackRow
                     key={track.platformIds?.apple ?? track.isrc ?? track.name}
                     track={track}
-                    trackNumber={displayPlaylist.kind === "album" ? i + 1 : undefined}
-                    hideArtist={displayPlaylist.kind === "album" && track.artistName === displayPlaylist.subtitle}
+                    trackNumber={isAlbumish ? i + 1 : undefined}
+                    hideArtist={isAlbumish && track.artistName === displayPlaylist.subtitle}
                     added={!isUnavailable && (queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? ""))}
                     unavailable={isUnavailable}
                     onAdd={() => onAddTrack(track)}
-                    onAlbumClick={catalog && track.platformIds?.apple && displayPlaylist.kind !== "album"
+                    onAlbumClick={catalog && track.platformIds?.apple && !isAlbumish
                       ? () => handleTrackAlbumClick(track)
                       : undefined}
                   />
