@@ -1,13 +1,13 @@
 import { useEffect, useState, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ChevronRight, ListMusic, X } from "lucide-react"
+import { ChevronRight, ListMusic, Search, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { TrackRow } from "./TrackRow"
 import { SuggestionRow } from "./SuggestionRow"
 import { PlaylistModal } from "./PlaylistModal"
 import { LoadingDots } from "./LoadingDots"
 import type { MusicCatalog } from "../services/catalog"
-import type { Track, PlaylistResult, LibraryPlaylistResult, LibraryAlbumResult, AlbumResult, QueueItem, SearchItem, SuggestedTrack, HeavyRotationItem } from "../types"
+import type { Track, PlaylistResult, LibraryPlaylistResult, LibraryAlbumResult, AlbumResult, QueueItem, SearchItem, SuggestedTrack } from "../types"
 
 type Drillable = PlaylistResult | LibraryPlaylistResult | AlbumResult | LibraryAlbumResult
 
@@ -66,7 +66,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
   const [chartTracks, setChartTracks] = useState<Track[]>([])
   const [chartsLoading, setChartsLoading] = useState(true)
 
-  const [heavyItems, setHeavyItems] = useState<HeavyRotationItem[]>([])
+  const [heavyTracks, setHeavyTracks] = useState<Track[]>([])
   const [heavyLoading, setHeavyLoading] = useState(true)
 
   const [modal, setModal] = useState<ModalState | null>(null)
@@ -91,8 +91,8 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
       setChartTracks(c[0]?.tracks ?? [])
       setChartsLoading(false)
     })
-    catalog.getHeavyRotation().then(items => {
-      setHeavyItems(items)
+    catalog.getHeavyRotation().then(t => {
+      setHeavyTracks(t)
       setHeavyLoading(false)
     })
   }, [catalog])
@@ -141,7 +141,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
       const playlist = pickRandom(allRelatedPlaylists.current, 1)[0]
       setRelatedPlaylist(playlist)
       const tracks = await catalog.getPlaylistTracks(playlist.id)
-      setRelatedTracks(pickRandom(tracks, 3))
+      setRelatedTracks(tracks)
     } catch {
       setRelatedError(true)
     } finally {
@@ -185,12 +185,12 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
   }, [suggestions.length])
 
   const TAB_LABELS: Record<Tab, string> = {
-    search: "Search",
-    related: "Related",
-    charts: "Top 20",
-    heavy: "Heavy Rotation",
-    playlists: "Playlists",
-    suggested: "Requests",
+    search: "",       // rendered as a magnifying-glass icon — see button render below
+    related: "RELATED",
+    charts: "TOP20",
+    heavy: "HEAVY",
+    playlists: "LISTS",
+    suggested: "RQSTS",
   }
 
   const visibleTabs: Tab[] = suggestions.length > 0
@@ -217,7 +217,9 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                   tab === t ? "text-white border-accent" : "text-muted hover:text-white border-transparent"
                 }`}
               >
-                {t === "suggested" ? `Requests (${suggestions.length})` : TAB_LABELS[t]}
+                {t === "search"
+                  ? <Search size={14} className="inline-block" aria-label="Search" />
+                  : TAB_LABELS[t]}
                 {t === "suggested" && tab !== "suggested" && (
                   <span className="absolute top-1.5 right-1 w-1.5 h-1.5 rounded-full bg-red-400" />
                 )}
@@ -325,25 +327,21 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
         ) : tab === "heavy" ? (
           heavyLoading ? (
             <div className="p-6 text-center text-muted text-sm"><LoadingDots /></div>
-          ) : heavyItems.length === 0 ? (
-            <div className="p-6 text-center text-muted text-sm">No heavy rotation history yet</div>
+          ) : heavyTracks.length === 0 ? (
+            <div className="p-6 text-center text-muted text-sm">No heavy rotation yet — Apple Music needs more listening history to build your mix.</div>
           ) : (
             <div className={`overflow-y-auto ${embedded ? "flex-1 min-h-0" : "h-[360px]"}`}>
               <ul>
-                {heavyItems.map(item =>
-                  item.kind === "song" ? (
-                    <TrackRow
-                      key={item.track.platformIds?.apple ?? item.track.isrc ?? item.track.name}
-                      track={item.track}
-                      added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(item.track.isrc) || suggestedIsrcs.has(item.track.platformIds?.apple ?? "")))}
-                      onAdd={() => onAddTrack(item.track)}
-                      onAlbumClick={item.track.platformIds?.apple ? () => handleAlbumClick(item.track) : undefined}
-                      requestMode={!isPrivileged}
-                    />
-                  ) : (
-                    <PlaylistRow key={`${item.kind}:${item.id}`} playlist={item} onSelect={() => handleSelectPlaylist(item)} />
-                  )
-                )}
+                {heavyTracks.map(track => (
+                  <TrackRow
+                    key={track.platformIds?.apple ?? track.isrc ?? track.name}
+                    track={track}
+                    added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
+                    onAdd={() => onAddTrack(track)}
+                    onAlbumClick={track.platformIds?.apple ? () => handleAlbumClick(track) : undefined}
+                    requestMode={!isPrivileged}
+                  />
+                ))}
               </ul>
             </div>
           )

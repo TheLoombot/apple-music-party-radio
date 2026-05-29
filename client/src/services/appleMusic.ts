@@ -1,5 +1,5 @@
 import { getMusicUserToken, artworkUrl } from "./musickit"
-import type { Track, SearchItem, LibraryPlaylistResult, LibraryAlbumResult, PlaylistResult, AlbumResult, HeavyRotationItem } from "../types"
+import type { Track, SearchItem, LibraryPlaylistResult, LibraryAlbumResult, PlaylistResult, AlbumResult } from "../types"
 
 function headers(): HeadersInit {
   return {
@@ -279,78 +279,42 @@ export async function getAlbumForSong(songId: string, storefront = "us"): Promis
   }
 }
 
-/** Fetches the user's heavy-rotation items as a mixed list (songs render as
- *  tracks, albums/playlists as drillable cards). The endpoint returns:
- *  albums, playlists, library-albums, library-playlists, songs, and stations.
- *  Stations are skipped — we don't render them. */
-export async function getHeavyRotation(): Promise<HeavyRotationItem[]> {
-  const url = "https://api.music.apple.com/v1/me/history/heavy-rotation"
-  const h = headers() as Record<string, string>
-  console.debug("[heavyRotation] GET", url, "headers:", {
-    Authorization: h.Authorization ? `Bearer …${h.Authorization.slice(-8)}` : "(missing)",
-    "Music-User-Token": h["Music-User-Token"] ? `…${h["Music-User-Token"].slice(-8)}` : "(missing)",
-  })
-  const res = await fetch(url, { headers: h })
+/** Fetches the tracks of the user's personal "Heavy Rotation" playlist — the
+ *  curated, auto-updating mix Apple Music generates per account ("The tracks
+ *  you can't get enough of lately").
+ *
+ *  This playlist is NOT exposed by a dedicated endpoint. It surfaces nested
+ *  inside /v1/me/recommendations as a `playlists` resource with a per-user
+ *  catalog id of the form `pl.pm-...`. We walk the recommendations groups,
+ *  match the playlist name against /heavy rotation/i (loose to survive both
+ *  "Heavy Rotation" and "Heavy Rotation Mix" naming variants), then fetch
+ *  the playlist tracks via the normal catalog playlist endpoint. */
+export async function getHeavyRotationMixTracks(storefront = "us"): Promise<Track[]> {
+  const res = await fetch(
+    "https://api.music.apple.com/v1/me/recommendations",
+    { headers: headers() }
+  )
   if (!res.ok) {
-    console.warn("[heavyRotation] HTTP", res.status, res.statusText)
+    console.warn("[heavyRotation] /v1/me/recommendations HTTP", res.status, res.statusText)
     return []
   }
   const data = await res.json()
-  console.debug("[heavyRotation] raw response:", data)
-  const items = (data.data ?? []) as Array<{ id: string; type: string; attributes?: any }>
-
-  const out: HeavyRotationItem[] = []
-  for (const item of items) {
-    const a = item.attributes ?? {}
-    const artworkUrl = a.artwork?.url ?? ""
-    if (item.type === "albums") {
-      const rd: string | undefined = a.releaseDate
-      out.push({
-        kind: "album",
-        id: item.id,
-        name: a.name ?? "",
-        subtitle: a.artistName ?? "",
-        artworkUrl,
-        releaseYear: rd ? new Date(rd).getFullYear() : undefined,
-      })
-    } else if (item.type === "playlists") {
-      const lmd: string | undefined = a.lastModifiedDate
-      out.push({
-        kind: "playlist",
-        id: item.id,
-        name: a.name ?? "",
-        subtitle: a.curatorName ?? a.description?.short ?? "",
-        artworkUrl,
-        lastModifiedAt: lmd ? new Date(lmd).getTime() : undefined,
-      })
-    } else if (item.type === "library-albums") {
-      out.push({
-        kind: "library-album",
-        id: item.id,
-        name: a.name ?? "",
-        subtitle: a.artistName ?? "",
-        artworkUrl,
-        trackCount: a.trackCount ?? undefined,
-      })
-    } else if (item.type === "library-playlists") {
-      out.push({
-        kind: "library-playlist",
-        id: item.id,
-        name: a.name ?? "",
-        subtitle: a.description?.standard ?? "",
-        artworkUrl,
-        trackCount: a.trackCount ?? undefined,
-      })
-    } else if (item.type === "songs" || item.type === "library-songs") {
-      // Catalog songs map cleanly via normalizeTrack; library-songs need the
-      // library normalization path (and may not have a streamable catalog id).
-      const track = item.type === "songs" ? normalizeTrack(item) : normalizeLibraryTrack(item)
-      if (track) out.push({ kind: "song", track })
+  let playlistId: string | null = null
+  outer: for (const rec of data.data ?? []) {
+    for (const item of rec.relationships?.contents?.data ?? []) {
+      if (item.type !== "playlists") continue
+      const name = item.attributes?.name ?? ""
+      if (/heavy rotation/i.test(name)) {
+        playlistId = item.id
+        break outer
+      }
     }
-    // stations: skipped — no drill-in target in this app
   }
-  console.debug(`[heavyRotation] mapped ${out.length} renderable items from ${items.length} raw items`)
-  return out
+  if (!playlistId) {
+    console.warn("[heavyRotation] no playlist matching /heavy rotation/i found in recommendations")
+    return []
+  }
+  return getPlaylistTracks(playlistId, storefront)
 }
 
 export interface AlbumEditorialInfo {

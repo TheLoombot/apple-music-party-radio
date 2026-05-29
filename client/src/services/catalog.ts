@@ -6,13 +6,13 @@ import {
   getLibraryPlaylistTracks,
   getLibraryAlbumTracks,
   getCharts,
-  getHeavyRotation,
+  getHeavyRotationMixTracks,
   getRelatedPlaylistsForSong,
   getAlbumForSong,
   getAlbumEditorial,
   getPlaylistEditorial,
 } from "./appleMusic"
-import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult, AlbumResult, HeavyRotationItem } from "../types"
+import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult, AlbumResult } from "../types"
 export type { ChartResult, AlbumEditorialInfo } from "./appleMusic"
 
 export interface MusicCatalog {
@@ -23,7 +23,7 @@ export interface MusicCatalog {
   getLibraryPlaylistTracks(playlistId: string): Promise<Track[]>
   getLibraryAlbumTracks(albumId: string): Promise<Track[]>
   getCharts(): Promise<import("./appleMusic").ChartResult[]>
-  getHeavyRotation(): Promise<HeavyRotationItem[]>
+  getHeavyRotation(): Promise<Track[]>
   getRelatedPlaylists(songId: string): Promise<PlaylistResult[]>
   getAlbumForTrack(songId: string): Promise<AlbumResult | null>
   getAlbumEditorial(albumId: string): Promise<import("./appleMusic").AlbumEditorialInfo>
@@ -47,7 +47,7 @@ export class AppleMusicCatalog implements MusicCatalog {
   getLibraryPlaylistTracks(id: string) { return getLibraryPlaylistTracks(id) }
   getLibraryAlbumTracks(id: string) { return this.cached(`library-album:${id}`, () => getLibraryAlbumTracks(id)) }
   getCharts() { return getCharts(this.storefront) }
-  getHeavyRotation() { return this.cached("heavyRotation", () => getHeavyRotation()) }
+  getHeavyRotation() { return this.cached("heavyRotation", () => getHeavyRotationMixTracks(this.storefront)) }
   getRelatedPlaylists(songId: string) { return getRelatedPlaylistsForSong(songId, this.storefront) }
   getAlbumForTrack(songId: string) { return this.cached(`albumFor:${songId}`, () => getAlbumForSong(songId, this.storefront)) }
   getAlbumEditorial(albumId: string) { return getAlbumEditorial(albumId, this.storefront) }
