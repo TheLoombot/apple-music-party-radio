@@ -373,13 +373,13 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           </Tooltip>
         </div>
 
-      {/* Mute + Chat — same 4-col grid, sitting in the middle two columns
-       * (cols 2 & 3) so they align with Ban & Pool in the bottom panel. */}
+      {/* Mute + Chat — each spans two columns of the 4-col grid, so Mute
+       * fills cols 1-2 and Chat fills cols 3-4 (full-width split in half). */}
       {(() => {
         const muteLabel = quiet ? (isBlocked ? "Tap to start playback" : "Unmute") : "Mute"
         return (
           <div className="grid grid-cols-4 gap-2 px-4 pt-2 pb-3">
-            <Tooltip label={muteLabel} className="col-start-2" align="start">
+            <Tooltip label={muteLabel} className="col-span-2" align="start">
               <button
                 onClick={isBlocked ? onResume : onMuteToggle}
                 aria-label={muteLabel}
@@ -392,7 +392,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               </button>
             </Tooltip>
             {onOpenChat && (
-              <Tooltip label="Chat" className="col-start-3" align="end">
+              <Tooltip label="Chat" className="col-span-2" align="end">
                 <button
                   onClick={onOpenChat}
                   aria-label="Chat"
