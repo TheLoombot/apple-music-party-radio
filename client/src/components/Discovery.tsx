@@ -420,7 +420,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                   <button
                     onClick={refreshRelated}
                     disabled={relatedLoading}
-                    className="btn-3d btn-3d-accent w-full py-4 font-bold text-base rounded-lg tracking-wide mb-1"
+                    className="btn-3d w-full py-4 font-bold text-base rounded-lg tracking-wide text-white mb-1"
                   >
                     {relatedLoading ? <LoadingDots /> : "↻ Refresh"}
                   </button>
@@ -455,7 +455,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                 <div className="px-4 py-3 border-t border-border/50">
                   <button
                     onClick={refreshRelated}
-                    className="btn-3d btn-3d-accent w-full py-4 font-bold text-base rounded-lg tracking-wide mb-1"
+                    className="btn-3d w-full py-4 font-bold text-base rounded-lg tracking-wide text-white mb-1"
                   >
                     ↻ Refresh
                   </button>

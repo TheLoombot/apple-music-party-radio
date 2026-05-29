@@ -77,14 +77,14 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
                 aria-label={addLabel}
                 className={`btn-3d w-14 h-12 rounded-lg flex items-center justify-center ${
                   added
-                    ? "btn-3d-pressed text-green-400 hover:text-red-400"
+                    ? "btn-3d-pressed text-white/35 hover:text-red-400"
                     : unavailable
                       ? "text-muted opacity-50 cursor-not-allowed"
-                      : "btn-3d-accent"
+                      : "text-white"
                 }`}
               >
                 {added
-                  ? <Check size={24} strokeWidth={3} />
+                  ? <Check size={24} strokeWidth={3} style={{ filter: "none" }} />
                   : requestMode
                     ? <ArrowUp size={24} strokeWidth={3} />
                     : <Plus size={24} strokeWidth={3} />}

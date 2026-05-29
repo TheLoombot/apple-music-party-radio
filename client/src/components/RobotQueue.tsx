@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import { ChevronDown, ChevronUp, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
+import { Tooltip } from "./Tooltip"
 import type { QueueItem } from "../types"
 
 interface Props {
@@ -78,13 +79,15 @@ export function RobotQueue({ queue, onRemove, onAlbumClick }: Props) {
 
                   <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(item.durationMs)}</span>
                   {onRemove && (
-                    <button
-                      onClick={() => onRemove(item)}
-                      className="w-9 h-9 flex items-center justify-center text-muted hover:text-red-400 transition-colors flex-shrink-0"
-                      title="Remove from queue"
-                    >
-                      <X size={15} />
-                    </button>
+                    <Tooltip label="Remove from queue" align="end" className="flex-shrink-0">
+                      <button
+                        onClick={() => onRemove(item)}
+                        aria-label="Remove from queue"
+                        className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-muted hover:text-red-400"
+                      >
+                        <X size={18} />
+                      </button>
+                    </Tooltip>
                   )}
                 </li>
               ))}

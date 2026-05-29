@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, GripVertical, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { DJFace, RobotFace } from "./FaceGenerator"
+import { Tooltip } from "./Tooltip"
 import type { QueueItem, AppUser } from "../types"
 
 function formatTotalDuration(ms: number): string {
@@ -183,13 +184,15 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                   <div className="flex-shrink-0 flex flex-col md:flex-row items-end md:items-center justify-between md:gap-3 self-stretch py-0.5 md:py-0 md:self-auto">
                     <span className="text-xs md:text-sm text-muted tabular-nums">{formatDuration(item.durationMs)}</span>
                     {canRemove && (
-                      <button
-                        onClick={() => onRemove(item)}
-                        className="w-7 h-7 md:w-9 md:h-9 flex items-center justify-center text-muted hover:text-red-400 transition-colors"
-                        title="Remove from queue"
-                      >
-                        <X size={13} />
-                      </button>
+                      <Tooltip label="Remove from queue" align="end">
+                        <button
+                          onClick={() => onRemove(item)}
+                          aria-label="Remove from queue"
+                          className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-muted hover:text-red-400"
+                        >
+                          <X size={18} />
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
                 </motion.li>

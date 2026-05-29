@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Trash2, ChevronLeft, Disc3 } from "lucide-react"
+import { X, Trash2, ChevronLeft, Disc3, Plus, Check } from "lucide-react"
+import { Tooltip } from "./Tooltip"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration, relativeTime } from "../utils"
 import { TrackRow } from "./TrackRow"
@@ -233,26 +234,43 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
                           </p>
                         </div>
                         <span className="text-xs text-muted tabular-nums flex-shrink-0">{formatDuration(track.durationMs)}</span>
-                        <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           {canManagePool && (
-                            <button
-                              onClick={() => onRemoveFromPool(track.isrc)}
-                              className="w-9 h-9 rounded-full flex items-center justify-center text-muted hover:text-red-400 transition-colors"
-                              title="Remove from pool"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <Tooltip label="Remove from pool" align="end">
+                              <button
+                                onClick={() => onRemoveFromPool(track.isrc)}
+                                aria-label="Remove from pool"
+                                className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-muted hover:text-red-400"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </Tooltip>
                           )}
-                          <button
-                            onClick={() => onAddTrack(track)}
-                            disabled={unavailable}
-                            className={`w-9 h-9 rounded-full flex items-center justify-center text-base transition-all ${
-                              added ? "bg-green-500/20 text-green-400 hover:bg-red-500/20 hover:text-red-400" : unavailable ? "bg-surface text-muted cursor-not-allowed" : "bg-surface text-muted hover:bg-accent hover:text-white"
-                            }`}
-                            title={unavailable ? "No longer available" : added ? "Remove from queue" : "Add to queue"}
-                          >
-                            {added ? "✓" : "+"}
-                          </button>
+                          {(() => {
+                            const addLabel = unavailable
+                              ? "No longer available"
+                              : added ? "Remove from queue" : "Add to queue"
+                            return (
+                              <Tooltip label={addLabel} align="end">
+                                <button
+                                  onClick={() => onAddTrack(track)}
+                                  disabled={unavailable}
+                                  aria-label={addLabel}
+                                  className={`btn-3d w-14 h-12 rounded-lg flex items-center justify-center ${
+                                    added
+                                      ? "btn-3d-pressed text-white/35 hover:text-red-400"
+                                      : unavailable
+                                        ? "text-muted opacity-50 cursor-not-allowed"
+                                        : "text-white"
+                                  }`}
+                                >
+                                  {added
+                                    ? <Check size={24} strokeWidth={3} style={{ filter: "none" }} />
+                                    : <Plus size={24} strokeWidth={3} />}
+                                </button>
+                              </Tooltip>
+                            )
+                          })()}
                         </div>
                       </motion.li>
                     )
