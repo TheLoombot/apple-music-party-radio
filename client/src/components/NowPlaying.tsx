@@ -321,34 +321,51 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
 
   return (
     <div className="space-y-4">
-      {/* Top panel — frequency / mute / chat / station name */}
+      {/* Top panel — station name / frequency / mute / chat */}
       <div className="bg-panel rounded-xl overflow-hidden">
-        {/* Frequency + nav row — top of the panel.
-         * The SevenSegDisplay is wrapped in its own bordered "screen housing"
-         * so it reads as a contained instrument rather than floating glyphs. */}
-        <div className="flex items-center px-1 pt-3 pb-2 gap-1">
-          <Tooltip label="Previous station" className="flex-shrink-0" position="bottom" align="start">
+        {/* Station name + info row — at the top of the panel.
+         * Name centered, info pinned to the right. Name still opens the station modal. */}
+        <div className="relative px-3 pt-3 pb-2 flex items-center justify-center min-h-[28px]">
+          <button
+            onClick={onOpenStationModal}
+            className="text-white text-base font-bold hover:text-accent transition-colors max-w-[calc(100%-3rem)] truncate"
+          >
+            {stationName}
+          </button>
+          <button
+            onClick={openInfo}
+            className="absolute right-3 text-muted/40 hover:text-white/70 transition-colors w-7 h-7 flex items-center justify-center"
+            title="Station info"
+          >
+            <Info size={14} />
+          </button>
+        </div>
+
+        {/* Frequency + nav row — laid out on a 4-column grid so it aligns
+         * with the Mute/Chat row below and the Skip/Ban/Pool/+ row in the
+         * bottom panel. Prev=col1, LED=col2-3, Next=col4. */}
+        <div className="grid grid-cols-4 gap-2 px-4 pt-2 pb-2">
+          <Tooltip label="Previous station" position="bottom" align="start">
             <button
               onClick={handlePrevNav}
               disabled={!onPrevStation || navBusy}
               aria-label="Previous station"
-              className={`btn-3d w-14 h-12 flex items-center justify-center rounded-lg
+              className={`btn-3d w-full h-12 flex items-center justify-center rounded-lg
                 ${!onPrevStation ? "invisible" : navBusy ? "btn-3d-pressed text-white/25 cursor-not-allowed" : "text-white/70 hover:text-white"}`}
             >
               <Rewind size={30} strokeWidth={2} fill="currentColor" stroke="none" />
             </button>
           </Tooltip>
-          <div className="flex-1 flex items-center justify-center">
-            <div className="px-5 py-2 rounded-lg border border-white/10 bg-black/40 inline-flex items-center justify-center">
-              <SevenSegDisplay value={displayFreq != null ? displayFreq.toFixed(1) : ""} />
-            </div>
+          {/* LED display spans the middle two columns, matching Ban+Pool width below */}
+          <div className="col-span-2 h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center">
+            <SevenSegDisplay value={displayFreq != null ? displayFreq.toFixed(1) : ""} />
           </div>
-          <Tooltip label="Next station" className="flex-shrink-0" position="bottom" align="end">
+          <Tooltip label="Next station" position="bottom" align="end">
             <button
               onClick={handleNextNav}
               disabled={!onNextStation || navBusy}
               aria-label="Next station"
-              className={`btn-3d w-14 h-12 flex items-center justify-center rounded-lg
+              className={`btn-3d w-full h-12 flex items-center justify-center rounded-lg
                 ${!onNextStation ? "invisible" : navBusy ? "btn-3d-pressed text-white/25 cursor-not-allowed" : "text-white/70 hover:text-white"}`}
             >
               <FastForward size={30} strokeWidth={2} fill="currentColor" stroke="none" />
@@ -356,12 +373,13 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           </Tooltip>
         </div>
 
-      {/* Mute (with SoundBars) + Chat — above the station name */}
+      {/* Mute + Chat — same 4-col grid, sitting in the middle two columns
+       * (cols 2 & 3) so they align with Ban & Pool in the bottom panel. */}
       {(() => {
         const muteLabel = quiet ? (isBlocked ? "Tap to start playback" : "Unmute") : "Mute"
         return (
-          <div className="flex items-center gap-2 px-4 pt-2 pb-2">
-            <Tooltip label={muteLabel} className="flex-1" align="start">
+          <div className="grid grid-cols-4 gap-2 px-4 pt-2 pb-3">
+            <Tooltip label={muteLabel} className="col-start-2" align="start">
               <button
                 onClick={isBlocked ? onResume : onMuteToggle}
                 aria-label={muteLabel}
@@ -374,11 +392,11 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               </button>
             </Tooltip>
             {onOpenChat && (
-              <Tooltip label="Chat" className="flex-shrink-0" align="end">
+              <Tooltip label="Chat" className="col-start-3" align="end">
                 <button
                   onClick={onOpenChat}
                   aria-label="Chat"
-                  className="btn-3d relative w-12 h-12 rounded-lg flex items-center justify-center text-white/80 hover:text-white"
+                  className="btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white/80 hover:text-white"
                 >
                   <MessageCircle size={20} />
                   {(unreadCount ?? 0) > 0 && (
@@ -392,24 +410,6 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           </div>
         )
       })()}
-
-      {/* Station name + info row — at the bottom of the top panel.
-       * Name centered, info pinned to the right. Name still opens the station modal. */}
-      <div className="relative px-3 pt-2 pb-3 flex items-center justify-center min-h-[28px]">
-        <button
-          onClick={onOpenStationModal}
-          className="text-white text-base font-bold hover:text-accent transition-colors max-w-[calc(100%-3rem)] truncate"
-        >
-          {stationName}
-        </button>
-        <button
-          onClick={openInfo}
-          className="absolute right-3 text-muted/40 hover:text-white/70 transition-colors w-7 h-7 flex items-center justify-center"
-          title="Station info"
-        >
-          <Info size={14} />
-        </button>
-      </div>
       </div>{/* /top panel */}
 
       {/* Bottom panel — album art (or loading/empty placeholder) and below */}
@@ -482,8 +482,8 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             </motion.div>
 
             {/* Controls */}
-            <div className="flex items-center gap-2 px-4 pb-5">
-              <Tooltip label={canSkip ? "Skip" : "DJs only"} className="flex-1" align="start">
+            <div className="grid grid-cols-4 gap-2 px-4 pb-5">
+              <Tooltip label={canSkip ? "Skip" : "DJs only"} align="start">
                 <button
                   onClick={onSkip}
                   disabled={!canSkip}
@@ -493,10 +493,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   <SkipForward size={20} />
                 </button>
               </Tooltip>
-              <Tooltip
-                label={!canSkip ? "DJs only" : !onSkipAndBan ? "Skip & remove from pool" : "Skip & remove from pool"}
-                className="flex-1"
-              >
+              <Tooltip label={!canSkip ? "DJs only" : "Skip & remove from pool"}>
                 <button
                   onClick={onSkipAndBan}
                   disabled={!canSkip || !onSkipAndBan}
@@ -506,7 +503,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   <Ban size={20} />
                 </button>
               </Tooltip>
-              <Tooltip label={onOpenPool ? "Open pool" : "DJs only"} className="flex-1">
+              <Tooltip label={onOpenPool ? "Open pool" : "DJs only"}>
                 <button
                   onClick={onOpenPool}
                   disabled={!onOpenPool}
@@ -517,7 +514,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 </button>
               </Tooltip>
               {onOpenAddTracks && (
-                <Tooltip label={addButtonLabel ?? "Add tracks"} className="flex-1" align="end">
+                <Tooltip label={addButtonLabel ?? "Add tracks"} align="end">
                   <button
                     onClick={onOpenAddTracks}
                     aria-label={addButtonLabel ?? "Add tracks"}
