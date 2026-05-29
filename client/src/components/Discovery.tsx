@@ -206,26 +206,24 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
           </div>
         )}
 
-        {/* Tab bar */}
-        <div className="border-b border-border">
-          <div className="flex items-center">
-            {visibleTabs.map(t => (
-              <button
-                key={t}
-                onClick={() => handleTabChange(t)}
-                className={`relative flex-1 px-1 py-3 text-xs font-medium transition-colors border-b-2 -mb-px ${
-                  tab === t ? "text-white border-accent" : "text-muted hover:text-white border-transparent"
-                }`}
-              >
-                {t === "search"
-                  ? <Search size={14} className="inline-block" aria-label="Search" />
-                  : TAB_LABELS[t]}
-                {t === "suggested" && tab !== "suggested" && (
-                  <span className="absolute top-1.5 right-1 w-1.5 h-1.5 rounded-full bg-red-400" />
-                )}
-              </button>
-            ))}
-          </div>
+        {/* Tab bar — each tab is a 3D button; the active one is locked-pressed */}
+        <div className="flex items-stretch gap-1 px-2 pt-2 pb-2 border-b border-border">
+          {visibleTabs.map(t => (
+            <button
+              key={t}
+              onClick={() => handleTabChange(t)}
+              className={`btn-3d relative flex-1 px-1 py-2 text-xs font-medium rounded-md flex items-center justify-center ${
+                tab === t ? "btn-3d-pressed text-white" : "text-muted hover:text-white"
+              }`}
+            >
+              {t === "search"
+                ? <Search size={14} aria-label="Search" />
+                : TAB_LABELS[t]}
+              {t === "suggested" && tab !== "suggested" && (
+                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-400" />
+              )}
+            </button>
+          ))}
         </div>
 
         {/* Content */}
@@ -422,7 +420,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                   <button
                     onClick={refreshRelated}
                     disabled={relatedLoading}
-                    className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide disabled:opacity-30"
+                    className="btn-3d btn-3d-accent w-full py-4 font-bold text-base rounded-lg tracking-wide mb-1"
                   >
                     {relatedLoading ? <LoadingDots /> : "↻ Refresh"}
                   </button>
@@ -457,7 +455,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                 <div className="px-4 py-3 border-t border-border/50">
                   <button
                     onClick={refreshRelated}
-                    className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide"
+                    className="btn-3d btn-3d-accent w-full py-4 font-bold text-base rounded-lg tracking-wide mb-1"
                   >
                     ↻ Refresh
                   </button>

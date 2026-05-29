@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Volume2, VolumeX, SkipForward, Library, Info, ChevronDown, Rewind, FastForward, Ban } from "lucide-react"
+import { Tooltip } from "./Tooltip"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { ArtworkModal } from "./ArtworkModal"
@@ -338,36 +339,34 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
 
         {/* Frequency + nav row */}
         <div className="flex items-center px-1 pb-3 pt-1">
-          <button
-            onClick={handlePrevNav}
-            disabled={!onPrevStation || navBusy}
-            className={`w-14 h-12 flex items-center justify-center rounded-lg flex-shrink-0 transition-all
-              border border-white/10 bg-surface
-              shadow-[0_3px_0_rgba(0,0,0,0.5)]
-              active:shadow-none active:translate-y-[3px]
-              ${!onPrevStation ? "invisible" : navBusy ? "text-white/25 cursor-not-allowed shadow-none translate-y-[3px]" : "text-white/70 hover:text-white hover:border-white/20"}`}
-            title="Previous station"
-          >
-            <Rewind size={30} strokeWidth={2} fill="currentColor" stroke="none" />
-          </button>
+          <Tooltip label="Previous station" className="flex-shrink-0">
+            <button
+              onClick={handlePrevNav}
+              disabled={!onPrevStation || navBusy}
+              aria-label="Previous station"
+              className={`btn-3d w-14 h-12 flex items-center justify-center rounded-lg
+                ${!onPrevStation ? "invisible" : navBusy ? "btn-3d-pressed text-white/25 cursor-not-allowed" : "text-white/70 hover:text-white"}`}
+            >
+              <Rewind size={30} strokeWidth={2} fill="currentColor" stroke="none" />
+            </button>
+          </Tooltip>
           <div className="flex-1 flex items-center justify-center">
             {displayFreq != null
               ? <SevenSegDisplay value={displayFreq.toFixed(1)} />
               : <span className="text-white/40 text-sm font-medium truncate px-2">{stationName}</span>
             }
           </div>
-          <button
-            onClick={handleNextNav}
-            disabled={!onNextStation || navBusy}
-            className={`w-14 h-12 flex items-center justify-center rounded-lg flex-shrink-0 transition-all
-              border border-white/10 bg-surface
-              shadow-[0_3px_0_rgba(0,0,0,0.5)]
-              active:shadow-none active:translate-y-[3px]
-              ${!onNextStation ? "invisible" : navBusy ? "text-white/25 cursor-not-allowed shadow-none translate-y-[3px]" : "text-white/70 hover:text-white hover:border-white/20"}`}
-            title="Next station"
-          >
-            <FastForward size={30} strokeWidth={2} fill="currentColor" stroke="none" />
-          </button>
+          <Tooltip label="Next station" className="flex-shrink-0" align="end">
+            <button
+              onClick={handleNextNav}
+              disabled={!onNextStation || navBusy}
+              aria-label="Next station"
+              className={`btn-3d w-14 h-12 flex items-center justify-center rounded-lg
+                ${!onNextStation ? "invisible" : navBusy ? "btn-3d-pressed text-white/25 cursor-not-allowed" : "text-white/70 hover:text-white"}`}
+            >
+              <FastForward size={30} strokeWidth={2} fill="currentColor" stroke="none" />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -439,53 +438,56 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             </motion.div>
 
             {/* Controls */}
-            <div className="flex gap-2 px-4 pb-4">
-              <div className="flex-1 flex items-center justify-center py-3 rounded-xl bg-surface">
-                <SoundBars active={!quiet} />
-              </div>
-              <button
-                onClick={isBlocked ? onResume : onMuteToggle}
-                className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide transition-all hover:text-red-400 flex items-center justify-center gap-2"
-              >
-                {quiet ? (
-                  <>
-                    <VolumeX size={18} className="shimmer-text" />
-                    <span className="shimmer-text">UNMUTE</span>
-                  </>
-                ) : (
-                  <>
-                    <Volume2 size={18} />
-                    <span>MUTE</span>
-                  </>
-                )}
-              </button>
+            <div className="flex items-center gap-2 px-4 pb-5">
+              {(() => {
+                const muteLabel = quiet ? (isBlocked ? "Tap to start playback" : "Unmute") : "Mute"
+                return (
+                  <Tooltip label={muteLabel} className="flex-1" align="start">
+                    <button
+                      onClick={isBlocked ? onResume : onMuteToggle}
+                      aria-label={muteLabel}
+                      className="btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-3 hover:text-red-400"
+                    >
+                      <SoundBars active={!quiet} />
+                      {quiet
+                        ? <VolumeX size={20} className="shimmer-text" />
+                        : <Volume2 size={20} />}
+                    </button>
+                  </Tooltip>
+                )
+              })()}
               {canSkip && (
-                <button
-                  onClick={onSkip}
-                  className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide text-white transition-all hover:text-red-400 flex items-center justify-center gap-2"
-                >
-                  <SkipForward size={18} />
-                  <span>SKIP</span>
-                </button>
+                <Tooltip label="Skip" className="flex-shrink-0">
+                  <button
+                    onClick={onSkip}
+                    aria-label="Skip"
+                    className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
+                  >
+                    <SkipForward size={20} />
+                  </button>
+                </Tooltip>
               )}
               {canSkip && onSkipAndBan && (
-                <button
-                  onClick={onSkipAndBan}
-                  className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide text-white transition-all hover:text-red-400 flex items-center justify-center gap-2"
-                  title="Skip and remove from pool"
-                >
-                  <Ban size={18} />
-                  <span>BAN</span>
-                </button>
+                <Tooltip label="Skip and remove from pool" className="flex-shrink-0">
+                  <button
+                    onClick={onSkipAndBan}
+                    aria-label="Skip and remove from pool"
+                    className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
+                  >
+                    <Ban size={20} />
+                  </button>
+                </Tooltip>
               )}
               {onOpenPool && (
-                <button
-                  onClick={onOpenPool}
-                  className="flex-1 py-3 rounded-xl bg-surface font-bold text-base tracking-wide text-white transition-all hover:text-red-400 flex items-center justify-center gap-2"
-                >
-                  <Library size={18} />
-                  <span>POOL</span>
-                </button>
+                <Tooltip label="Open pool" className="flex-shrink-0" align="end">
+                  <button
+                    onClick={onOpenPool}
+                    aria-label="Open pool"
+                    className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
+                  >
+                    <Library size={20} />
+                  </button>
+                </Tooltip>
               )}
             </div>
           </motion.div>

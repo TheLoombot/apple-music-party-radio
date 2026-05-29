@@ -1,6 +1,7 @@
 import { Trash2, ArrowUp } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
+import { Tooltip } from "./Tooltip"
 import type { Track } from "../types"
 
 interface Props {
@@ -50,26 +51,43 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
 
       <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(track.durationMs)}</span>
 
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
         {onRemove && (
-          <button
-            onClick={onRemove}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-muted hover:text-red-400 transition-colors"
-            title="Remove from pool"
-          >
-            <Trash2 size={14} />
-          </button>
+          <Tooltip label="Remove from pool" align="end">
+            <button
+              onClick={onRemove}
+              aria-label="Remove from pool"
+              className="btn-3d w-11 h-11 rounded-lg flex items-center justify-center text-muted hover:text-red-400"
+            >
+              <Trash2 size={16} />
+            </button>
+          </Tooltip>
         )}
-        <button
-          onClick={onAdd}
-          disabled={unavailable}
-          className={`w-9 h-9 rounded-full flex items-center justify-center text-base transition-all ${
-            added ? "bg-green-500/20 text-green-400 hover:bg-red-500/20 hover:text-red-400" : unavailable ? "bg-surface text-muted cursor-not-allowed" : "bg-surface text-muted hover:bg-accent hover:text-white"
-          }`}
-          title={unavailable ? "Not available in Apple Music" : added ? (requestMode ? "Already requested" : "Remove from queue") : (requestMode ? "Request track" : "Add to queue")}
-        >
-          {added ? "✓" : requestMode ? <ArrowUp size={14} /> : "+"}
-        </button>
+        {(() => {
+          const addLabel = unavailable
+            ? "Not available in Apple Music"
+            : added
+              ? (requestMode ? "Already requested" : "Remove from queue")
+              : (requestMode ? "Request track" : "Add to queue")
+          return (
+            <Tooltip label={addLabel} align="end">
+              <button
+                onClick={onAdd}
+                disabled={unavailable}
+                aria-label={addLabel}
+                className={`btn-3d w-11 h-11 rounded-lg flex items-center justify-center text-xl font-bold ${
+                  added
+                    ? "btn-3d-pressed text-green-400 hover:text-red-400"
+                    : unavailable
+                      ? "text-muted opacity-50 cursor-not-allowed"
+                      : "btn-3d-accent"
+                }`}
+              >
+                {added ? "✓" : requestMode ? <ArrowUp size={18} strokeWidth={3} /> : "+"}
+              </button>
+            </Tooltip>
+          )
+        })()}
       </div>
     </div>
   )

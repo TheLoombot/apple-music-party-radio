@@ -700,7 +700,7 @@ export default function App() {
 
         <button
           onClick={() => setDiscoveryModalOpen(true)}
-          className="w-full py-4 bg-accent hover:bg-accent-hover text-white font-bold text-base rounded-xl transition-colors tracking-wide"
+          className="btn-3d btn-3d-accent w-full py-4 font-bold text-base rounded-lg tracking-wide mb-1"
         >
           {isPrivileged
             ? suggestions.length > 0 ? `+ ADD (${suggestions.length} ${suggestions.length === 1 ? "request" : "requests"})` : "+ ADD"
