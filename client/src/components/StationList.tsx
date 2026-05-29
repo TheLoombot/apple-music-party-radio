@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Trash2 } from "lucide-react"
+import { Trash2, Mic } from "lucide-react"
 import type { Station } from "../types"
 import { DJFace, RobotFace } from "./FaceGenerator"
 import { artworkUrl } from "../services/musickit"
@@ -49,6 +49,16 @@ function StationRow({
         onKeyDown={e => e.key === "Enter" && onSelect()}
         className={`group w-full text-left flex items-center gap-2.5 px-3 py-2.5 border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors cursor-pointer ${active ? "bg-accent/10" : ""}`}
       >
+        {/* Owned/DJ-access indicator — fixed-width slot so alignment is
+         * consistent whether or not the icon shows. No glow. */}
+        <div className="w-4 flex-shrink-0 flex items-center justify-center" aria-hidden={!isOwn}>
+          {isOwn && (
+            <span title="You DJ here" className="text-amber-400/80">
+              <Mic size={14} strokeWidth={2.5} />
+            </span>
+          )}
+        </div>
+
         {/* Album art thumbnail */}
         <div className="relative group/art w-[60px] h-[60px] flex-shrink-0">
           <div className="w-full h-full rounded overflow-hidden bg-surface/50">
@@ -58,7 +68,7 @@ function StationRow({
             }
           </div>
           {isLive && station.nowPlayingTrackName && (
-            <div className="absolute bottom-full left-0 mb-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover/art:opacity-100 transition-opacity z-50 text-xs text-white max-w-[200px]">
+            <div className="absolute top-full left-0 mt-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover/art:opacity-100 transition-opacity z-50 text-xs text-white max-w-[200px]">
               {station.nowPlayingArtistName && <p className="text-muted/70 truncate">{station.nowPlayingArtistName}</p>}
               <p className="truncate">{station.nowPlayingTrackName}</p>
             </div>
@@ -87,7 +97,7 @@ function StationRow({
                 ? <DJFace uid={spunBy} size={28} />
                 : null}
               {(isRobot || spunBy) && (
-                <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover/dj:opacity-100 transition-opacity z-50 text-xs text-white">
+                <div className="absolute top-full right-0 mt-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover/dj:opacity-100 transition-opacity z-50 text-xs text-white">
                   {isRobot ? "robot" : spunBy === userId ? userDisplayName : station.nowPlayingAddedByName ?? spunBy}
                 </div>
               )}
@@ -96,7 +106,7 @@ function StationRow({
           </div>
         )}
 
-        {isOwn && (
+        {isOwn ? (
           <button
             onClick={e => { e.stopPropagation(); onRemove() }}
             className="w-9 h-9 flex items-center justify-center text-muted/40 hover:text-red-400 transition-colors flex-shrink-0"
@@ -104,6 +114,10 @@ function StationRow({
           >
             <Trash2 size={14} />
           </button>
+        ) : (
+          /* Placeholder keeps the right cluster (DJ face + live dot) aligned
+           * across all rows whether or not the user owns the station. */
+          <div className="w-9 h-9 flex-shrink-0" aria-hidden />
         )}
       </div>
     </li>
@@ -135,19 +149,11 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
     return () => clearTimeout(timer)
   }, [stations])
 
-  const byFreq = (a: Station, b: Station) => (a.frequency ?? 0) - (b.frequency ?? 0)
-
-  const yourStations = stations
-    .filter(s => ownedStationIds.includes(s.id))
-    .sort(byFreq)
-
-  const otherStations = stations
-    .filter(s => !ownedStationIds.includes(s.id))
-    .sort((a, b) => {
-      if (a.liveUntil > now && b.liveUntil <= now) return -1
-      if (a.liveUntil <= now && b.liveUntil > now) return 1
-      return byFreq(a, b)
-    })
+  // Single flat list, strictly by frequency. Ownership is signalled inline
+  // by the amber Mic icon next to the frequency, not by sectioning.
+  const sortedStations = [...stations].sort(
+    (a, b) => (a.frequency ?? 0) - (b.frequency ?? 0)
+  )
 
   const renderRow = (station: Station) => (
     <StationRow
@@ -165,29 +171,10 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
-      {stations.length === 0 ? (
+      {sortedStations.length === 0 ? (
         <div className="p-6 text-center text-muted text-sm">No stations yet</div>
       ) : (
-        <div>
-          {yourStations.length > 0 && (
-            <>
-              <div className="px-4 pt-3 pb-1 text-[10px] text-muted/50 font-medium uppercase tracking-wider">
-                Your stations
-              </div>
-              <ul>{yourStations.map(s => renderRow(s))}</ul>
-            </>
-          )}
-          {otherStations.length > 0 && (
-            <>
-              {yourStations.length > 0 && (
-                <div className="px-4 pt-3 pb-1 text-[10px] text-muted/50 font-medium uppercase tracking-wider">
-                  All stations
-                </div>
-              )}
-              <ul>{otherStations.map(s => renderRow(s))}</ul>
-            </>
-          )}
-        </div>
+        <ul>{sortedStations.map(s => renderRow(s))}</ul>
       )}
 
       <div className="border-t border-border/50">

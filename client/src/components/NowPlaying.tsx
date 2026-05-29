@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Volume2, VolumeX, SkipForward, Library, Info, ChevronDown, Rewind, FastForward, Ban } from "lucide-react"
+import { Volume2, VolumeX, SkipForward, Library, Info, Rewind, FastForward, Ban, MessageCircle, Plus } from "lucide-react"
 import { Tooltip } from "./Tooltip"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
@@ -35,6 +35,12 @@ interface Props {
   /** True between switching/joining a station and receiving its first queue snapshot.
    *  Lets us distinguish "haven't heard from the server yet" from "confirmed empty queue". */
   loading?: boolean
+  onOpenChat?: () => void
+  unreadCount?: number
+  onOpenAddTracks?: () => void
+  addButtonLabel?: string
+  /** Shown as a red badge on the + button — e.g. number of pending suggestions. */
+  addBadgeCount?: number
 }
 
 function useProgress(track: QueueItem | null) {
@@ -258,7 +264,7 @@ function useFrequencyScan(frequency: number | undefined) {
   return displayFreq
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, unreadCount, onOpenAddTracks, addButtonLabel, addBadgeCount }: Props) {
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
   const quiet = isMuted || isBlocked
@@ -314,32 +320,14 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
   )
 
   return (
-    <div className="bg-panel rounded-xl overflow-hidden">
-      <div className="border-b border-border">
-        {/* Station name row */}
-        <div className="px-3 pt-2.5 pb-1 relative flex items-center justify-center min-h-[32px]">
-          <button
-            onClick={onOpenStationModal}
-            className="text-white text-base font-bold hover:text-accent transition-colors flex items-center gap-1 max-w-[calc(100%-2.5rem)]"
-          >
-            <span className="truncate">{stationName}</span>
-            {(activeStationCount ?? 0) > 0 && (
-              <span className="text-muted/50 text-xs font-normal flex-shrink-0">+{activeStationCount}</span>
-            )}
-            <ChevronDown size={11} className="flex-shrink-0 text-muted/40" />
-          </button>
-          <button
-            onClick={openInfo}
-            className="absolute right-3 text-muted/40 hover:text-white/70 transition-colors w-7 h-7 flex items-center justify-center"
-            title="Station info"
-          >
-            <Info size={14} />
-          </button>
-        </div>
-
-        {/* Frequency + nav row */}
-        <div className="flex items-center px-1 pb-3 pt-1">
-          <Tooltip label="Previous station" className="flex-shrink-0">
+    <div className="space-y-4">
+      {/* Top panel — frequency / mute / chat / station name */}
+      <div className="bg-panel rounded-xl overflow-hidden">
+        {/* Frequency + nav row — top of the panel.
+         * The SevenSegDisplay is wrapped in its own bordered "screen housing"
+         * so it reads as a contained instrument rather than floating glyphs. */}
+        <div className="flex items-center px-1 pt-3 pb-2 gap-1">
+          <Tooltip label="Previous station" className="flex-shrink-0" position="bottom" align="start">
             <button
               onClick={handlePrevNav}
               disabled={!onPrevStation || navBusy}
@@ -351,12 +339,11 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             </button>
           </Tooltip>
           <div className="flex-1 flex items-center justify-center">
-            {displayFreq != null
-              ? <SevenSegDisplay value={displayFreq.toFixed(1)} />
-              : <span className="text-white/40 text-sm font-medium truncate px-2">{stationName}</span>
-            }
+            <div className="px-5 py-2 rounded-lg border border-white/10 bg-black/40 inline-flex items-center justify-center">
+              <SevenSegDisplay value={displayFreq != null ? displayFreq.toFixed(1) : ""} />
+            </div>
           </div>
-          <Tooltip label="Next station" className="flex-shrink-0" align="end">
+          <Tooltip label="Next station" className="flex-shrink-0" position="bottom" align="end">
             <button
               onClick={handleNextNav}
               disabled={!onNextStation || navBusy}
@@ -368,8 +355,65 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             </button>
           </Tooltip>
         </div>
-      </div>
 
+      {/* Mute (with SoundBars) + Chat — above the station name */}
+      {(() => {
+        const muteLabel = quiet ? (isBlocked ? "Tap to start playback" : "Unmute") : "Mute"
+        return (
+          <div className="flex items-center gap-2 px-4 pt-2 pb-2">
+            <Tooltip label={muteLabel} className="flex-1" align="start">
+              <button
+                onClick={isBlocked ? onResume : onMuteToggle}
+                aria-label={muteLabel}
+                className="btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-3 hover:text-red-400"
+              >
+                <SoundBars active={!quiet} />
+                {quiet
+                  ? <VolumeX size={20} className="shimmer-text" />
+                  : <Volume2 size={20} />}
+              </button>
+            </Tooltip>
+            {onOpenChat && (
+              <Tooltip label="Chat" className="flex-shrink-0" align="end">
+                <button
+                  onClick={onOpenChat}
+                  aria-label="Chat"
+                  className="btn-3d relative w-12 h-12 rounded-lg flex items-center justify-center text-white/80 hover:text-white"
+                >
+                  <MessageCircle size={20} />
+                  {(unreadCount ?? 0) > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-accent rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 leading-none pointer-events-none">
+                      {unreadCount! > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </Tooltip>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* Station name + info row — at the bottom of the top panel.
+       * Name centered, info pinned to the right. Name still opens the station modal. */}
+      <div className="relative px-3 pt-2 pb-3 flex items-center justify-center min-h-[28px]">
+        <button
+          onClick={onOpenStationModal}
+          className="text-white text-base font-bold hover:text-accent transition-colors max-w-[calc(100%-3rem)] truncate"
+        >
+          {stationName}
+        </button>
+        <button
+          onClick={openInfo}
+          className="absolute right-3 text-muted/40 hover:text-white/70 transition-colors w-7 h-7 flex items-center justify-center"
+          title="Station info"
+        >
+          <Info size={14} />
+        </button>
+      </div>
+      </div>{/* /top panel */}
+
+      {/* Bottom panel — album art (or loading/empty placeholder) and below */}
+      <div className="bg-panel rounded-xl overflow-hidden">
       <AnimatePresence mode="wait">
         {track ? (
           <motion.div
@@ -439,53 +483,52 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
 
             {/* Controls */}
             <div className="flex items-center gap-2 px-4 pb-5">
-              {(() => {
-                const muteLabel = quiet ? (isBlocked ? "Tap to start playback" : "Unmute") : "Mute"
-                return (
-                  <Tooltip label={muteLabel} className="flex-1" align="start">
-                    <button
-                      onClick={isBlocked ? onResume : onMuteToggle}
-                      aria-label={muteLabel}
-                      className="btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-3 hover:text-red-400"
-                    >
-                      <SoundBars active={!quiet} />
-                      {quiet
-                        ? <VolumeX size={20} className="shimmer-text" />
-                        : <Volume2 size={20} />}
-                    </button>
-                  </Tooltip>
-                )
-              })()}
-              {canSkip && (
-                <Tooltip label="Skip" className="flex-shrink-0">
+              <Tooltip label={canSkip ? "Skip" : "DJs only"} className="flex-1" align="start">
+                <button
+                  onClick={onSkip}
+                  disabled={!canSkip}
+                  aria-label="Skip"
+                  className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
+                >
+                  <SkipForward size={20} />
+                </button>
+              </Tooltip>
+              <Tooltip
+                label={!canSkip ? "DJs only" : !onSkipAndBan ? "Skip & remove from pool" : "Skip & remove from pool"}
+                className="flex-1"
+              >
+                <button
+                  onClick={onSkipAndBan}
+                  disabled={!canSkip || !onSkipAndBan}
+                  aria-label="Skip and remove from pool"
+                  className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
+                >
+                  <Ban size={20} />
+                </button>
+              </Tooltip>
+              <Tooltip label={onOpenPool ? "Open pool" : "DJs only"} className="flex-1">
+                <button
+                  onClick={onOpenPool}
+                  disabled={!onOpenPool}
+                  aria-label="Open pool"
+                  className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
+                >
+                  <Library size={20} />
+                </button>
+              </Tooltip>
+              {onOpenAddTracks && (
+                <Tooltip label={addButtonLabel ?? "Add tracks"} className="flex-1" align="end">
                   <button
-                    onClick={onSkip}
-                    aria-label="Skip"
-                    className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
+                    onClick={onOpenAddTracks}
+                    aria-label={addButtonLabel ?? "Add tracks"}
+                    className="btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white"
                   >
-                    <SkipForward size={20} />
-                  </button>
-                </Tooltip>
-              )}
-              {canSkip && onSkipAndBan && (
-                <Tooltip label="Skip and remove from pool" className="flex-shrink-0">
-                  <button
-                    onClick={onSkipAndBan}
-                    aria-label="Skip and remove from pool"
-                    className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
-                  >
-                    <Ban size={20} />
-                  </button>
-                </Tooltip>
-              )}
-              {onOpenPool && (
-                <Tooltip label="Open pool" className="flex-shrink-0" align="end">
-                  <button
-                    onClick={onOpenPool}
-                    aria-label="Open pool"
-                    className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
-                  >
-                    <Library size={20} />
+                    <Plus size={24} strokeWidth={3} />
+                    {(addBadgeCount ?? 0) > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-accent rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 leading-none pointer-events-none">
+                        {addBadgeCount! > 9 ? "9+" : addBadgeCount}
+                      </span>
+                    )}
                   </button>
                 </Tooltip>
               )}
@@ -525,6 +568,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           </motion.div>
         )}
       </AnimatePresence>
+      </div>{/* /bottom panel */}
 
       <AnimatePresence>
         {artworkOpen && track?.artworkUrl && (

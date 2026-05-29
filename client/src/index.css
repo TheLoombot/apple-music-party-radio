@@ -131,14 +131,23 @@ body {
   border-color: rgb(255 255 255 / 0.25);  /* match the hover-visible border */
 }
 
-/* Disabled — no glow at all */
+/* Disabled — depressed AND flat: sits in the down position with no underside
+ * shadow and no content glow, like a switch that's unplugged. Icon/text is
+ * dimmed via color (not opacity) so the chassis stays solid on the panel. */
 .btn-3d:disabled {
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.5);
-  opacity: 0.5;
+  box-shadow: none;
+  transform: translateY(3px);
+  background-color: rgb(0 0 0 / 0.3);
+  border-color: rgb(255 255 255 / 0.05);
+  color: rgb(255 255 255 / 0.2);
   text-shadow: none;
 }
 .btn-3d:disabled svg { filter: none; }
-.btn-3d:disabled.btn-3d-pressed { box-shadow: none; }
+/* Suppress per-component hover colorings (e.g. hover:text-red-400) on disabled */
+.btn-3d:disabled:hover {
+  color: rgb(255 255 255 / 0.2);
+  border-color: rgb(255 255 255 / 0.05);
+}
 
 /* Red accent variant — deeper darker-red underside, same content backlight */
 .btn-3d-accent {

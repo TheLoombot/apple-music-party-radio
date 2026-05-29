@@ -696,16 +696,19 @@ export default function App() {
           onPrevStation={liveStations.length > 1 ? handlePrevStation : undefined}
           onNextStation={liveStations.length > 1 ? handleNextStation : undefined}
           loading={stationLoading}
+          onOpenChat={() => {
+            setLastReadSentAt(chatMessages[chatMessages.length - 1]?.sentAt ?? Date.now())
+            setChatModalOpen(true)
+          }}
+          unreadCount={unreadCount}
+          onOpenAddTracks={() => setDiscoveryModalOpen(true)}
+          addButtonLabel={isPrivileged
+            ? suggestions.length > 0
+              ? `Add tracks (${suggestions.length} ${suggestions.length === 1 ? "request" : "requests"})`
+              : "Add tracks"
+            : "Request a track"}
+          addBadgeCount={isPrivileged ? suggestions.length : 0}
         />
-
-        <button
-          onClick={() => setDiscoveryModalOpen(true)}
-          className="btn-3d w-full py-4 font-bold text-base rounded-lg tracking-wide text-white mb-1"
-        >
-          {isPrivileged
-            ? suggestions.length > 0 ? `+ ADD (${suggestions.length} ${suggestions.length === 1 ? "request" : "requests"})` : "+ ADD"
-            : "+ REQUEST"}
-        </button>
 
         {(() => {
           return (
@@ -717,11 +720,6 @@ export default function App() {
               isStationOwner={isOwnStation}
               onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
               onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
-              onOpenChat={() => {
-                setLastReadSentAt(chatMessages[chatMessages.length - 1]?.sentAt ?? Date.now())
-                setChatModalOpen(true)
-              }}
-              unreadCount={unreadCount}
             />
           )
         })()}

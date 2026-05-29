@@ -1,4 +1,3 @@
-import { MessageCircle } from "lucide-react"
 import type { Listener } from "../types"
 import { DJFace } from "./FaceGenerator"
 
@@ -10,12 +9,10 @@ interface Props {
   isStationOwner: boolean
   onGrantDJ?: (userId: string) => void
   onRevokeDJ?: (userId: string) => void
-  onOpenChat?: () => void
-  unreadCount?: number
 }
 
-export function ListenersPanel({ listeners, ownerUid, currentUserId, djUserIds, isStationOwner, onGrantDJ, onRevokeDJ, onOpenChat, unreadCount }: Props) {
-  if (listeners.length === 0 && !onOpenChat) return null
+export function ListenersPanel({ listeners, ownerUid, currentUserId, djUserIds, isStationOwner, onGrantDJ, onRevokeDJ }: Props) {
+  if (listeners.length === 0) return null
 
   // Owner first, then alphabetical
   const sorted = [...listeners].sort((a, b) => {
@@ -26,24 +23,8 @@ export function ListenersPanel({ listeners, ownerUid, currentUserId, djUserIds, 
 
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider flex items-center justify-between">
-        <span>Listening now</span>
-        {onOpenChat && (
-          <div className="relative">
-            <button
-              onClick={onOpenChat}
-              className="text-muted hover:text-white transition-colors w-8 h-8 flex items-center justify-center"
-              title="Chat"
-            >
-              <MessageCircle size={16} />
-            </button>
-            {(unreadCount ?? 0) > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-accent rounded-full text-[9px] font-bold text-white flex items-center justify-center px-0.5 leading-none pointer-events-none">
-                {unreadCount! > 9 ? "9+" : unreadCount}
-              </span>
-            )}
-          </div>
-        )}
+      <div className="px-4 py-3 border-b border-border text-xs text-muted font-medium uppercase tracking-wider">
+        Listening now
       </div>
       {sorted.length > 0 && <ul>
         {sorted.map(l => {
