@@ -9,6 +9,11 @@ import { DJFace, RobotFace } from "./FaceGenerator"
 import type { QueueItem, AppUser } from "../types"
 import type { MusicCatalog } from "../services/catalog"
 
+// Feature flag — flip back to `true` to surface the "spun by <user>" attribution
+// line under the track info. The data (track.addedBy / addedByName) still
+// arrives from the server, this only controls the UI rendering.
+const SHOW_SPUN_BY = false
+
 interface Props {
   track: QueueItem | null
   stationOwner: string
@@ -467,18 +472,20 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               {onAlbumClick
                 ? <button onClick={onAlbumClick} className="text-muted/50 text-sm mt-0.5 hover:text-red-400 transition-colors text-left">{track.albumName}</button>
                 : <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>}
-              <p className="text-muted text-sm mt-2 flex items-center gap-1.5">
-                spun by{" "}
-                {track.addedBy === "robot"
-                  ? <RobotFace size={20} />
-                  : <DJFace uid={track.addedBy} size={20} />
-                }
-                <span className="text-white/60">
-                  {track.addedBy === "robot" ? "robot"
-                    : track.addedBy === currentUser.uid ? currentUser.displayName
-                    : track.addedByName ?? track.addedBy}
-                </span>
-              </p>
+              {SHOW_SPUN_BY && (
+                <p className="text-muted text-sm mt-2 flex items-center gap-1.5">
+                  spun by{" "}
+                  {track.addedBy === "robot"
+                    ? <RobotFace size={20} />
+                    : <DJFace uid={track.addedBy} size={20} />
+                  }
+                  <span className="text-white/60">
+                    {track.addedBy === "robot" ? "robot"
+                      : track.addedBy === currentUser.uid ? currentUser.displayName
+                      : track.addedByName ?? track.addedBy}
+                  </span>
+                </p>
+              )}
             </motion.div>
 
             {/* Controls */}

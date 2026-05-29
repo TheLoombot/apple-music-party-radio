@@ -24,6 +24,10 @@ type AppState = "loading" | "setup" | "naming" | "auth" | "ready"
 
 const DEV_TOKEN_SET = !!import.meta.env.VITE_APPLE_DEVELOPER_TOKEN
 
+// Feature flag — flip back to `true` to surface the robot queue panel again.
+// Server still fills the queue from the pool; this only controls the UI panel.
+const SHOW_ROBOT_QUEUE = false
+
 export default function App() {
   const [appState, setAppState] = useState<AppState>("loading")
   const [setupError, setSetupError] = useState<string>()
@@ -710,20 +714,6 @@ export default function App() {
           addBadgeCount={isPrivileged ? suggestions.length : 0}
         />
 
-        {(() => {
-          return (
-            <ListenersPanel
-              listeners={currentStation?.listeners ?? []}
-              ownerUid={currentStation?.ownerUid}
-              currentUserId={user.uid}
-              djUserIds={djUserIds}
-              isStationOwner={isOwnStation}
-              onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
-              onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
-            />
-          )
-        })()}
-
         <UpNext
           queue={userQueue}
           currentUser={user}
@@ -733,11 +723,23 @@ export default function App() {
           onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
         />
 
-        <RobotQueue
-          queue={robotQueue}
-          onRemove={isPrivileged ? handleRemoveTrack : undefined}
-          onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
+        <ListenersPanel
+          listeners={currentStation?.listeners ?? []}
+          ownerUid={currentStation?.ownerUid}
+          currentUserId={user.uid}
+          djUserIds={djUserIds}
+          isStationOwner={isOwnStation}
+          onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
+          onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
         />
+
+        {SHOW_ROBOT_QUEUE && (
+          <RobotQueue
+            queue={robotQueue}
+            onRemove={isPrivileged ? handleRemoveTrack : undefined}
+            onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
+          />
+        )}
 
       </div>
       )}

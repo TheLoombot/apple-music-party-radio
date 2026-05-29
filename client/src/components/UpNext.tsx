@@ -26,6 +26,9 @@ interface Props {
 }
 
 export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, onAlbumClick }: Props) {
+  // Nothing queued — don't render the panel at all.
+  if (queue.length === 0) return null
+
   const canRemove = !!onReorder
   const canReorder = !!onReorder && queue.length > 1
   const totalMs = queue.reduce((sum, item) => sum + item.durationMs, 0)
