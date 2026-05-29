@@ -67,32 +67,95 @@ body {
 .loading-dot-3 { opacity: 0; animation: loading-dot-3 1s steps(1, end) infinite; }
 
 /* ─── 3D button vibe ────────────────────────────────────────────────────────
- *  Base ".btn-3d" gives a depressable button feel: thin border, hard 3px
- *  bottom shadow for elevation, snaps down (no shadow + translateY(3px))
- *  on :active. ".btn-3d-pressed" locks it in the down position — used for
- *  the active tab in a tab bar so it looks physically depressed.
- *  ".btn-3d-accent" is the red primary-action variant. */
+ *  Base ".btn-3d" is a depressable hardware-button shell: thin border, hard
+ *  bottom shadow for elevation, snaps down on :active. The amber backlight
+ *  (matching SevenSegDisplay's #ff9800) is applied to the CONTENT — as if a
+ *  bulb behind the panel were shining through the icon/text — via
+ *  text-shadow (for text) and filter: drop-shadow() (for SVG icons).
+ *  ".btn-3d-pressed" locks the depressed state (active tabs). ".btn-3d-quiet"
+ *  opts content out of the resting glow (unselected tabs stay dark; they
+ *  re-light on hover or when pressed). ".btn-3d-accent" is the red CTA
+ *  variant — deeper red underside + same content backlight. */
 .btn-3d {
   border: 1px solid rgb(255 255 255 / 0.1);
   background-color: #1a1a1a;  /* matches bg-surface */
   box-shadow: 0 3px 0 rgba(0, 0, 0, 0.5);
-  transition: box-shadow 100ms, transform 100ms, border-color 150ms,
-              background-color 150ms, color 150ms;
+  text-shadow:
+    0 0 6px rgba(255, 152, 0, 0.85),
+    0 0 14px rgba(255, 152, 0, 0.55);
+  transition: box-shadow 150ms, transform 100ms, border-color 150ms,
+              background-color 150ms, color 150ms,
+              text-shadow 150ms, filter 150ms;
 }
-.btn-3d:not(:disabled):hover { border-color: rgb(255 255 255 / 0.2); }
+.btn-3d svg {
+  filter:
+    drop-shadow(0 0 4px rgba(255, 152, 0, 0.85))
+    drop-shadow(0 0 10px rgba(255, 152, 0, 0.5));
+  transition: filter 150ms;
+}
+
+.btn-3d:not(:disabled):hover {
+  border-color: rgb(255 255 255 / 0.25);
+  text-shadow:
+    0 0 6px rgba(255, 152, 0, 0.95),
+    0 0 16px rgba(255, 152, 0, 0.7);
+}
+.btn-3d:not(:disabled):hover svg {
+  filter:
+    drop-shadow(0 0 5px rgba(255, 152, 0, 0.95))
+    drop-shadow(0 0 12px rgba(255, 152, 0, 0.65));
+}
+
+/* Quiet: content is dimly backlit at rest — like an unselected indicator on
+ * a hardware panel. Hover/pressed override below and bring it back to full. */
+.btn-3d-quiet { text-shadow: none; }
+.btn-3d-quiet svg { filter: none; }
+
+/* Pressed / :active — depressed, no underside, content stays/becomes lit */
 .btn-3d:not(:disabled):active,
 .btn-3d-pressed {
-  box-shadow: none;
   transform: translateY(3px);
+  box-shadow: none;
+  text-shadow:
+    0 0 6px rgba(255, 152, 0, 0.95),
+    0 0 16px rgba(255, 152, 0, 0.65);
+}
+.btn-3d:not(:disabled):active svg,
+.btn-3d-pressed svg {
+  filter:
+    drop-shadow(0 0 5px rgba(255, 152, 0, 0.95))
+    drop-shadow(0 0 12px rgba(255, 152, 0, 0.6));
 }
 .btn-3d-pressed {
   background-color: rgb(0 0 0 / 0.3);
-  border-color: rgb(255 255 255 / 0.05);
+  border-color: rgb(255 255 255 / 0.25);  /* match the hover-visible border */
 }
 
+/* Disabled — no glow at all */
+.btn-3d:disabled {
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.5);
+  opacity: 0.5;
+  text-shadow: none;
+}
+.btn-3d:disabled svg { filter: none; }
+.btn-3d:disabled.btn-3d-pressed { box-shadow: none; }
+
+/* Red accent variant — deeper darker-red underside, same content backlight */
 .btn-3d-accent {
   background-color: #fc3c44;  /* matches bg-accent */
   color: white;
+  border-color: rgb(255 255 255 / 0.15);
+  box-shadow: 0 4px 0 #6b1419;
 }
-.btn-3d-accent:not(:disabled):hover { background-color: #e0353c; }
-.btn-3d-accent:disabled { opacity: 0.4; }
+.btn-3d-accent:not(:disabled):hover {
+  background-color: #e0353c;
+  border-color: rgb(255 255 255 / 0.3);
+}
+.btn-3d-accent:not(:disabled):active {
+  transform: translateY(4px);
+  box-shadow: none;
+}
+.btn-3d-accent:disabled {
+  opacity: 0.4;
+  box-shadow: 0 4px 0 #6b1419;
+}

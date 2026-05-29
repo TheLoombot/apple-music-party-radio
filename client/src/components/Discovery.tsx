@@ -213,7 +213,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
               key={t}
               onClick={() => handleTabChange(t)}
               className={`btn-3d relative flex-1 px-1 py-2 text-xs font-medium rounded-md flex items-center justify-center ${
-                tab === t ? "btn-3d-pressed text-white" : "text-muted hover:text-white"
+                tab === t ? "btn-3d-pressed text-white" : "btn-3d-quiet text-muted hover:text-white"
               }`}
             >
               {t === "search"

@@ -1,4 +1,4 @@
-import { Trash2, ArrowUp } from "lucide-react"
+import { Trash2, ArrowUp, Plus, Check } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { Tooltip } from "./Tooltip"
@@ -57,9 +57,9 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
             <button
               onClick={onRemove}
               aria-label="Remove from pool"
-              className="btn-3d w-11 h-11 rounded-lg flex items-center justify-center text-muted hover:text-red-400"
+              className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-muted hover:text-red-400"
             >
-              <Trash2 size={16} />
+              <Trash2 size={18} />
             </button>
           </Tooltip>
         )}
@@ -75,7 +75,7 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
                 onClick={onAdd}
                 disabled={unavailable}
                 aria-label={addLabel}
-                className={`btn-3d w-11 h-11 rounded-lg flex items-center justify-center text-xl font-bold ${
+                className={`btn-3d w-14 h-12 rounded-lg flex items-center justify-center ${
                   added
                     ? "btn-3d-pressed text-green-400 hover:text-red-400"
                     : unavailable
@@ -83,7 +83,11 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
                       : "btn-3d-accent"
                 }`}
               >
-                {added ? "✓" : requestMode ? <ArrowUp size={18} strokeWidth={3} /> : "+"}
+                {added
+                  ? <Check size={24} strokeWidth={3} />
+                  : requestMode
+                    ? <ArrowUp size={24} strokeWidth={3} />
+                    : <Plus size={24} strokeWidth={3} />}
               </button>
             </Tooltip>
           )
