@@ -5,6 +5,7 @@ import { Tooltip } from "./Tooltip"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { ArtworkModal } from "./ArtworkModal"
+import { ArtworkFlip } from "./ArtworkFlip"
 import { DJFace, RobotFace } from "./FaceGenerator"
 import type { QueueItem, AppUser } from "../types"
 import type { MusicCatalog } from "../services/catalog"
@@ -13,6 +14,21 @@ import type { MusicCatalog } from "../services/catalog"
 // line under the track info. The data (track.addedBy / addedByName) still
 // arrives from the server, this only controls the UI rendering.
 const SHOW_SPUN_BY = false
+
+/** Mobile = below Tailwind's sm breakpoint (640px). Used to choose between
+ *  the inline album-art flip (mobile) and the enlarging ArtworkModal (desktop). */
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)")
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener("change", handler)
+    return () => mq.removeEventListener("change", handler)
+  }, [])
+  return isMobile
+}
 
 interface Props {
   track: QueueItem | null
@@ -270,6 +286,7 @@ function useFrequencyScan(frequency: number | undefined) {
 }
 
 export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, unreadCount, onOpenAddTracks, addButtonLabel, addBadgeCount }: Props) {
+  const isMobile = useIsMobile()
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
   const quiet = isMuted || isBlocked
@@ -437,9 +454,17 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               className="w-full aspect-square bg-surface"
             >
               {track.artworkUrl ? (
-                <button onClick={() => setArtworkOpen(true)} className="block w-full h-full cursor-zoom-in">
-                  <img src={artworkUrl(track.artworkUrl, 400)} alt={track.albumName} className="w-full h-full object-cover" />
-                </button>
+                /* Mobile: tap flips the art in place to show editorial notes.
+                 * Desktop: tap opens the enlarging modal (which itself can flip). */
+                <ArtworkFlip
+                  src={artworkUrl(track.artworkUrl, 750)}
+                  alt={track.albumName}
+                  catalog={catalog}
+                  songId={track.platformIds?.apple}
+                  albumName={track.albumName}
+                  onClick={isMobile ? undefined : () => setArtworkOpen(true)}
+                  outerStyle={{ width: "100%", height: "100%" }}
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-muted text-6xl">♪</div>
               )}
@@ -495,7 +520,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   onClick={onSkip}
                   disabled={!canSkip}
                   aria-label="Skip"
-                  className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
+                  className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white"
                 >
                   <SkipForward size={20} />
                 </button>
@@ -515,7 +540,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   onClick={onOpenPool}
                   disabled={!onOpenPool}
                   aria-label="Open pool"
-                  className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
+                  className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white"
                 >
                   <Library size={20} />
                 </button>

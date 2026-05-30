@@ -416,7 +416,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                     {queue.length === 0 ? "Add tracks to the queue to get suggestions." : "None found."}
                   </p>
                 )}
-                <div className="px-4 py-3 border-t border-border/50">
+                <div className="px-4 py-3">
                   <button
                     onClick={refreshRelated}
                     disabled={relatedLoading}
@@ -452,7 +452,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                     <span className="text-muted/60"> alongside these tracks</span>
                   </p>
                 )}
-                <div className="px-4 py-3 border-t border-border/50">
+                <div className="px-4 py-3">
                   <button
                     onClick={refreshRelated}
                     className="btn-3d w-full py-4 font-bold text-base rounded-lg tracking-wide text-white mb-1"
