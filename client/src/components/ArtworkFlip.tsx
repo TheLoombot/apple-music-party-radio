@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import type { CSSProperties } from "react"
 import type { MusicCatalog } from "../services/catalog"
 
+const DJ_NOTE_MAX = 2500
+
 interface Props {
   src: string
   alt: string
@@ -21,6 +23,10 @@ interface Props {
   cardClassName?: string
   /** Outer perspective div style — set width/height here when not filling parent. */
   outerStyle?: CSSProperties
+  /** Map of itemId → note text received from the server. */
+  djNotes?: Record<string, string>
+  /** Called when a privileged user saves a note. Presence gates editability. */
+  onSaveDjNote?: (itemId: string, note: string) => void
 }
 
 /** Flippable album-art card with editorial notes on the back. Front = artwork,
@@ -29,7 +35,7 @@ interface Props {
  *  NowPlaying on mobile and inside the enlarged ArtworkModal on desktop. */
 export function ArtworkFlip({
   src, alt, catalog, albumId, playlistId, songId, albumName, releaseYear,
-  onClick, cardClassName, outerStyle,
+  onClick, cardClassName, outerStyle, djNotes, onSaveDjNote,
 }: Props) {
   const [flipped, setFlipped] = useState(false)
   const [bgColor, setBgColor] = useState("#111111")
@@ -38,6 +44,9 @@ export function ArtworkFlip({
   const [notes, setNotes] = useState<string | null | undefined>(undefined)
   const [fetchedAlbumName, setFetchedAlbumName] = useState<string | undefined>(undefined)
   const [fetchedReleaseYear, setFetchedReleaseYear] = useState<number | undefined>(undefined)
+  const [fetchedAlbumId, setFetchedAlbumId] = useState<string | undefined>(undefined)
+
+  const [draftNote, setDraftNote] = useState("")
 
   // Reset flip when the underlying artwork changes (e.g. new track plays)
   useEffect(() => { setFlipped(false) }, [src])
@@ -57,6 +66,7 @@ export function ArtworkFlip({
         if (active) {
           setFetchedAlbumName(album.name)
           setFetchedReleaseYear(album.releaseYear)
+          setFetchedAlbumId(album.id)
         }
         info = await catalog!.getAlbumEditorial(album.id)
       } else {
@@ -71,6 +81,12 @@ export function ArtworkFlip({
     return () => { active = false }
   }, [albumId, playlistId, songId, catalog])
 
+  const noteKey = fetchedAlbumId ?? albumId ?? playlistId
+  const savedNote = (noteKey && djNotes?.[noteKey]) ?? ""
+
+  // Sync draftNote from server value; don't override if user is actively editing
+  useEffect(() => { setDraftNote(savedNote) }, [savedNote])
+
   const canFlip = !onClick && !!catalog && !!(albumId || playlistId || songId)
   const displayAlbumName = fetchedAlbumName ?? albumName
   const displayReleaseYear = fetchedReleaseYear ?? releaseYear
@@ -80,6 +96,8 @@ export function ArtworkFlip({
     if (onClick) onClick()
     else if (canFlip) setFlipped(f => !f)
   }
+
+  const showDJSection = !!noteKey && (!!onSaveDjNote || !!savedNote)
 
   return (
     <div style={{ perspective: "1200px", ...outerStyle }}>
@@ -119,6 +137,45 @@ export function ArtworkFlip({
             )}
             {notes && (
               <p className="text-2xl font-semibold leading-snug whitespace-pre-line">{notes}</p>
+            )}
+
+            {showDJSection && (
+              <div
+                className="mt-5 pt-4 border-t border-white/10"
+                onClick={e => e.stopPropagation()}
+              >
+                <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: textColor, opacity: 0.5 }}>
+                  DJ Notes
+                </p>
+                {onSaveDjNote ? (
+                  <>
+                    <textarea
+                      value={draftNote}
+                      onChange={e => setDraftNote(e.target.value.slice(0, DJ_NOTE_MAX))}
+                      placeholder="Add a note for this album…"
+                      rows={4}
+                      className="w-full bg-black/20 rounded-lg px-3 py-2 text-sm resize-none outline-none focus:ring-1 focus:ring-white/30 placeholder-white/25"
+                      style={{ color: textColor }}
+                    />
+                    <div className="flex justify-between items-center mt-1.5">
+                      <span className="text-xs opacity-30" style={{ color: textColor }}>
+                        {draftNote.length}/{DJ_NOTE_MAX}
+                      </span>
+                      <button
+                        onClick={() => onSaveDjNote(noteKey, draftNote.trim())}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors font-medium"
+                        style={{ color: textColor }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: textColor, opacity: 0.8 }}>
+                    {savedNote}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>

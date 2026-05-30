@@ -60,6 +60,7 @@ export default function App() {
   const [queueFullAlert, setQueueFullAlert] = useState<number | null>(null)
   const [suggestions, setSuggestions] = useState<SuggestedTrack[]>([])
   const [suggestionsFullAlert, setSuggestionsFullAlert] = useState<number | null>(null)
+  const [djNotes, setDjNotes] = useState<Record<string, string>>({})
   const [albumModal, setAlbumModal] = useState<{ playlist: AlbumResult; tracks: Track[] | null } | null>(null)
   // True between entering a station and receiving its first queue snapshot from the server.
   // Lets NowPlaying distinguish "tuning in" from "confirmed empty queue".
@@ -178,8 +179,10 @@ export default function App() {
     stationSocket.onQueueFull = (limit) => setQueueFullAlert(limit)
     stationSocket.onSuggestionsUpdate = setSuggestions
     stationSocket.onSuggestionsFull = (limit) => setSuggestionsFullAlert(limit)
+    stationSocket.onDJNotesUpdate = setDjNotes
     setDJUserIds([])
     setSuggestions([])
+    setDjNotes({})
     playbackLoop.current.start(currentStationId)
     stationSocket.join(user.uid, user.displayName)
     return () => playbackLoop.current.stop()
@@ -376,6 +379,10 @@ export default function App() {
     handleSelectStation(slug)
   }, [user, newSlug, slugStatus])
 
+  const handleSaveDjNote = useCallback((itemId: string, note: string) => {
+    stationSocket.setDjNote(itemId, note)
+  }, [])
+
   const handleAlbumClick = useCallback(async (songId: string) => {
     const op = ++albumModalOpRef.current
     const placeholder: AlbumResult = { kind: "album", id: "_loading", name: "", subtitle: "", artworkUrl: "" }
@@ -548,6 +555,8 @@ export default function App() {
             onAddTrack={handleAddTrack}
             onClose={() => { albumModalOpRef.current++; setAlbumModal(null) }}
             catalog={catalog.current}
+            djNotes={djNotes}
+            onSaveDjNote={isPrivileged ? handleSaveDjNote : undefined}
           />
         )}
       </AnimatePresence>
@@ -712,6 +721,8 @@ export default function App() {
               : "Add tracks"
             : "Request a track"}
           addBadgeCount={isPrivileged ? suggestions.length : 0}
+          djNotes={djNotes}
+          onSaveDjNote={isPrivileged ? handleSaveDjNote : undefined}
         />
 
         <UpNext

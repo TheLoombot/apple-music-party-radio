@@ -19,9 +19,11 @@ interface Props {
   onAddTrack: (track: Track) => void
   onClose: () => void
   catalog?: MusicCatalog
+  djNotes?: Record<string, string>
+  onSaveDjNote?: (itemId: string, note: string) => void
 }
 
-export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClose, catalog }: Props) {
+export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClose, catalog, djNotes, onSaveDjNote }: Props) {
   const [navStack, setNavStack] = useState<NavEntry[]>([])
   const [navCurrent, setNavCurrent] = useState<NavEntry | null>(null)
   const [artworkOpen, setArtworkOpen] = useState(false)
@@ -193,6 +195,8 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
             playlistId={displayPlaylist.kind === "playlist" ? displayPlaylist.id : undefined}
             albumName={displayPlaylist.name}
             releaseYear={displayPlaylist.kind === "album" ? displayPlaylist.releaseYear : undefined}
+            djNotes={djNotes}
+            onSaveDjNote={onSaveDjNote}
           />
         )}
       </AnimatePresence>

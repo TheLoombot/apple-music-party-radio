@@ -62,6 +62,8 @@ interface Props {
   addButtonLabel?: string
   /** Shown as a red badge on the + button — e.g. number of pending suggestions. */
   addBadgeCount?: number
+  djNotes?: Record<string, string>
+  onSaveDjNote?: (itemId: string, note: string) => void
 }
 
 function useProgress(track: QueueItem | null) {
@@ -285,7 +287,7 @@ function useFrequencyScan(frequency: number | undefined) {
   return displayFreq
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, unreadCount, onOpenAddTracks, addButtonLabel, addBadgeCount }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, unreadCount, onOpenAddTracks, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote }: Props) {
   const isMobile = useIsMobile()
   const { progress, elapsed } = useProgress(track)
   const isPlaying = !isMuted && !isBlocked
@@ -464,6 +466,8 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   albumName={track.albumName}
                   onClick={isMobile ? undefined : () => setArtworkOpen(true)}
                   outerStyle={{ width: "100%", height: "100%" }}
+                  djNotes={djNotes}
+                  onSaveDjNote={onSaveDjNote}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-muted text-6xl">♪</div>
@@ -608,6 +612,8 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             catalog={catalog}
             songId={track.platformIds?.apple}
             albumName={track.albumName}
+            djNotes={djNotes}
+            onSaveDjNote={onSaveDjNote}
           />
         )}
       </AnimatePresence>

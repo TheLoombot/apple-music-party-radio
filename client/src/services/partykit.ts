@@ -43,6 +43,7 @@ export class StationSocket {
   onQueueFull?: (limit: number) => void
   onSuggestionsUpdate?: (suggestions: SuggestedTrack[]) => void
   onSuggestionsFull?: (limit: number) => void
+  onDJNotesUpdate?: (notes: Record<string, string>) => void
 
   connect(stationId: string) {
     this.disconnect()
@@ -75,6 +76,7 @@ export class StationSocket {
         this.onChatUpdate?.([...this.chatMessages])
         if (msg.djs) this.onDJUpdate?.(msg.djs)
         if (msg.suggestions) this.onSuggestionsUpdate?.(msg.suggestions)
+        if (msg.djNotes) this.onDJNotesUpdate?.(msg.djNotes)
       } else if (msg.type === "queue_update") {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
       } else if (msg.type === "pool_update") {
@@ -90,6 +92,8 @@ export class StationSocket {
         this.onSuggestionsUpdate?.(msg.suggestions ?? [])
       } else if (msg.type === "suggestions_full") {
         this.onSuggestionsFull?.(msg.limit)
+      } else if (msg.type === "dj_notes_update") {
+        this.onDJNotesUpdate?.(msg.djNotes ?? {})
       }
     }
 
@@ -173,6 +177,10 @@ export class StationSocket {
 
   removeSuggestion(key: string) {
     this.send({ type: "remove_suggestion", key })
+  }
+
+  setDjNote(itemId: string, note: string) {
+    this.send({ type: "set_dj_note", itemId, note })
   }
 
   private send(data: object) {

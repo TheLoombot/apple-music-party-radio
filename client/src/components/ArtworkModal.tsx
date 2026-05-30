@@ -16,9 +16,11 @@ interface Props {
   // Shown on the back as fallback when there are no editorial notes
   albumName?: string
   releaseYear?: number
+  djNotes?: Record<string, string>
+  onSaveDjNote?: (itemId: string, note: string) => void
 }
 
-export function ArtworkModal({ src, alt, onClose, catalog, albumId, playlistId, songId, albumName, releaseYear }: Props) {
+export function ArtworkModal({ src, alt, onClose, catalog, albumId, playlistId, songId, albumName, releaseYear, djNotes, onSaveDjNote }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     document.addEventListener("keydown", handler)
@@ -53,6 +55,8 @@ export function ArtworkModal({ src, alt, onClose, catalog, albumId, playlistId, 
           releaseYear={releaseYear}
           outerStyle={{ width: "min(90vw, 90vh)", height: "min(90vw, 90vh)" }}
           cardClassName="rounded-xl shadow-2xl"
+          djNotes={djNotes}
+          onSaveDjNote={onSaveDjNote}
         />
 
         {/* Close button — top-right */}

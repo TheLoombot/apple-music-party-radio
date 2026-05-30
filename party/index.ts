@@ -205,7 +205,8 @@ export default class RadioParty implements Party.Server {
         const chat = await this.storage<ChatMessage[]>("chat", [])
         const djs = await this.getDJs()
         const suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
-        conn.send(json({ type: "state", queue, pool, chat, djs, suggestions }))
+        const djNotes = await this.storage<Record<string, string>>("dj_notes", {})
+        conn.send(json({ type: "state", queue, pool, chat, djs, suggestions, djNotes }))
         // Sync live status to index on every connect so stale flags get corrected
         void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl)
         // Re-arm expiration alarm in case the DO restarted and lost it
@@ -567,6 +568,7 @@ export default class RadioParty implements Party.Server {
       case "vote_suggestion":  return this.handleVoteSuggestion(msg, sender)
       case "enqueue_suggestion": if (!this.isPrivilegedConn(sender)) return; return this.handleEnqueueSuggestion(msg, sender)
       case "remove_suggestion":  if (!this.isPrivilegedConn(sender)) return; return this.handleRemoveSuggestion(msg)
+      case "set_dj_note":      if (!this.isPrivilegedConn(sender)) return; return this.handleSetDjNote(msg)
       case "chat_message":     return this.handleChatMessage(msg, sender)
     }
   }
@@ -775,6 +777,20 @@ export default class RadioParty implements Party.Server {
   private async clearPool() {
     await this.room.storage.put("pool", [])
     this.room.broadcast(json({ type: "pool_update", pool: [] }))
+  }
+
+  private async handleSetDjNote(msg: any) {
+    const itemId = String(msg.itemId ?? "").trim()
+    if (!itemId) return
+    const note = String(msg.note ?? "").trim().slice(0, 2500)
+    const notes = await this.storage<Record<string, string>>("dj_notes", {})
+    if (note) {
+      notes[itemId] = note
+    } else {
+      delete notes[itemId]
+    }
+    await this.room.storage.put("dj_notes", notes)
+    this.room.broadcast(json({ type: "dj_notes_update", djNotes: notes }))
   }
 
   private async handleChatMessage(msg: any, sender: Party.Connection) {
