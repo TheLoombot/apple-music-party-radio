@@ -126,14 +126,16 @@ export function ArtworkFlip({
 
         {/* Back: editorial notes / description */}
         <div
-          className={`absolute inset-0 overflow-y-auto ${cardClassName ?? ""}`}
+          className={`absolute inset-0 ${cardClassName ?? ""}`}
           style={{
             backfaceVisibility: "hidden",
             transform: "rotateY(180deg)",
             backgroundColor: bgColor,
+            pointerEvents: flipped ? "auto" : "none",
           }}
           onClick={e => { e.stopPropagation(); setFlipped(false) }}
         >
+          <div className="absolute inset-0 overflow-y-auto">
           <div className="p-7" style={{ color: textColor }}>
             {header && (
               <p className="text-base font-bold uppercase tracking-widest opacity-70 mb-4">{header}</p>
@@ -200,6 +202,7 @@ export function ArtworkFlip({
                 )}
               </div>
             )}
+          </div>
           </div>
         </div>
       </div>
