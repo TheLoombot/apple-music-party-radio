@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react"
-import { AnimatePresence } from "framer-motion"
+import { AnimatePresence, motion } from "framer-motion"
 import { SetupScreen } from "./components/SetupScreen"
 import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
@@ -65,6 +65,7 @@ export default function App() {
   // True between entering a station and receiving its first queue snapshot from the server.
   // Lets NowPlaying distinguish "tuning in" from "confirmed empty queue".
   const [stationLoading, setStationLoading] = useState<boolean>(() => !!window.location.pathname.slice(import.meta.env.BASE_URL.length))
+  const [easterEggOpen, setEasterEggOpen] = useState(false)
   const renameRef = useRef<HTMLInputElement>(null)
   const albumModalOpRef = useRef(0)
   const playbackLoop = useRef(new PlaybackLoop(new AppleMusicPlayer()))
@@ -758,7 +759,11 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-border/50 max-w-[480px] w-full mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs text-muted/40">
-          <span>🎵</span>
+          <button
+            onClick={() => setEasterEggOpen(true)}
+            className="hover:scale-125 transition-transform"
+            aria-label="🎵"
+          >🎵</button>
           <button
             onClick={() => {
               window.history.pushState(null, "", import.meta.env.BASE_URL || "/")
@@ -789,6 +794,31 @@ export default function App() {
           )}
         </div>
       </footer>
+
+      {/* Easter egg — tap the 🎵 in the footer */}
+      <AnimatePresence>
+        {easterEggOpen && (
+          <motion.div
+            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/80 cursor-pointer"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setEasterEggOpen(false)}
+          >
+            <motion.img
+              src={`${import.meta.env.BASE_URL}hatfm-easter-egg.png`}
+              alt=""
+              className="max-w-[90vw] max-h-[90vh] object-contain rounded-xl shadow-2xl"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={e => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
