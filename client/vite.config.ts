@@ -8,10 +8,12 @@ const commitHash = (() => {
   try { return execSync('git rev-parse --short HEAD').toString().trim() } catch { return 'dev' }
 })()
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(() => ({
   plugins: [react()],
   envDir: path.resolve(__dirname, '..'),  // read .env from project root
-  base: command === 'build' ? '/apple-music-party-radio/' : '/',
+  // Served from the apex `hat.fm` custom domain — base is `/` for both dev and build.
+  // (Before the custom domain was set up this was '/apple-music-party-radio/' for builds.)
+  base: '/',
   server: { port: 5173, host: true, allowedHosts: true },
   define: { __COMMIT__: JSON.stringify(commitHash) }
 }))
