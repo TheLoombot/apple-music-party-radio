@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { CSSProperties } from "react"
 import type { MusicCatalog } from "../services/catalog"
 
@@ -47,6 +47,9 @@ export function ArtworkFlip({
   const [fetchedAlbumId, setFetchedAlbumId] = useState<string | undefined>(undefined)
 
   const [draftNote, setDraftNote] = useState("")
+  const [noteFocused, setNoteFocused] = useState(false)
+  const [editingNote, setEditingNote] = useState(false)
+  const noteRef = useRef<HTMLTextAreaElement>(null)
 
   // Reset flip when the underlying artwork changes (e.g. new track plays)
   useEffect(() => { setFlipped(false) }, [src])
@@ -140,40 +143,60 @@ export function ArtworkFlip({
             )}
 
             {showDJSection && (
-              <div
-                className="mt-5 pt-4 border-t border-white/10"
-                onClick={e => e.stopPropagation()}
-              >
-                <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: textColor, opacity: 0.5 }}>
-                  DJ Notes
-                </p>
-                {onSaveDjNote ? (
+              <div className="mt-5">
+                {onSaveDjNote && editingNote ? (
                   <>
                     <textarea
+                      ref={noteRef}
+                      autoFocus
                       value={draftNote}
                       onChange={e => setDraftNote(e.target.value.slice(0, DJ_NOTE_MAX))}
+                      onFocus={() => setNoteFocused(true)}
+                      onBlur={() => setNoteFocused(false)}
+                      onClick={e => e.stopPropagation()}
                       placeholder="Add a note for this album…"
                       rows={4}
-                      className="w-full bg-black/20 rounded-lg px-3 py-2 text-sm resize-none outline-none focus:ring-1 focus:ring-white/30 placeholder-white/25"
+                      className="w-full bg-black/40 rounded-lg px-3 py-2 text-2xl font-semibold leading-snug resize-none outline-none focus:ring-1 focus:ring-white/40 placeholder-white/25"
                       style={{ color: textColor }}
                     />
-                    <div className="flex justify-between items-center mt-1.5">
-                      <span className="text-xs opacity-30" style={{ color: textColor }}>
-                        {draftNote.length}/{DJ_NOTE_MAX}
-                      </span>
-                      <button
-                        onClick={() => onSaveDjNote(noteKey, draftNote.trim())}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors font-medium"
-                        style={{ color: textColor }}
-                      >
-                        Save
-                      </button>
-                    </div>
+                    {noteFocused && (
+                      <div className="flex justify-between items-center mt-1.5">
+                        <button
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={e => {
+                            e.stopPropagation()
+                            onSaveDjNote(noteKey, draftNote.trim())
+                            setEditingNote(false)
+                            noteRef.current?.blur()
+                          }}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors font-medium"
+                          style={{ color: textColor }}
+                        >
+                          Save
+                        </button>
+                        <span className="text-xs opacity-30" style={{ color: textColor }}>
+                          {draftNote.length}/{DJ_NOTE_MAX}
+                        </span>
+                      </div>
+                    )}
                   </>
                 ) : (
-                  <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: textColor, opacity: 0.8 }}>
-                    {savedNote}
-                  </p>
+                  <>
+                    {savedNote && (
+                      <p className="text-2xl font-semibold leading-snug whitespace-pre-line rounded-lg border border-white/10 px-3 py-2" style={{ color: textColor, opacity: 0.8 }}>
+                        {savedNote}
+                      </p>
+                    )}
+                    {onSaveDjNote && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setDraftNote(savedNote); setEditingNote(true) }}
+                        className="mt-2 text-xs px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors font-medium"
+                        style={{ color: textColor }}
+                      >
+                        {savedNote ? "Edit" : "Add note"}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             )}

@@ -409,7 +409,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 aria-label={muteLabel}
                 className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-3 ${isMuted ? "btn-3d-pressed" : ""}`}
               >
-                <SoundBars active={!quiet} />
+                <SoundBars active={!quiet && !!track} />
                 {quiet
                   ? <VolumeX size={20} className="shimmer-text" />
                   : <Volume2 size={20} />}
@@ -593,11 +593,62 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="p-8 text-center text-muted"
           >
-            <div className="text-4xl mb-3">📻</div>
-            <p className="text-sm">Station is quiet.</p>
-            <p className="text-xs mt-1">Add a track to get it started.</p>
+            {/* Art-sized placeholder */}
+            <div className="w-full aspect-square bg-surface flex flex-col items-center justify-center text-muted gap-3">
+              <div className="text-4xl">📻</div>
+              <p className="text-sm text-center">Station is quiet.<br /><br />Add a track below to start listening.</p>
+            </div>
+
+            {/* Progress bar placeholder */}
+            <div className="px-4 pt-3">
+              <div className="w-full h-1.5 bg-surface rounded-full" />
+              <div className="flex justify-end mt-1.5">
+                <span className="text-sm tabular-nums invisible">−0:00</span>
+              </div>
+            </div>
+
+            {/* Track info placeholder — invisible to preserve height */}
+            <div className="px-4 pt-1 pb-3">
+              <p className="text-sm invisible">artist</p>
+              <p className="text-xl font-bold invisible">title</p>
+              <p className="text-sm mt-0.5 invisible">album</p>
+            </div>
+
+            {/* Controls — Skip/Ban/Pool disabled, Add active */}
+            <div className="grid grid-cols-4 gap-2 px-4 pb-5">
+              <Tooltip label="DJs only" align="start">
+                <button disabled aria-label="Skip" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
+                  <SkipForward size={20} />
+                </button>
+              </Tooltip>
+              <Tooltip label="DJs only">
+                <button disabled aria-label="Skip and remove from pool" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
+                  <Ban size={20} />
+                </button>
+              </Tooltip>
+              <Tooltip label="DJs only">
+                <button disabled aria-label="Open pool" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
+                  <Library size={20} />
+                </button>
+              </Tooltip>
+              {onOpenAddTracks && (
+                <Tooltip label={addButtonLabel ?? "Add tracks"} align="end">
+                  <button
+                    onClick={onOpenAddTracks}
+                    aria-label={addButtonLabel ?? "Add tracks"}
+                    className="btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white"
+                  >
+                    <Plus size={24} strokeWidth={3} />
+                    {(addBadgeCount ?? 0) > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-accent rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 leading-none pointer-events-none">
+                        {addBadgeCount! > 9 ? "9+" : addBadgeCount}
+                      </span>
+                    )}
+                  </button>
+                </Tooltip>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
