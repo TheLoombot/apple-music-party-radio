@@ -34,7 +34,9 @@ interface Props {
 }
 
 export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTrack, embedded, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
-  const [tab, setTab] = useState<Tab>("related")
+  // Land on "Heavy" when the station is empty — "Related" needs at least one
+  // queued track to seed from, so it's unhelpful on a fresh/empty station.
+  const [tab, setTab] = useState<Tab>(queue.length === 0 ? "heavy" : "related")
 
   // ── Search tab state ────────────────────────────────────────────────────────
   const [query, setQuery] = useState("")

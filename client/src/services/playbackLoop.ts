@@ -122,6 +122,14 @@ export class PlaybackLoop {
     this.autoplayEnabled = true
   }
 
+  /** After a fresh playAtOffset, the internal playTrackAtOffset calls
+   *  unmuteAudio() to restore volume — which overrides the user's UI mute.
+   *  Reapply it so mute survives track changes (cleared only on station
+   *  switch via setMuted(false) inside start()). */
+  private reassertMute() {
+    if (this.muted) this.player.setVolume(0)
+  }
+
   /** Re-play the current track from the correct sync offset. Call after re-authorization. */
   async refresh() {
     if (!this.autoplayEnabled || !this.currentTrack) return
@@ -137,6 +145,7 @@ export class PlaybackLoop {
     try {
       await this.player.playAtOffset(track, offsetSeconds, tail, () => this.playSequence !== seq)
       if (this.playSequence !== seq) return
+      this.reassertMute()
     } catch (err) {
       if (err instanceof UnavailableError) {
         console.warn("[PlaybackLoop] track unavailable on refresh, skipping:", track.name, track.key)
@@ -278,6 +287,7 @@ export class PlaybackLoop {
     try {
       await this.player.playAtOffset(track, offsetSeconds, tail, () => this.playSequence !== seq)
       if (this.playSequence !== seq) return
+      this.reassertMute()
     } catch (err) {
       if (err instanceof UnavailableError) {
         console.warn("[PlaybackLoop] track unavailable on tab focus, skipping:", track.name, track.key)
@@ -386,6 +396,7 @@ export class PlaybackLoop {
       try {
         await this.player.playAtOffset(track0, offsetSeconds, tail, () => this.playSequence !== seq)
         if (this.playSequence !== seq) return
+        this.reassertMute()
       } catch (err) {
         if (err instanceof UnavailableError) {
           console.warn("[PlaybackLoop] track unavailable, skipping:", track0.name)

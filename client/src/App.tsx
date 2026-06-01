@@ -15,6 +15,7 @@ import { initMusicKit, authorize, isAuthorized, getMusicKit } from "./services/m
 import { getUserStorefront } from "./services/appleMusic"
 import { getUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId, removeOwnedStationId, getStationName, setStationName } from "./services/identity"
 import { stationSocket, indexSocket } from "./services/partykit"
+import { isValidFreqId, pickAvailableFreqId } from "./services/frequency"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
 import { AppleMusicCatalog } from "./services/catalog"
@@ -35,7 +36,7 @@ export default function App() {
   const [nameInput, setNameInput] = useState("")
   const [stations, setStations] = useState<Station[]>([])
   const [currentStationId, setCurrentStationId] = useState("")
-  const [stationSelected, setStationSelected] = useState(() => !!window.location.pathname.slice(import.meta.env.BASE_URL.length))
+  const [stationSelected, setStationSelected] = useState(() => isValidFreqId(window.location.pathname.slice(import.meta.env.BASE_URL.length)))
   const [nowPlaying, setNowPlaying] = useState<QueueItem | null>(null)
   const [upNext, setUpNext] = useState<QueueItem[]>([])
   const [pool, setPool] = useState<PoolTrack[]>([])
@@ -52,9 +53,10 @@ export default function App() {
   const [djUserIds, setDJUserIds] = useState<string[]>([])
   const [serverConnected, setServerConnected] = useState<boolean | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
-  const [newSlug, setNewSlug] = useState("")
-  const [slugStatus, setSlugStatus] = useState<"idle" | "checking" | "available" | "taken">("idle")
+  const [newStationName, setNewStationName] = useState("")
+  const [createError, setCreateError] = useState<"" | "band-full" | "error">("")
   const [isCreatingStation, setIsCreatingStation] = useState(false)
+  const [previewFrequency, setPreviewFrequency] = useState<string | null>(null)
   const [renamingDJ, setRenamingDJ] = useState(false)
   const [renameInput, setRenameInput] = useState("")
   const [queueFullAlert, setQueueFullAlert] = useState<number | null>(null)
@@ -64,12 +66,20 @@ export default function App() {
   const [albumModal, setAlbumModal] = useState<{ playlist: AlbumResult; tracks: Track[] | null } | null>(null)
   // True between entering a station and receiving its first queue snapshot from the server.
   // Lets NowPlaying distinguish "tuning in" from "confirmed empty queue".
-  const [stationLoading, setStationLoading] = useState<boolean>(() => !!window.location.pathname.slice(import.meta.env.BASE_URL.length))
+  const [stationLoading, setStationLoading] = useState<boolean>(() => isValidFreqId(window.location.pathname.slice(import.meta.env.BASE_URL.length)))
   const [easterEggOpen, setEasterEggOpen] = useState(false)
   const renameRef = useRef<HTMLInputElement>(null)
   const albumModalOpRef = useRef(0)
   const playbackLoop = useRef(new PlaybackLoop(new AppleMusicPlayer()))
   const catalog = useRef(new AppleMusicCatalog("us"))
+
+  // Refresh the preview frequency whenever the create modal opens — purely
+  // informational, not a reservation; the server still picks at creation.
+  useEffect(() => {
+    if (!createModalOpen) { setPreviewFrequency(null); return }
+    const taken = new Set(stations.map(s => s.id))
+    setPreviewFrequency(pickAvailableFreqId(taken))
+  }, [createModalOpen, stations])
 
   // Boot: check config, init MusicKit
   useEffect(() => {
@@ -105,32 +115,30 @@ export default function App() {
     indexSocket.onConnectionChange = setServerConnected
     indexSocket.onStationsUpdate = (newStations) => {
       setStations(newStations)
-      // On first update, auto-select only if a station is already in the URL
+      // On first update, auto-select only if a valid frequency is in the URL
       if (!didSetInitialStation) {
         didSetInitialStation = true
         const pathStation = window.location.pathname.slice(import.meta.env.BASE_URL.length)
-        if (pathStation) setCurrentStationId(pathStation)
+        if (pathStation && isValidFreqId(pathStation)) setCurrentStationId(pathStation)
       }
     }
     indexSocket.connect()
-    // Register owned stations; remove any legacy UUID-shaped IDs left over from the
-    // old 1:1 uid→station model (they were never real named stations).
-    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    // Sweep legacy slug-shaped ids out of localStorage (pre-frequency-id model).
+    // Anything that isn't a valid FM frequency is dropped silently.
     const owned = getOwnedStationIds()
     for (const stationId of owned) {
-      if (uuidRe.test(stationId)) {
-        indexSocket.removeStation(stationId)
+      if (!isValidFreqId(stationId)) {
         removeOwnedStationId(stationId)
-      } else {
-        indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid, undefined, user.displayName)
+        continue
       }
+      indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid, parseFloat(stationId), user.displayName)
     }
     setOwnedStationIds(getOwnedStationIds())
 
     // Sync path → station on browser back/forward
     const onPopState = () => {
       const stationId = window.location.pathname.slice(import.meta.env.BASE_URL.length)
-      if (stationId) {
+      if (stationId && isValidFreqId(stationId)) {
         setNowPlaying(null)
         setUpNext([])
         setStationLoading(true)
@@ -345,40 +353,30 @@ export default function App() {
     }
   }, [currentStationId, stations])
 
-  // Debounce slug availability check
-  useEffect(() => {
-    const slug = newSlug.trim().toLowerCase()
-    if (!slug || slug.length < 2) { setSlugStatus("idle"); return }
-    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug) && slug.length > 1) { setSlugStatus("idle"); return }
-    setSlugStatus("checking")
-    const timer = setTimeout(async () => {
-      const available = await indexSocket.checkSlugAvailable(slug)
-      setSlugStatus(available ? "available" : "taken")
-    }, 400)
-    return () => clearTimeout(timer)
-  }, [newSlug])
-
   const handleCreateStation = useCallback(async () => {
-    if (!user || slugStatus !== "available") return
-    const slug = newSlug.trim().toLowerCase()
+    if (!user) return
+    const name = newStationName.trim()
+    if (!name) return
     setIsCreatingStation(true)
-    const result = await indexSocket.createStation(slug, user.uid, slug, user.storefront)
-    if (result === "taken") {
-      setSlugStatus("taken")
+    setCreateError("")
+    const result = await indexSocket.createStation(user.uid, name, user.storefront)
+    if (!result.ok) {
+      setCreateError(result.reason)
       setIsCreatingStation(false)
       return
     }
-    setStationName(slug, slug)
-    addOwnedStationId(slug)
+    const freq = result.frequency
+    setStationName(freq, name)
+    addOwnedStationId(freq)
     setOwnedStationIds(getOwnedStationIds())
-    indexSocket.register(slug, slug, user.storefront, user.uid, undefined, user.displayName)
+    indexSocket.register(freq, name, user.storefront, user.uid, parseFloat(freq), user.displayName)
     setCreateModalOpen(false)
     setStationModalOpen(false)
-    setNewSlug("")
-    setSlugStatus("idle")
+    setNewStationName("")
+    setCreateError("")
     setIsCreatingStation(false)
-    handleSelectStation(slug)
-  }, [user, newSlug, slugStatus])
+    handleSelectStation(freq)
+  }, [user, newStationName])
 
   const handleSaveDjNote = useCallback((itemId: string, note: string) => {
     stationSocket.setDjNote(itemId, note)
@@ -598,25 +596,30 @@ export default function App() {
       {createModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80" onClick={() => setCreateModalOpen(false)}>
           <div className="bg-panel rounded-2xl p-8 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <h2 className="text-white font-bold text-lg mb-1">Create a station</h2>
-            <p className="text-muted text-sm mb-6">Pick a unique slug for your station's URL.</p>
-            <div className="relative mb-2">
-              <input
-                autoFocus
-                type="text"
-                value={newSlug}
-                onChange={e => setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30))}
-                onKeyDown={e => { if (e.key === "Enter") handleCreateStation(); if (e.key === "Escape") setCreateModalOpen(false) }}
-                placeholder="my-cool-station"
-                className="w-full bg-surface text-white placeholder-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-accent pr-24"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs">
-                {slugStatus === "checking" && <span className="text-muted">checking…</span>}
-                {slugStatus === "available" && <span className="text-green-400">available</span>}
-                {slugStatus === "taken" && <span className="text-red-400">taken</span>}
-              </span>
-            </div>
-            <p className="text-muted/60 text-xs mb-6">Lowercase letters, numbers, and hyphens only.</p>
+            {previewFrequency && (
+              <p
+                className="text-amber-400 text-3xl font-mono font-bold text-center mb-6 tracking-wider"
+                style={{ textShadow: "0 0 8px rgba(255, 152, 0, 0.85), 0 0 18px rgba(255, 152, 0, 0.55)" }}
+              >
+                {previewFrequency} FM
+              </p>
+            )}
+            <input
+              autoFocus
+              type="text"
+              value={newStationName}
+              onChange={e => { setNewStationName(e.target.value.slice(0, 40)); setCreateError("") }}
+              onKeyDown={e => { if (e.key === "Enter") handleCreateStation(); if (e.key === "Escape") setCreateModalOpen(false) }}
+              placeholder="Station Name"
+              className="w-full bg-surface text-white placeholder-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-accent mb-6"
+            />
+            {(createError === "band-full" || createError === "error") && (
+              <p className="text-red-400 text-xs mb-4">
+                {createError === "band-full"
+                  ? "The FM band is full — no frequencies available."
+                  : "Couldn't create station. Try again."}
+              </p>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setCreateModalOpen(false)}
@@ -626,7 +629,7 @@ export default function App() {
               </button>
               <button
                 onClick={handleCreateStation}
-                disabled={slugStatus !== "available" || isCreatingStation}
+                disabled={!newStationName.trim() || isCreatingStation}
                 className="flex-1 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white font-semibold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isCreatingStation ? "Creating…" : "Create"}
@@ -669,7 +672,6 @@ export default function App() {
       {/* Main layout — single centered column */}
       {!stationSelected ? (
         <div className="flex-1 max-w-[480px] w-full mx-auto px-4 py-6 space-y-4">
-          <p className="text-center text-muted text-sm">Choose a station to start listening</p>
           <div className="bg-panel rounded-xl overflow-hidden">
             <StationList
               stations={stations}

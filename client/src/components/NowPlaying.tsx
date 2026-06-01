@@ -296,7 +296,6 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
   const closeArtwork = useCallback(() => setArtworkOpen(false), [])
   const [infoOpen, setInfoOpen] = useState(false)
   const [nameInput, setNameInput] = useState("")
-  const [freqInput, setFreqInput] = useState("")
   const [navBusy, setNavBusy] = useState(false)
   const navCooldownRef = useRef<ReturnType<typeof setTimeout>>()
   const displayFreq = useFrequencyScan(frequency)
@@ -319,19 +318,15 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
 
   const openInfo = useCallback(() => {
     setNameInput(stationName)
-    setFreqInput(frequency?.toFixed(1) ?? "")
     setInfoOpen(true)
-  }, [stationName, frequency])
+  }, [stationName])
 
   const handleSave = useCallback(() => {
     const name = nameInput.trim() || stationName
-    const parsed = parseFloat(freqInput)
-    const freq = isNaN(parsed)
-      ? (frequency ?? 88.0)
-      : Math.round(Math.max(66.6, Math.min(109.9, parsed)) * 10) / 10
-    onRenameStation?.(name, freq)
+    // Frequency is the station's permanent id — pass it through unchanged.
+    onRenameStation?.(name, frequency ?? 0)
     setInfoOpen(false)
-  }, [nameInput, freqInput, stationName, frequency, onRenameStation])
+  }, [nameInput, stationName, frequency, onRenameStation])
   useMediaSession(
     track,
     isPlaying,
@@ -707,19 +702,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
 
               <div className="space-y-1">
                 <p className="text-muted/60 text-xs uppercase tracking-widest">Frequency</p>
-                {isOwner && onRenameStation ? (
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={freqInput}
-                    onChange={e => setFreqInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setInfoOpen(false) }}
-                    placeholder="88.0"
-                    className="w-full bg-surface text-white rounded-lg px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-accent"
-                  />
-                ) : (
-                  <p className="text-white text-sm font-mono">{frequency?.toFixed(1)}</p>
-                )}
+                <p className="text-white text-sm font-mono">{frequency?.toFixed(1)}</p>
               </div>
 
               {ownerName && (

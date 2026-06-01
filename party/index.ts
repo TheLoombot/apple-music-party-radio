@@ -197,6 +197,7 @@ export default class RadioParty implements Party.Server {
       } catch { /* ignore — fallback to env var */ }
     }
     if (roomId === "index") {
+      await this.migrateIndexSchemaIfNeeded()
       const stations = await this.storage<Station[]>("stations", [])
       conn.send(json({ type: "stations_update", stations: this.withPresence(stations) }))
     } else {
@@ -332,21 +333,67 @@ export default class RadioParty implements Party.Server {
     }
 
     if (this.getRoomId() === "index") {
-      // GET /parties/main/index?check=<slug> — slug availability check
-      if (req.method === "GET") {
-        const checkSlug = url.searchParams.get("check")
-        if (checkSlug) {
-          const stations = await this.storage<Station[]>("stations", [])
-          const taken = stations.some(s => s.id === checkSlug)
-          return new Response(JSON.stringify({ taken }), {
-            headers: { "Content-Type": "application/json", ...corsHeaders },
+      // POST /parties/main/index/create-station — creates a new station and
+      // returns its assigned frequency. The frequency string is the station id
+      // and PartyKit room name going forward.
+      if (req.method === "POST" && url.pathname.endsWith("/create-station")) {
+        await this.migrateIndexSchemaIfNeeded()
+        const body = await req.json() as { ownerUid: string; displayName: string; storefront: string }
+        if (!body.ownerUid || !body.displayName) {
+          return new Response(JSON.stringify({ error: "bad-request" }), {
+            status: 400, headers: { "Content-Type": "application/json", ...corsHeaders },
           })
         }
+        const stations = await this.storage<Station[]>("stations", [])
+        const takenFreqs = new Set(stations.map(s => s.id).filter(isValidFreqId))
+        const freqId = pickAvailableFreqId(takenFreqs)
+        if (!freqId) {
+          return new Response(JSON.stringify({ error: "band-full" }), {
+            status: 409, headers: { "Content-Type": "application/json", ...corsHeaders },
+          })
+        }
+        // Reserve the slot atomically in the index before bootstrapping the
+        // station room — prevents two concurrent creates from racing.
+        const meta: Station = {
+          id: freqId,
+          displayName: body.displayName,
+          storefront: body.storefront,
+          liveUntil: 0,
+          frequency: parseFloat(freqId),
+          ownerUid: body.ownerUid,
+        }
+        stations.push(meta)
+        stations.sort((a, b) => (a.frequency ?? 0) - (b.frequency ?? 0))
+        await this.room.storage.put("stations", stations)
+        this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
+
+        // Server-to-server: set ownership on the station room.
+        const protocol = url.protocol === "https:" ? "https" : "http"
+        const createUrl = `${protocol}://${url.host}/parties/main/${freqId}/create`
+        try {
+          await this.room.context.parties.main.get(freqId).fetch(createUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ownerUid: body.ownerUid, displayName: body.displayName, storefront: body.storefront }),
+          })
+        } catch (e) {
+          console.error(`[create-station] failed to set ownership on ${freqId}:`, e)
+        }
+        return new Response(JSON.stringify({ frequency: freqId }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        })
       }
 
       // POST /parties/main/index — station status/presence pings from station rooms
       if (req.method === "POST") {
         const msg = await req.json() as any
+        // Reject pings from station rooms whose id isn't a valid frequency —
+        // those are leftover slug-named DOs from the pre-frequency-id model
+        // and would otherwise keep auto-reviving themselves into the index
+        // after the schema-2 migration drops them.
+        if (msg.id && !isValidFreqId(msg.id)) {
+          return new Response("ignored: non-frequency id", { status: 200, headers: corsHeaders })
+        }
         if (msg.type === "station_status") {
           const stations = await this.storage<Station[]>("stations", [])
           const idx = stations.findIndex(s => s.id === msg.id)
@@ -452,6 +499,8 @@ export default class RadioParty implements Party.Server {
       return
     }
     if (msg.type !== "register") return
+    // Reject registers for non-frequency ids (legacy slug entries).
+    if (!msg.id || !isValidFreqId(msg.id)) return
 
     const stations = await this.storage<Station[]>("stations", [])
     const idx = stations.findIndex(s => s.id === msg.id)
@@ -1147,6 +1196,23 @@ export default class RadioParty implements Party.Server {
     }
   }
 
+  /** Index room only. Bumps the stored schema version and drops any
+   *  station entries whose id isn't a valid frequency. Runs once per DO
+   *  warmup — safe to call multiple times. */
+  private async migrateIndexSchemaIfNeeded() {
+    const SCHEMA = 2
+    const stored = (await this.room.storage.get<number>("schema_version")) ?? 1
+    if (stored >= SCHEMA) return
+    const stations = await this.room.storage.get<Station[]>("stations") ?? []
+    const filtered = stations.filter(s => isValidFreqId(s.id))
+    const dropped = stations.length - filtered.length
+    if (dropped > 0) {
+      console.warn(`[index] schema v${stored} → v${SCHEMA}: dropped ${dropped} non-frequency station entries`)
+    }
+    await this.room.storage.put("stations", filtered)
+    await this.room.storage.put("schema_version", SCHEMA)
+  }
+
   private async storage<T>(key: string, fallback: T): Promise<T> {
     const raw = await this.room.storage.get<any>(key)
     if (raw == null) return fallback
@@ -1211,10 +1277,41 @@ function sameTrack(a: Track, b: Track): boolean {
   return false
 }
 
+// ─── Frequency band ────────────────────────────────────────────────────────
+// Stations are identified by their FM frequency. Real US FM band: 88.1 to 107.9
+// with 0.2 spacing = 100 slots total. The frequency string ("103.7") is the
+// canonical station id and PartyKit room name.
+const FREQ_MIN_X10 = 881   // 88.1 * 10
+const FREQ_MAX_X10 = 1079  // 107.9 * 10
+const FREQ_STEP_X10 = 2
+
+function allFreqIds(): string[] {
+  const out: string[] = []
+  for (let n = FREQ_MIN_X10; n <= FREQ_MAX_X10; n += FREQ_STEP_X10) {
+    out.push((n / 10).toFixed(1))
+  }
+  return out
+}
+
+function isValidFreqId(s: string): boolean {
+  if (!/^\d{2,3}\.\d$/.test(s)) return false
+  const n10 = Math.round(parseFloat(s) * 10)
+  if (n10 < FREQ_MIN_X10 || n10 > FREQ_MAX_X10) return false
+  return (n10 - FREQ_MIN_X10) % FREQ_STEP_X10 === 0
+}
+
+function pickAvailableFreqId(taken: Set<string>): string | null {
+  const available = allFreqIds().filter(f => !taken.has(f))
+  if (available.length === 0) return null
+  return available[Math.floor(Math.random() * available.length)]
+}
+
+// Legacy: kept for entries that pre-date the frequency-id migration. New
+// stations always use isValidFreqId-formatted ids, so their `frequency` field
+// is just `parseFloat(s.id)`.
 function randomFrequency(): number {
-  // FM band 66.6–109.9 with one decimal of precision (434 possible values)
-  const raw = Math.floor(Math.random() * 434) + 666
-  return raw / 10
+  const ids = allFreqIds()
+  return parseFloat(ids[Math.floor(Math.random() * ids.length)])
 }
 
 function json(data: object): string {

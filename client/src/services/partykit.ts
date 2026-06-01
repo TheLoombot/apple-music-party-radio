@@ -241,27 +241,22 @@ export class IndexSocket {
     this.socket?.send(JSON.stringify({ type: "remove_station", id }))
   }
 
-  async checkSlugAvailable(slug: string): Promise<boolean> {
+  /** Asks the server to assign an available frequency and create the station.
+   *  Returns the assigned frequency string (e.g. "103.7"), or "band-full" if
+   *  every slot in the FM band is already taken, or "error" for network/other. */
+  async createStation(ownerUid: string, displayName: string, storefront: string): Promise<{ ok: true; frequency: string } | { ok: false; reason: "band-full" | "error" }> {
     try {
-      const res = await fetch(partyUrl("index", `?check=${encodeURIComponent(slug)}`))
-      const data = await res.json() as { taken: boolean }
-      return !data.taken
-    } catch {
-      return false
-    }
-  }
-
-  async createStation(slug: string, ownerUid: string, displayName: string, storefront: string): Promise<'ok' | 'taken'> {
-    try {
-      const res = await fetch(partyUrl(slug, "/create"), {
+      const res = await fetch(partyUrl("index", "/create-station"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ownerUid, displayName, storefront }),
       })
-      if (res.status === 409) return "taken"
-      return "ok"
+      if (res.status === 409) return { ok: false, reason: "band-full" }
+      if (!res.ok) return { ok: false, reason: "error" }
+      const data = await res.json() as { frequency: string }
+      return { ok: true, frequency: data.frequency }
     } catch {
-      return "taken"
+      return { ok: false, reason: "error" }
     }
   }
 }

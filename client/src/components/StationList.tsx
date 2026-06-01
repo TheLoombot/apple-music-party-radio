@@ -177,12 +177,12 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
         <ul>{sortedStations.map(s => renderRow(s))}</ul>
       )}
 
-      <div className="border-t border-border/50">
+      <div className="p-3 border-t border-border/50">
         <button
           onClick={onCreateStation}
-          className="w-full px-4 py-2.5 text-xs text-muted hover:text-accent transition-colors text-left"
+          className="btn-3d w-full py-4 rounded-lg text-white font-bold text-base tracking-wide"
         >
-          + Create a station
+          NEW
         </button>
       </div>
     </div>
