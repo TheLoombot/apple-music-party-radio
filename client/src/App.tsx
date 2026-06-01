@@ -76,11 +76,15 @@ export default function App() {
 
   // Refresh the preview frequency whenever the create modal opens — purely
   // informational, not a reservation; the server still picks at creation.
+  // Skip recomputation while the create is in flight, otherwise the freshly
+  // taken slot causes the preview to flash to a new pick right before the
+  // modal dismisses.
   useEffect(() => {
     if (!createModalOpen) { setPreviewFrequency(null); return }
+    if (isCreatingStation) return
     const taken = new Set(stations.map(s => s.id))
     setPreviewFrequency(pickAvailableFreqId(taken))
-  }, [createModalOpen, stations])
+  }, [createModalOpen, stations, isCreatingStation])
 
   // Boot: check config, init MusicKit
   useEffect(() => {
