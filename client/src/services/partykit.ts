@@ -242,14 +242,16 @@ export class IndexSocket {
   }
 
   /** Asks the server to assign an available frequency and create the station.
-   *  Returns the assigned frequency string (e.g. "103.7"), or "band-full" if
-   *  every slot in the FM band is already taken, or "error" for network/other. */
-  async createStation(ownerUid: string, displayName: string, storefront: string): Promise<{ ok: true; frequency: string } | { ok: false; reason: "band-full" | "error" }> {
+   *  If `preferredFreq` is provided and still available, the server honors it
+   *  (matches the preview shown in the create modal). Otherwise the server
+   *  falls back to any available freq, or returns "band-full" if every slot
+   *  in the FM band is taken. */
+  async createStation(ownerUid: string, displayName: string, storefront: string, preferredFreq?: string): Promise<{ ok: true; frequency: string } | { ok: false; reason: "band-full" | "error" }> {
     try {
       const res = await fetch(partyUrl("index", "/create-station"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerUid, displayName, storefront }),
+        body: JSON.stringify({ ownerUid, displayName, storefront, preferredFreq }),
       })
       if (res.status === 409) return { ok: false, reason: "band-full" }
       if (!res.ok) return { ok: false, reason: "error" }

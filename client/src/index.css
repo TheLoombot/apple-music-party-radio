@@ -5,8 +5,12 @@
 body {
   background-color: #1a1a1a;
   color: #ffffff;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
+
+/* Hard-coded font utility — don't depend on the Tailwind config picking
+ * up fontFamily changes (Vite/HMR sometimes misses tailwind.config.js edits). */
+.font-press-start { font-family: "Press Start 2P", monospace; }
 
 @keyframes live-pulse {
   0%, 100% { transform: scale(1); opacity: 1; }

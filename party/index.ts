@@ -350,7 +350,7 @@ export default class RadioParty implements Party.Server {
       // and PartyKit room name going forward.
       if (req.method === "POST" && url.pathname.endsWith("/create-station")) {
         await this.migrateIndexSchemaIfNeeded()
-        const body = await req.json() as { ownerUid: string; displayName: string; storefront: string }
+        const body = await req.json() as { ownerUid: string; displayName: string; storefront: string; preferredFreq?: string }
         if (!body.ownerUid || !body.displayName) {
           return new Response(JSON.stringify({ error: "bad-request" }), {
             status: 400, headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -358,7 +358,12 @@ export default class RadioParty implements Party.Server {
         }
         const stations = await this.storage<Station[]>("stations", [])
         const takenFreqs = new Set(stations.map(s => s.id).filter(isValidFreqId))
-        const freqId = pickAvailableFreqId(takenFreqs)
+        // Honor the client's preview pick if it's still available — this is what
+        // the user saw in the create modal. Otherwise fall back to any free slot.
+        const preferred = body.preferredFreq
+        const freqId = (preferred && isValidFreqId(preferred) && !takenFreqs.has(preferred))
+          ? preferred
+          : pickAvailableFreqId(takenFreqs)
         if (!freqId) {
           return new Response(JSON.stringify({ error: "band-full" }), {
             status: 409, headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -436,9 +441,19 @@ export default class RadioParty implements Party.Server {
             // Station is alive but not in the registry — index DO was likely evicted and
             // rebuilt without it. Revive a stub entry so updates aren't dropped, then
             // bootstrap the station so it re-registers with full details on next connect.
-            console.warn(`[station_status] unknown station "${msg.id}" — auto-reviving`)
+            // BUT: only revive if the station claims to be live (liveUntil > 0). An
+            // offline ping (liveUntil=0) from an unknown station is almost certainly
+            // the disconnect-after-delete race: the user just deleted the station and
+            // the station's onClose fired notifyIndex(0) AFTER the registry entry was
+            // removed. Reviving here would create a stub with no ownerUid — an
+            // un-deletable zombie. Drop the ping instead.
             const liveUntil = msg.liveUntil ?? 0
             const isLive = liveUntil > 0
+            if (!isLive) {
+              console.log(`[station_status] dropping offline ping from unknown station "${msg.id}" (likely post-delete)`)
+              return new Response("ignored: unknown offline station", { status: 200, headers: corsHeaders })
+            }
+            console.warn(`[station_status] unknown station "${msg.id}" — auto-reviving`)
             const stub: Station = {
               id: msg.id,
               displayName: msg.id,
@@ -686,7 +701,10 @@ export default class RadioParty implements Party.Server {
 
   /** Owner or any granted DJ — used to gate queue/pool mutations server-side. */
   private isPrivilegedConn(sender: Party.Connection): boolean {
-    return this.isOwnerConn(sender) || this.isDJConn(sender)
+    const result = this.isOwnerConn(sender) || this.isDJConn(sender)
+    const l = this.connListeners.get(sender.id)
+    console.log(`[priv] room=${this.cachedRoomId} listener=${l?.userId} cachedOwner=${this.cachedOwnerUid} djs=${this.cachedDJs?.join(",")} isPriv=${result}`)
+    return result
   }
 
   // ─── Queue & pool ────────────────────────────────────────────────────────

@@ -360,7 +360,7 @@ export default function App() {
     if (!name) return
     setIsCreatingStation(true)
     setCreateError("")
-    const result = await indexSocket.createStation(user.uid, name, user.storefront)
+    const result = await indexSocket.createStation(user.uid, name, user.storefront, previewFrequency ?? undefined)
     if (!result.ok) {
       setCreateError(result.reason)
       setIsCreatingStation(false)
@@ -377,7 +377,7 @@ export default function App() {
     setCreateError("")
     setIsCreatingStation(false)
     handleSelectStation(freq)
-  }, [user, newStationName])
+  }, [user, newStationName, previewFrequency])
 
   const handleSaveDjNote = useCallback((itemId: string, note: string) => {
     stationSocket.setDjNote(itemId, note)
@@ -599,7 +599,7 @@ export default function App() {
           <div className="bg-panel rounded-2xl p-8 w-full max-w-sm" onClick={e => e.stopPropagation()}>
             {previewFrequency && (
               <p
-                className="text-amber-400 text-3xl font-mono font-bold text-center mb-6 tracking-wider"
+                className="text-amber-400 text-2xl font-press-start text-center mb-6"
                 style={{ textShadow: "0 0 8px rgba(255, 152, 0, 0.85), 0 0 18px rgba(255, 152, 0, 0.55)" }}
               >
                 {previewFrequency} FM

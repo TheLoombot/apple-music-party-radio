@@ -10,7 +10,10 @@ export default {
         accent: '#fc3c44',       // Apple Music red
         'accent-hover': '#e0353c',
         muted: '#888888',
-      }
+      },
+      fontFamily: {
+        display: ['"Press Start 2P"', 'monospace'],
+      },
     }
   },
   plugins: []

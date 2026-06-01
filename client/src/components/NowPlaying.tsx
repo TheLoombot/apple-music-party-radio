@@ -708,7 +708,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
 
               <div className="space-y-1">
                 <p className="text-muted/60 text-xs uppercase tracking-widest">Frequency</p>
-                <p className="text-white text-sm font-mono">{frequency?.toFixed(1)}</p>
+                <p className="text-white text-sm font-press-start">{frequency?.toFixed(1)}</p>
               </div>
 
               {ownerName && (

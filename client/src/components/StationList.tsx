@@ -39,6 +39,10 @@ function StationRow({
   const isLive = station.liveUntil > now
   const spunBy = station.nowPlayingAddedBy
   const isRobot = spunBy === "robot"
+  // Unowned stations are zombies — anyone can clean them up regardless of
+  // whether their alarm chain is still spinning out tracks.
+  const isOrphan = !station.ownerUid
+  const canRemove = isOwn || isOrphan
 
   return (
     <li>
@@ -78,7 +82,7 @@ function StationRow({
         {/* Frequency + station name */}
         <div className="flex-1 min-w-0">
           {station.frequency != null && (
-            <p className={`text-base font-mono font-bold truncate ${active ? "text-accent" : isLive ? "text-white" : "text-white/50"}`}>
+            <p className={`text-sm font-press-start truncate ${active ? "text-accent" : isLive ? "text-white" : "text-white/50"}`}>
               {station.frequency.toFixed(1)}
             </p>
           )}
@@ -106,11 +110,11 @@ function StationRow({
           </div>
         )}
 
-        {isOwn ? (
+        {canRemove ? (
           <button
             onClick={e => { e.stopPropagation(); onRemove() }}
             className="w-9 h-9 flex items-center justify-center text-muted/40 hover:text-red-400 transition-colors flex-shrink-0"
-            title="Remove station"
+            title={isOwn ? "Remove station" : "Remove orphan station"}
           >
             <Trash2 size={14} />
           </button>
@@ -160,7 +164,7 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
       key={station.id}
       station={station}
       active={station.id === currentStationId}
-      isOwn={ownedStationIds.includes(station.id)}
+      isOwn={ownedStationIds.includes(station.id) || station.ownerUid === userId}
       userId={userId}
       userDisplayName={userDisplayName}
       now={now}
