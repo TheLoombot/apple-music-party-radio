@@ -333,6 +333,18 @@ export default class RadioParty implements Party.Server {
     }
 
     if (this.getRoomId() === "index") {
+      // GET /parties/main/index/owner?freq=104.5 — look up the recorded owner
+      // for a station. Used by station rooms to self-heal when their local
+      // ownership record is missing (e.g. /create server-to-server failed silently).
+      if (req.method === "GET" && url.pathname.endsWith("/owner")) {
+        const freq = url.searchParams.get("freq") ?? ""
+        const stations = await this.storage<Station[]>("stations", [])
+        const ownerUid = stations.find(s => s.id === freq)?.ownerUid ?? null
+        return new Response(JSON.stringify({ ownerUid }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        })
+      }
+
       // POST /parties/main/index/create-station — creates a new station and
       // returns its assigned frequency. The frequency string is the station id
       // and PartyKit room name going forward.
@@ -367,15 +379,20 @@ export default class RadioParty implements Party.Server {
         await this.room.storage.put("stations", stations)
         this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
 
-        // Server-to-server: set ownership on the station room.
-        const protocol = url.protocol === "https:" ? "https" : "http"
-        const createUrl = `${protocol}://${url.host}/parties/main/${freqId}/create`
+        // Server-to-server: set ownership on the station room. PartyKit stub
+        // .fetch() takes a path starting with "/", not a full URL.
         try {
-          await this.room.context.parties.main.get(freqId).fetch(createUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ownerUid: body.ownerUid, displayName: body.displayName, storefront: body.storefront }),
-          })
+          const createRes = await this.room.context.parties.main.get(freqId).fetch(
+            `/parties/main/${freqId}/create`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ownerUid: body.ownerUid, displayName: body.displayName, storefront: body.storefront }),
+            },
+          )
+          if (!createRes.ok) {
+            console.error(`[create-station] /create returned ${createRes.status} for ${freqId}`)
+          }
         } catch (e) {
           console.error(`[create-station] failed to set ownership on ${freqId}:`, e)
         }
@@ -438,14 +455,10 @@ export default class RadioParty implements Party.Server {
             stations.sort((a, b) => (a.frequency ?? 0) - (b.frequency ?? 0))
             await this.room.storage.put("stations", stations)
             this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
-            const host = (this.room.env as any)?.PARTYKIT_HOST ?? "localhost:1999"
-            const protocol = host.startsWith("localhost") ? "http" : "https"
-            const bootstrapUrl = `${protocol}://${host}/parties/main/${encodeURIComponent(msg.id)}/bootstrap`
-            void this.room.context.parties.main.get(msg.id).fetch(bootstrapUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: "{}",
-            }).catch((e: unknown) => console.error(`[bootstrap] failed for revived station "${msg.id}":`, e))
+            void this.room.context.parties.main.get(msg.id).fetch(
+              `/parties/main/${encodeURIComponent(msg.id)}/bootstrap`,
+              { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+            ).catch((e: unknown) => console.error(`[bootstrap] failed for revived station "${msg.id}":`, e))
           }
         } else if (msg.type === "station_presence") {
           this.presenceMap.set(msg.id, msg.listeners ?? [])
@@ -474,12 +487,10 @@ export default class RadioParty implements Party.Server {
         // if the DO hibernates immediately after this response, onAlarm can still recover them.
         this.cachedRoomId = this.room.id
         await this.room.storage.put("roomId", this.room.id)
-        const bsProtocol = url.protocol === "https:" ? "https" : "http"
-        const bsIndexUrl = `${bsProtocol}://${url.host}/parties/main/index`
-        this.cachedIndexUrl = bsIndexUrl
-        // Always overwrite stored indexUrl from production bootstrap requests — this
-        // heals rooms whose storage has a stale localhost URL from a dev session.
-        if (bsProtocol === "https") await this.room.storage.put("indexUrl", bsIndexUrl)
+        // indexUrl is normally set on first WebSocket connect (from conn.uri) and
+        // by getIndexUrl()'s env-var fallback. We no longer derive it here from
+        // url.host because stub .fetch() takes a path, so url.host is the internal
+        // PartyKit hostname, not the public deployment URL.
         await this.bootstrapIfNeeded()
         return new Response("ok", { headers: corsHeaders })
       }
@@ -526,15 +537,10 @@ export default class RadioParty implements Party.Server {
     // If the station appears offline, send it a bootstrap ping so it wakes up and
     // starts playing from its pool even with no listeners connected.
     if (!existing || existing.liveUntil <= Date.now()) {
-      // Pass the full public URL so the bootstrap handler can derive the correct indexUrl from url.host
-      const host = (this.room.env as any)?.PARTYKIT_HOST ?? "localhost:1999"
-      const protocol = host.startsWith("localhost") ? "http" : "https"
-      const bootstrapUrl = `${protocol}://${host}/parties/main/${encodeURIComponent(msg.id)}/bootstrap`
-      void this.room.context.parties.main.get(msg.id).fetch(bootstrapUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      }).catch((e: unknown) => console.error(`[bootstrap] failed for station "${msg.id}":`, e))
+      void this.room.context.parties.main.get(msg.id).fetch(
+        `/parties/main/${encodeURIComponent(msg.id)}/bootstrap`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      ).catch((e: unknown) => console.error(`[bootstrap] failed for station "${msg.id}":`, e))
     }
   }
 
@@ -556,6 +562,12 @@ export default class RadioParty implements Party.Server {
           const ownership: StationOwnership = { ownerUid: msg.userId, createdAt: Date.now() }
           await this.room.storage.put("ownership", ownership)
           this.cachedOwnerUid = msg.userId
+        }
+        // Self-heal: if ownership is still missing (frequency rooms whose /create
+        // server-to-server fetch silently failed), look up the recorded owner in
+        // the index and adopt it IFF the joining user matches.
+        if (!this.cachedOwnerUid && msg.userId) {
+          await this.healOwnershipFromIndex(msg.userId)
         }
         return
       }
@@ -637,6 +649,30 @@ export default class RadioParty implements Party.Server {
       this.cachedDJs = await this.room.storage.get<string[]>("djs") ?? []
     }
     return this.cachedDJs
+  }
+
+  /** Heal missing ownership by querying the index for the recorded owner of
+   *  this station. Only adopts if the joiner's userId matches what the index
+   *  records — never let a random user claim by being first to join. */
+  private async healOwnershipFromIndex(userId: string): Promise<void> {
+    try {
+      // PartyKit stub .fetch() takes a path starting with "/", not a full URL.
+      const freq = encodeURIComponent(this.cachedRoomId ?? this.room.id)
+      const res = await this.room.context.parties.main.get("index").fetch(
+        `/parties/main/index/owner?freq=${freq}`,
+        { method: "GET" },
+      )
+      if (!res.ok) return
+      const { ownerUid } = await res.json() as { ownerUid: string | null }
+      if (ownerUid && ownerUid === userId) {
+        const ownership: StationOwnership = { ownerUid, createdAt: Date.now() }
+        await this.room.storage.put("ownership", ownership)
+        this.cachedOwnerUid = ownerUid
+        console.log(`[heal-ownership] adopted ${ownerUid} for room=${this.cachedRoomId}`)
+      }
+    } catch (e) {
+      console.error(`[heal-ownership] failed for room=${this.cachedRoomId}:`, e)
+    }
   }
 
   private isOwnerConn(sender: Party.Connection): boolean {

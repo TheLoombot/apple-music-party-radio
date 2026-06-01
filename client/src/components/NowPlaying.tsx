@@ -105,18 +105,23 @@ function useProgress(track: QueueItem | null) {
 const BAR_DELAYS = ["0s", "0.15s", "0.3s", "0.45s"]
 const BAR_DURATIONS = ["0.7s", "0.9s", "0.75s", "0.85s"]
 
-function SoundBars({ active }: { active: boolean }) {
+function SoundBars({ playing, muted }: { playing: boolean; muted: boolean }) {
+  // Three visual states:
+  //   playing && !muted → animated, full color gradient
+  //   playing && muted  → animated, gray (audio's there, just silenced)
+  //   !playing          → static short nubs, gray (nothing playing)
   return (
     <div className="flex items-end gap-0.5 h-6">
       {BAR_DELAYS.map((delay, i) => (
         <div
           key={i}
-          className="sound-bar w-1.5"
+          className={`w-1.5 ${playing ? "sound-bar" : ""}`}
           style={{
             height: "100%",
-            animationDelay: delay,
-            animationDuration: BAR_DURATIONS[i],
-            background: active
+            animationDelay: playing ? delay : undefined,
+            animationDuration: playing ? BAR_DURATIONS[i] : undefined,
+            clipPath: playing ? undefined : "inset(80% 0 0 0 round 2px)",
+            background: playing && !muted
               ? "linear-gradient(to top, #22c55e 0%, #eab308 60%, #fc3c44 100%)"
               : "rgba(255,255,255,0.2)",
           }}
@@ -404,9 +409,9 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 aria-label={muteLabel}
                 className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-3 ${isMuted ? "btn-3d-pressed" : ""}`}
               >
-                <SoundBars active={!quiet && !!track} />
+                <SoundBars playing={!!track} muted={isMuted || isBlocked} />
                 {quiet
-                  ? <VolumeX size={20} className="shimmer-text" />
+                  ? <VolumeX size={20} className="attention-pulse" />
                   : <Volume2 size={20} />}
               </button>
             </Tooltip>
@@ -634,7 +639,8 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                     aria-label={addButtonLabel ?? "Add tracks"}
                     className="btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white"
                   >
-                    <Plus size={24} strokeWidth={3} />
+                    {/* Queue is confirmed empty — pulse the icon to draw attention. */}
+                    <Plus size={24} strokeWidth={3} className="attention-pulse" />
                     {(addBadgeCount ?? 0) > 0 && (
                       <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-accent rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 leading-none pointer-events-none">
                         {addBadgeCount! > 9 ? "9+" : addBadgeCount}

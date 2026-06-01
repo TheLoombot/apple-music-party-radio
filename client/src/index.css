@@ -66,6 +66,28 @@ body {
 .loading-dot-2 { opacity: 0; animation: loading-dot-2 1s steps(1, end) infinite; }
 .loading-dot-3 { opacity: 0; animation: loading-dot-3 1s steps(1, end) infinite; }
 
+/* Attention pulse for the empty-queue + button. Cycles the SVG's drop-shadow
+ * from "normal amber backlight" to "bright white-hot amber" + a small scale
+ * pulse. Works on SVG icons (unlike shimmer-text which only clips to text). */
+@keyframes attention-pulse {
+  0%, 100% {
+    filter:
+      drop-shadow(0 0 4px rgba(255, 152, 0, 0.85))
+      drop-shadow(0 0 10px rgba(255, 152, 0, 0.5));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 10px rgba(255, 255, 255, 0.95))
+      drop-shadow(0 0 22px rgba(255, 152, 0, 1));
+  }
+}
+/* Higher specificity than the base .btn-3d svg rule so the animated filter
+ * actually takes effect for icons inside btn-3d buttons. */
+.btn-3d svg.attention-pulse,
+svg.attention-pulse {
+  animation: attention-pulse 1.6s ease-in-out infinite;
+}
+
 /* ─── 3D button vibe ────────────────────────────────────────────────────────
  *  Base ".btn-3d" is a depressable hardware-button shell: thin border, hard
  *  bottom shadow for elevation, snaps down on :active. The amber backlight
