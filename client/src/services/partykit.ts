@@ -242,18 +242,21 @@ export class IndexSocket {
   }
 
   /** Asks the server to assign an available frequency and create the station.
-   *  If `preferredFreq` is provided and still available, the server honors it
-   *  (matches the preview shown in the create modal). Otherwise the server
-   *  falls back to any available freq, or returns "band-full" if every slot
-   *  in the FM band is taken. */
-  async createStation(ownerUid: string, displayName: string, storefront: string, preferredFreq?: string): Promise<{ ok: true; frequency: string } | { ok: false; reason: "band-full" | "error" }> {
+   *  The server requires the `preferredFreq` (the preview the user saw) and
+   *  returns "slot-taken" if it got claimed in the meantime, or "band-full"
+   *  if no `preferredFreq` was sent and every slot is full. */
+  async createStation(ownerUid: string, displayName: string, storefront: string, preferredFreq?: string): Promise<{ ok: true; frequency: string } | { ok: false; reason: "band-full" | "slot-taken" | "error" }> {
     try {
       const res = await fetch(partyUrl("index", "/create-station"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ownerUid, displayName, storefront, preferredFreq }),
       })
-      if (res.status === 409) return { ok: false, reason: "band-full" }
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        if (body.error === "slot-taken") return { ok: false, reason: "slot-taken" }
+        return { ok: false, reason: "band-full" }
+      }
       if (!res.ok) return { ok: false, reason: "error" }
       const data = await res.json() as { frequency: string }
       return { ok: true, frequency: data.frequency }

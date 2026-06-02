@@ -54,7 +54,7 @@ export default function App() {
   const [serverConnected, setServerConnected] = useState<boolean | null>(null)
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [newStationName, setNewStationName] = useState("")
-  const [createError, setCreateError] = useState<"" | "band-full" | "error">("")
+  const [createError, setCreateError] = useState<"" | "band-full" | "slot-taken" | "error">("")
   const [isCreatingStation, setIsCreatingStation] = useState(false)
   const [previewFrequency, setPreviewFrequency] = useState<string | null>(null)
   const [renamingDJ, setRenamingDJ] = useState(false)
@@ -74,17 +74,15 @@ export default function App() {
   const playbackLoop = useRef(new PlaybackLoop(new AppleMusicPlayer()))
   const catalog = useRef(new AppleMusicCatalog("us"))
 
-  // Refresh the preview frequency whenever the create modal opens — purely
-  // informational, not a reservation; the server still picks at creation.
-  // Skip recomputation while the create is in flight, otherwise the freshly
-  // taken slot causes the preview to flash to a new pick right before the
-  // modal dismisses.
+  // Pick the preview frequency once when the modal opens and hold it. The
+  // server will require this exact freq at creation time; if it got taken
+  // in the meantime the create call fails with slot-taken.
   useEffect(() => {
     if (!createModalOpen) { setPreviewFrequency(null); return }
-    if (isCreatingStation) return
     const taken = new Set(stations.map(s => s.id))
     setPreviewFrequency(pickAvailableFreqId(taken))
-  }, [createModalOpen, stations, isCreatingStation])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createModalOpen])
 
   // Boot: check config, init MusicKit
   useEffect(() => {
@@ -367,6 +365,9 @@ export default function App() {
     const result = await indexSocket.createStation(user.uid, name, user.storefront, previewFrequency ?? undefined)
     if (!result.ok) {
       setCreateError(result.reason)
+      if (result.reason === "slot-taken") {
+        setPreviewFrequency(pickAvailableFreqId(new Set(stations.map(s => s.id))))
+      }
       setIsCreatingStation(false)
       return
     }
@@ -618,10 +619,12 @@ export default function App() {
               placeholder="Station Name"
               className="w-full bg-surface text-white placeholder-muted rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-accent mb-6"
             />
-            {(createError === "band-full" || createError === "error") && (
+            {createError && (
               <p className="text-red-400 text-xs mb-4">
                 {createError === "band-full"
                   ? "The FM band is full — no frequencies available."
+                  : createError === "slot-taken"
+                  ? "Someone just grabbed that frequency. Try again."
                   : "Couldn't create station. Try again."}
               </p>
             )}

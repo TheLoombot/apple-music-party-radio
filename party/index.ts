@@ -358,16 +358,27 @@ export default class RadioParty implements Party.Server {
         }
         const stations = await this.storage<Station[]>("stations", [])
         const takenFreqs = new Set(stations.map(s => s.id).filter(isValidFreqId))
-        // Honor the client's preview pick if it's still available — this is what
-        // the user saw in the create modal. Otherwise fall back to any free slot.
+        // The client commits to the freq it previewed; if it's been taken in
+        // the meantime, error out so the user can re-open the modal and try
+        // again rather than silently landing on a different slot.
         const preferred = body.preferredFreq
-        const freqId = (preferred && isValidFreqId(preferred) && !takenFreqs.has(preferred))
-          ? preferred
-          : pickAvailableFreqId(takenFreqs)
-        if (!freqId) {
-          return new Response(JSON.stringify({ error: "band-full" }), {
-            status: 409, headers: { "Content-Type": "application/json", ...corsHeaders },
-          })
+        let freqId: string
+        if (preferred && isValidFreqId(preferred)) {
+          if (takenFreqs.has(preferred)) {
+            return new Response(JSON.stringify({ error: "slot-taken", frequency: preferred }), {
+              status: 409, headers: { "Content-Type": "application/json", ...corsHeaders },
+            })
+          }
+          freqId = preferred
+        } else {
+          // No preferred freq (or invalid) → fall back to picking any free slot.
+          const fallback = pickAvailableFreqId(takenFreqs)
+          if (!fallback) {
+            return new Response(JSON.stringify({ error: "band-full" }), {
+              status: 409, headers: { "Content-Type": "application/json", ...corsHeaders },
+            })
+          }
+          freqId = fallback
         }
         // Reserve the slot atomically in the index before bootstrapping the
         // station room — prevents two concurrent creates from racing.
