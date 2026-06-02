@@ -68,7 +68,6 @@ export default function App() {
   // Lets NowPlaying distinguish "tuning in" from "confirmed empty queue".
   const [stationLoading, setStationLoading] = useState<boolean>(() => isValidFreqId(window.location.pathname.slice(import.meta.env.BASE_URL.length)))
   const [easterEggOpen, setEasterEggOpen] = useState(false)
-  const [fontSheetOpen, setFontSheetOpen] = useState(false)
   const renameRef = useRef<HTMLInputElement>(null)
   const albumModalOpRef = useRef(0)
   const playbackLoop = useRef(new PlaybackLoop(new AppleMusicPlayer()))
@@ -783,11 +782,6 @@ export default function App() {
             className="hover:text-white transition-colors"
           >Party Radio</button>
           <span className="font-mono text-muted/25">{__COMMIT__}</span>
-          <button
-            onClick={() => setFontSheetOpen(true)}
-            className="font-mono text-muted/40 hover:text-white/70 transition-colors"
-            title="Font test sheet"
-          >Aa</button>
         </div>
         <div className="text-xs">
           {renamingDJ ? (
@@ -836,52 +830,6 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Font test sheet — Aa button in footer */}
-      <AnimatePresence>
-        {fontSheetOpen && (
-          <motion.div
-            className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/85 cursor-pointer"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={() => setFontSheetOpen(false)}
-          >
-            <motion.div
-              className="bg-panel rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto cursor-default"
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-white font-bold text-lg">Font test sheet</h2>
-                <button onClick={() => setFontSheetOpen(false)} className="text-muted hover:text-white text-2xl leading-none">×</button>
-              </div>
-              {[
-                { name: "JetBrains Mono",        family: "'JetBrains Mono', monospace" },
-                { name: "IBM Plex Mono",         family: "'IBM Plex Mono', monospace" },
-                { name: "Fira Code",             family: "'Fira Code', monospace" },
-                { name: "Space Mono",            family: "'Space Mono', monospace" },
-                { name: "VT323",                 family: "'VT323', monospace" },
-                { name: "Major Mono Display",    family: "'Major Mono Display', monospace" },
-                { name: "Press Start 2P",        family: "'Press Start 2P', monospace" },
-                { name: "Inconsolata",           family: "'Inconsolata', monospace" },
-                { name: "Roboto Mono",           family: "'Roboto Mono', monospace" },
-                { name: "Cutive Mono",           family: "'Cutive Mono', monospace" },
-              ].map(f => (
-                <div key={f.name} className="mb-6 pb-5 border-b border-border/50 last:border-0">
-                  <p className="text-muted/60 text-xs uppercase tracking-widest mb-2">{f.name}</p>
-                  <p className="text-white text-3xl mb-1" style={{ fontFamily: f.family }}>hat.fm — 103.7</p>
-                  <p className="text-amber-400 text-2xl mb-1" style={{ fontFamily: f.family }}>PARTY RADIO</p>
-                  <p className="text-white/70 text-sm" style={{ fontFamily: f.family }}>abcdefghijklmnopqrstuvwxyz 0123456789</p>
-                </div>
-              ))}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   )
 }
