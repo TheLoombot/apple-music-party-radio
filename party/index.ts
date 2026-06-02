@@ -138,6 +138,11 @@ export default class RadioParty implements Party.Server {
   // the alarm handler (where room.env may be inaccessible) can recover it.
   private cachedIndexUrl: string | null = null
 
+  // Tombstone flag — set when the station is removed by its owner. Causes
+  // onAlarm, handleStation, onConnect, and notifyIndex to bail out so the
+  // room can't resurrect itself between deletion and re-creation.
+  private cachedDeleted: boolean | null = null
+
   // Guard against concurrent fillRobotQueue calls (e.g. rapid skips)
   private robotFilling = false
 
@@ -147,6 +152,13 @@ export default class RadioParty implements Party.Server {
 
   // Debounce timer for presence notifications only (join/leave coalescing)
   private presenceTimer: ReturnType<typeof setTimeout> | null = null
+
+  private async isDeleted(): Promise<boolean> {
+    if (this.cachedDeleted === null) {
+      this.cachedDeleted = (await this.room.storage.get<boolean>("deleted")) === true
+    }
+    return this.cachedDeleted
+  }
 
   private getRoomId(): string {
     return this.cachedRoomId ?? this.room.id
@@ -174,6 +186,12 @@ export default class RadioParty implements Party.Server {
     // Persist roomId on every connect so onAlarm can always recover it after DO hibernation.
     // broadcastQueue also does this, but onConnect covers stations that have never had queue activity.
     if (roomId !== "index") {
+      // Refuse connections to deleted stations — clients shouldn't keep
+      // chatting with a tombstoned room and re-populating its storage.
+      if (await this.isDeleted()) {
+        conn.close(1000, "station deleted")
+        return
+      }
       await this.room.storage.put("roomId", roomId)
     }
     // Derive and persist the index URL from the connection's WebSocket URL so it
@@ -234,6 +252,9 @@ export default class RadioParty implements Party.Server {
         console.warn("[onAlarm] roomId missing from storage — alarm fired but cannot proceed. Stored roomId:", this.cachedRoomId)
         return
       }
+      // Station was deleted — bail before any work that would re-arm the alarm
+      // or call notifyIndex (which would resurrect the station in the index).
+      if (await this.isDeleted()) return
       console.log(`[onAlarm] fired for room "${this.cachedRoomId}", indexUrl cache: ${this.cachedIndexUrl ?? "(none)"}`)
 
       try {
@@ -470,7 +491,10 @@ export default class RadioParty implements Party.Server {
               displayName: msg.id,
               storefront: "us",
               liveUntil,
-              frequency: randomFrequency(),
+              // Post-big-bang invariant: id === freq string. Don't randomize the
+              // numeric `frequency` field, that's how revived zombies used to
+              // reappear at "new frequencies".
+              frequency: parseFloat(msg.id),
               nowPlayingAddedBy: msg.nowPlayingAddedBy ?? undefined,
               nowPlayingAddedByName: msg.nowPlayingAddedByName ?? undefined,
               nowPlayingTrackName: isLive ? (msg.nowPlayingTrackName ?? undefined) : undefined,
@@ -502,7 +526,35 @@ export default class RadioParty implements Party.Server {
         const body = await req.json() as { ownerUid: string; displayName: string; storefront: string }
         const ownership: StationOwnership = { ownerUid: body.ownerUid, createdAt: Date.now() }
         await this.room.storage.put("ownership", ownership)
+        // Re-creating at a previously-deleted freq: clear the tombstone so
+        // handlers stop rejecting traffic.
+        await this.room.storage.delete("deleted")
+        this.cachedDeleted = false
         this.cachedOwnerUid = body.ownerUid
+        return new Response("ok", { headers: corsHeaders })
+      }
+
+      // POST /parties/main/<freq>/delete — server-to-server from the index room
+      // when the user removes the station. Tears the room down so its alarm
+      // chain stops broadcasting and pinging the index.
+      if (req.method === "POST" && url.pathname.endsWith("/delete")) {
+        // Set the tombstone FIRST so any in-flight onAlarm / message handlers
+        // see it and bail before they re-arm anything.
+        await this.room.storage.put("deleted", true)
+        this.cachedDeleted = true
+        await this.room.storage.deleteAlarm()
+        // Wipe all per-station state — also closes the "re-create at same freq
+        // returns 409" gap from CLAUDE.md. Keep `deleted` and `roomId`.
+        for (const key of ["ownership", "queue", "pool", "djs", "dj_notes", "chat", "suggestions"]) {
+          await this.room.storage.delete(key)
+        }
+        this.cachedOwnerUid = null
+        this.cachedDJs = null
+        // Close existing WebSocket connections so clients don't keep talking
+        // to a dead room (and can't re-populate the storage we just cleared).
+        for (const conn of this.room.getConnections()) {
+          try { conn.close(1000, "station deleted") } catch { /* ignore */ }
+        }
         return new Response("ok", { headers: corsHeaders })
       }
 
@@ -530,6 +582,27 @@ export default class RadioParty implements Party.Server {
   private async handleIndex(msg: any) {
     if (msg.type === "remove_station") {
       let stations = await this.storage<Station[]>("stations", [])
+      const target = stations.find(s => s.id === msg.id)
+      if (!target) return // already gone
+      // Auth: caller must be the recorded owner. Stations with no recorded
+      // owner (legacy/zombie stubs) can be removed by anyone — matches the
+      // client-side `canRemove = isOwn || !station.ownerUid` gate.
+      if (target.ownerUid && target.ownerUid !== msg.ownerUid) {
+        console.warn(`[remove_station] unauthorized: uid "${msg.ownerUid}" tried to remove "${msg.id}" (owned by "${target.ownerUid}")`)
+        return
+      }
+      // Tear down the station room FIRST so its alarm chain stops pinging the
+      // index. Otherwise the next notifyIndex(liveUntil>0) auto-revives a stub
+      // and the station "comes back from the dead" at a random frequency.
+      try {
+        const res = await this.room.context.parties.main.get(msg.id).fetch(
+          `/parties/main/${msg.id}/delete`,
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+        )
+        if (!res.ok) console.error(`[remove_station] /delete returned ${res.status} for ${msg.id}`)
+      } catch (e) {
+        console.error(`[remove_station] failed to /delete station "${msg.id}":`, e)
+      }
       stations = stations.filter(s => s.id !== msg.id)
       await this.room.storage.put("stations", stations)
       this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
@@ -573,6 +646,13 @@ export default class RadioParty implements Party.Server {
   // ─── Station room ────────────────────────────────────────────────────────
 
   private async handleStation(msg: any, sender: Party.Connection) {
+    // Tombstoned room — drop the message and close the conn. The /delete
+    // handler already tried to close all known conns, but in-flight messages
+    // or reconnects could still land here.
+    if (await this.isDeleted()) {
+      try { sender.close(1000, "station deleted") } catch { /* ignore */ }
+      return
+    }
     switch (msg.type) {
       case "join": {
         const djs = await this.getDJs()
@@ -1234,6 +1314,9 @@ export default class RadioParty implements Party.Server {
   }
 
   private async notifyIndex(liveUntil: number, nowPlayingAddedBy?: string, nowPlayingAddedByName?: string, nowPlayingTrackName?: string, nowPlayingArtistName?: string, nowPlayingArtworkUrl?: string) {
+    // Tombstoned rooms must never ping the index — that's the exact path that
+    // used to resurrect deleted stations via the auto-revive in handleIndex.
+    if (await this.isDeleted()) return
     const body = JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName, nowPlayingArtworkUrl })
     const headers = { "Content-Type": "application/json" }
 

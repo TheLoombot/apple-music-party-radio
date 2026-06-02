@@ -237,8 +237,8 @@ export class IndexSocket {
     this.socket?.send(JSON.stringify({ type: "register", id, displayName, storefront, ownerUid, frequency, ownerDisplayName }))
   }
 
-  removeStation(id: string) {
-    this.socket?.send(JSON.stringify({ type: "remove_station", id }))
+  removeStation(id: string, ownerUid: string) {
+    this.socket?.send(JSON.stringify({ type: "remove_station", id, ownerUid }))
   }
 
   /** Asks the server to assign an available frequency and create the station.

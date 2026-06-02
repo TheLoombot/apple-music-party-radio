@@ -347,14 +347,15 @@ export default function App() {
   }, [currentStationId])
 
   const handleRemoveStation = useCallback((stationId: string) => {
-    indexSocket.removeStation(stationId)
+    if (!user) return
+    indexSocket.removeStation(stationId, user.uid)
     removeOwnedStationId(stationId)
     setOwnedStationIds(getOwnedStationIds())
     if (stationId === currentStationId) {
       const nextStation = stations.find(s => s.id !== stationId && s.liveUntil > Date.now())
       handleSelectStation(nextStation?.id ?? stations.find(s => s.id !== stationId)?.id ?? "")
     }
-  }, [currentStationId, stations])
+  }, [currentStationId, stations, user])
 
   const handleCreateStation = useCallback(async () => {
     if (!user) return
