@@ -143,7 +143,7 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
       const playlist = pickRandom(allRelatedPlaylists.current, 1)[0]
       setRelatedPlaylist(playlist)
       const tracks = await catalog.getPlaylistTracks(playlist.id)
-      setRelatedTracks(tracks)
+      setRelatedTracks(pickRandom(tracks, tracks.length))
     } catch {
       setRelatedError(true)
     } finally {
