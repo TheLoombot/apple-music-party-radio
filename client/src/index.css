@@ -92,6 +92,7 @@ svg.attention-pulse {
   animation: attention-pulse 1.6s ease-in-out infinite;
 }
 
+
 /* ─── 3D button vibe ────────────────────────────────────────────────────────
  *  Base ".btn-3d" is a depressable hardware-button shell: thin border, hard
  *  bottom shadow for elevation, snaps down on :active. The amber backlight

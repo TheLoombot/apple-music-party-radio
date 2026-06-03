@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Volume2, VolumeX, SkipForward, Library, Info, Rewind, FastForward, Ban, MessageCircle, Plus } from "lucide-react"
 import { Tooltip } from "./Tooltip"
@@ -190,7 +190,7 @@ function useMediaSession(
   }, [track?.key, isPlaying, canSkip, onSkip, onPlay, onPause, onPrevStation, onNextStation])
 }
 
-// ── 7-segment LED display ────────────────────────────────────────────────────
+// ── LED display constants — shared by the frequency and station-name displays.
 
 const DIG_W = 22
 const DIG_H = 40
@@ -200,40 +200,6 @@ const DOT_W = 5
 const SEG_ON = "#ff9800"
 const SEG_OFF = "rgba(255,152,0,0.15)"
 
-const SEGS: [number, number, number, number][] = [
-  [T, 0, DIG_W - 2 * T, T],
-  [DIG_W - T, T, T, DIG_H / 2 - 2 * T],
-  [DIG_W - T, DIG_H / 2 + T, T, DIG_H / 2 - 2 * T],
-  [T, DIG_H - T, DIG_W - 2 * T, T],
-  [0, DIG_H / 2 + T, T, DIG_H / 2 - 2 * T],
-  [0, T, T, DIG_H / 2 - 2 * T],
-  [T, DIG_H / 2 - T / 2, DIG_W - 2 * T, T],
-]
-
-const DIGIT_SEGS: Record<string, number[]> = {
-  "0": [1, 1, 1, 1, 1, 1, 0],
-  "1": [0, 1, 1, 0, 0, 0, 0],
-  "2": [1, 1, 0, 1, 1, 0, 1],
-  "3": [1, 1, 1, 1, 0, 0, 1],
-  "4": [0, 1, 1, 0, 0, 1, 1],
-  "5": [1, 0, 1, 1, 0, 1, 1],
-  "6": [1, 0, 1, 1, 1, 1, 1],
-  "7": [1, 1, 1, 0, 0, 0, 0],
-  "8": [1, 1, 1, 1, 1, 1, 1],
-  "9": [1, 1, 1, 1, 0, 1, 1],
-}
-
-function SegChar({ ch }: { ch: string }) {
-  const segs = DIGIT_SEGS[ch] ?? Array(7).fill(0)
-  return (
-    <svg width={DIG_W} height={DIG_H} viewBox={`0 0 ${DIG_W} ${DIG_H}`} style={{ overflow: "visible" }}>
-      {SEGS.map(([x, y, w, h], i) => (
-        <rect key={i} x={x} y={y} width={w} height={h} fill={segs[i] ? SEG_ON : SEG_OFF} rx={0.8} />
-      ))}
-    </svg>
-  )
-}
-
 function SegDot() {
   return (
     <svg width={DOT_W} height={DIG_H} viewBox={`0 0 ${DOT_W} ${DIG_H}`}>
@@ -242,14 +208,182 @@ function SegDot() {
   )
 }
 
+// Frequency LED — uses the same 14-seg glyphs as the station name so the
+// whole panel reads as one continuous instrument. Decimal point is SegDot.
 function SevenSegDisplay({ value }: { value: string }) {
   const chars = value.padStart(5, " ").split("")
   return (
+    <div className="flex items-end select-none" style={{ gap: `${DIG_GAP}px` }}>
+      {chars.map((ch, i) => ch === "." ? <SegDot key={i} /> : <FsChar key={i} ch={ch} />)}
+    </div>
+  )
+}
+
+// ── 14-segment LED — for the station name. Same physical scale (DIG_W/DIG_H/T)
+//    as the 7-seg frequency display so they read as one continuous instrument.
+
+// Axis-aligned segments. Order is fixed: A B C D E F G1 G2 I L (rectangles).
+// The four diagonals (H J K M) follow as polygons.
+const FS_RECTS: [number, number, number, number][] = [
+  [T, 0, DIG_W - 2*T, T],                                          // A: top
+  [DIG_W - T, T, T, DIG_H/2 - 3*T/2],                              // B: top-right
+  [DIG_W - T, DIG_H/2 + T/2, T, DIG_H/2 - 3*T/2],                  // C: bottom-right
+  [T, DIG_H - T, DIG_W - 2*T, T],                                  // D: bottom
+  [0, DIG_H/2 + T/2, T, DIG_H/2 - 3*T/2],                          // E: bottom-left
+  [0, T, T, DIG_H/2 - 3*T/2],                                      // F: top-left
+  [T, DIG_H/2 - T/2, DIG_W/2 - 3*T/2, T],                          // G1: middle-left
+  [DIG_W/2 + T/2, DIG_H/2 - T/2, DIG_W/2 - 3*T/2, T],              // G2: middle-right
+  [DIG_W/2 - T/2, T, T, DIG_H/2 - 3*T/2],                          // I: top-center
+  [DIG_W/2 - T/2, DIG_H/2 + T/2, T, DIG_H/2 - 3*T/2],              // L: bottom-center
+]
+
+// Diagonals end short of the exact center so they don't overlap the mid-bar
+// and center verticals — same approach as real 14-seg displays.
+const FS_DIAGS: [number, number, number, number][] = [
+  [T + 0.5, T + 0.5, DIG_W/2 - T, DIG_H/2 - T],                    // H: NW (TL → near center)
+  [DIG_W - T - 0.5, T + 0.5, DIG_W/2 + T, DIG_H/2 - T],            // J: NE
+  [DIG_W/2 + T, DIG_H/2 + T, DIG_W - T - 0.5, DIG_H - T - 0.5],    // K: SE (near center → BR)
+  [DIG_W/2 - T, DIG_H/2 + T, T + 0.5, DIG_H - T - 0.5],            // M: SW (near center → BL)
+]
+
+function fsDiagPoly(x1: number, y1: number, x2: number, y2: number, t: number): string {
+  // Parallelogram slab of thickness t, perpendicular to the (x1,y1)→(x2,y2) line.
+  const dx = x2 - x1, dy = y2 - y1
+  const len = Math.hypot(dx, dy)
+  const px = -dy / len * t * 0.5
+  const py =  dx / len * t * 0.5
+  return `${x1+px},${y1+py} ${x1-px},${y1-py} ${x2-px},${y2-py} ${x2+px},${y2+py}`
+}
+
+// Character → 14 segments. Order matches FS_RECTS then FS_DIAGS:
+// [A, B, C, D, E, F, G1, G2, I, L, H, J, K, M]
+const FS_CHARS: Record<string, number[]> = {
+  " ": [0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  "-": [0,0,0,0,0,0,1,1,0,0,0,0,0,0],
+  "0": [1,1,1,1,1,1,0,0,0,0,0,0,0,0],
+  "1": [0,1,1,0,0,0,0,0,0,0,0,0,0,0],
+  "2": [1,1,0,1,1,0,1,1,0,0,0,0,0,0],
+  "3": [1,1,1,1,0,0,0,1,0,0,0,0,0,0],
+  "4": [0,1,1,0,0,1,1,1,0,0,0,0,0,0],
+  "5": [1,0,1,1,0,1,1,1,0,0,0,0,0,0],
+  "6": [1,0,1,1,1,1,1,1,0,0,0,0,0,0],
+  "7": [1,1,1,0,0,0,0,0,0,0,0,0,0,0],
+  "8": [1,1,1,1,1,1,1,1,0,0,0,0,0,0],
+  "9": [1,1,1,1,0,1,1,1,0,0,0,0,0,0],
+  "A": [1,1,1,0,1,1,1,1,0,0,0,0,0,0],
+  "B": [1,1,1,1,0,0,0,1,1,1,0,0,0,0],
+  "C": [1,0,0,1,1,1,0,0,0,0,0,0,0,0],
+  "D": [1,1,1,1,0,0,0,0,1,1,0,0,0,0],
+  "E": [1,0,0,1,1,1,1,1,0,0,0,0,0,0],
+  "F": [1,0,0,0,1,1,1,1,0,0,0,0,0,0],
+  "G": [1,0,1,1,1,1,0,1,0,0,0,0,0,0],
+  "H": [0,1,1,0,1,1,1,1,0,0,0,0,0,0],
+  "I": [1,0,0,1,0,0,0,0,1,1,0,0,0,0],
+  "J": [0,1,1,1,0,0,0,0,0,0,0,0,0,0],
+  // K: left spine (E+F), middle-left bar (G1), arm up to TR (J), leg down to BR (K segment).
+  "K": [0,0,0,0,1,1,1,0,0,0,0,1,1,0],
+  "L": [0,0,0,1,1,1,0,0,0,0,0,0,0,0],
+  "M": [0,1,1,0,1,1,0,0,0,0,1,1,0,0],
+  "N": [0,1,1,0,1,1,0,0,0,0,1,0,1,0],
+  "O": [1,1,1,1,1,1,0,0,0,0,0,0,0,0],
+  "P": [1,1,0,0,1,1,1,1,0,0,0,0,0,0],
+  "Q": [1,1,1,1,1,1,0,0,0,0,0,0,1,0],
+  "R": [1,1,0,0,1,1,1,1,0,0,0,0,1,0],
+  "S": [1,0,1,1,0,1,1,1,0,0,0,0,0,0],
+  "T": [1,0,0,0,0,0,0,0,1,1,0,0,0,0],
+  "U": [0,1,1,1,1,1,0,0,0,0,0,0,0,0],
+  "V": [0,0,0,0,1,1,0,0,0,0,0,1,0,1],
+  "W": [0,1,1,0,1,1,0,0,0,0,0,0,1,1],
+  "X": [0,0,0,0,0,0,0,0,0,0,1,1,1,1],
+  "Y": [0,0,0,0,0,0,0,0,0,1,1,1,0,0],
+  "Z": [1,0,0,1,0,0,0,0,0,0,0,1,0,1],
+}
+
+function FsChar({ ch }: { ch: string }) {
+  const segs = FS_CHARS[ch.toUpperCase()] ?? FS_CHARS[" "]
+  return (
+    <svg width={DIG_W} height={DIG_H} viewBox={`0 0 ${DIG_W} ${DIG_H}`}>
+      {FS_RECTS.map(([x, y, w, h], i) => (
+        <rect key={`r${i}`} x={x} y={y} width={w} height={h} fill={segs[i] ? SEG_ON : SEG_OFF} rx={0.8} />
+      ))}
+      {FS_DIAGS.map(([x1, y1, x2, y2], i) => (
+        <polygon
+          key={`d${i}`}
+          points={fsDiagPoly(x1, y1, x2, y2, T)}
+          fill={segs[10 + i] ? SEG_ON : SEG_OFF}
+        />
+      ))}
+    </svg>
+  )
+}
+
+// FourteenSegDisplay: like a physical LED marquee sign. A fixed grid of N
+// character slots stays put; the lit segments shift one position at a time
+// to scroll the message. Empty slots show all-off (the "ghost" LEDs).
+// Number of slots is derived from container width via ResizeObserver.
+function FourteenSegDisplay({ value }: { value: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [slots, setSlots] = useState(8)
+
+  useLayoutEffect(() => {
+    const update = () => {
+      const c = containerRef.current
+      if (!c) return
+      // N glyphs occupy N*DIG_W + (N-1)*DIG_GAP px → solve for max N that fits.
+      const n = Math.max(1, Math.floor((c.clientWidth + DIG_GAP) / (DIG_W + DIG_GAP)))
+      setSlots(n)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    if (containerRef.current) ro.observe(containerRef.current)
+    return () => ro.disconnect()
+  }, [])
+
+  const message = value.toUpperCase()
+  const fits = message.length <= slots
+
+  // Discrete tick-based scroll. The padded period is `message + (slots) blanks`,
+  // chosen so the display goes fully blank for exactly one frame between the
+  // prior iteration scrolling off the left edge and the next iteration scrolling
+  // in from the right edge. Never two iterations on screen at once.
+  const period = Math.max(1, message.length + slots)
+  const [offset, setOffset] = useState(0)
+  useEffect(() => {
+    setOffset(0)
+    if (fits) return
+    // One-time initial pause so the start of the name is readable before it
+    // scrolls left. Subsequent cycles scroll through continuously.
+    const INITIAL_PAUSE_TICKS = 4
+    let holding = INITIAL_PAUSE_TICKS
+    const id = setInterval(() => {
+      if (holding > 0) { holding--; return }
+      setOffset(prev => (prev + 1) % period)
+    }, 280)
+    return () => clearInterval(id)
+  }, [fits, period])
+
+  const visible: string[] = []
+  if (fits) {
+    // Center the message within the slot grid.
+    const leftPad = Math.floor((slots - message.length) / 2)
+    for (let i = 0; i < slots; i++) {
+      if (i >= leftPad && i < leftPad + message.length) visible.push(message[i - leftPad])
+      else visible.push(" ")
+    }
+  } else {
+    for (let i = 0; i < slots; i++) {
+      const idx = (offset + i) % period
+      visible.push(idx < message.length ? message[idx] : " ")
+    }
+  }
+
+  return (
     <div
-      className="flex items-end select-none"
-      style={{ gap: `${DIG_GAP}px`, filter: `drop-shadow(0 0 6px ${SEG_ON}) drop-shadow(0 0 14px ${SEG_ON})` }}
+      ref={containerRef}
+      className="w-full flex items-end justify-center select-none"
+      style={{ gap: `${DIG_GAP}px` }}
     >
-      {chars.map((ch, i) => ch === "." ? <SegDot key={i} /> : <SegChar key={i} ch={ch} />)}
+      {visible.map((ch, i) => <FsChar key={i} ch={ch} />)}
     </div>
   )
 }
@@ -348,17 +482,24 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
       {/* Top panel — station name / frequency / mute / chat */}
       <div className="bg-panel rounded-xl overflow-hidden">
         {/* Station name + info row — at the top of the panel.
-         * Name centered, info pinned to the right. Name still opens the station modal. */}
-        <div className="relative px-3 pt-3 pb-2 flex items-center justify-center min-h-[28px]">
+         * 14-segment LED in the same dark-bordered container as the frequency
+         * display below, so the panel reads as one continuous instrument.
+         * FourteenSegDisplay scrolls character-by-character when the name
+         * doesn't fit. Clickable (opens station modal) but no hover styling. */}
+        <div className="px-3 pt-3 pb-2 flex items-center gap-2">
           <button
             onClick={onOpenStationModal}
-            className="text-white text-base font-bold hover:text-accent transition-colors max-w-[calc(100%-3rem)] truncate"
+            aria-label={stationName}
+            title={stationName}
+            className="flex-1 min-w-0"
           >
-            {stationName}
+            <div className="h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center overflow-hidden">
+              <FourteenSegDisplay value={stationName} />
+            </div>
           </button>
           <button
             onClick={openInfo}
-            className="absolute right-3 text-muted/40 hover:text-white/70 transition-colors w-7 h-7 flex items-center justify-center"
+            className="text-muted/40 hover:text-white/70 transition-colors w-7 h-7 flex items-center justify-center shrink-0"
             title="Station info"
           >
             <Info size={14} />
@@ -379,9 +520,13 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <Rewind size={30} strokeWidth={2} fill="currentColor" stroke="none" />
             </button>
           </Tooltip>
-          {/* LED display spans the middle two columns */}
-          <div className="col-span-2 h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center">
-            <SevenSegDisplay value={displayFreq != null ? displayFreq.toFixed(1) : ""} />
+          {/* LED display sits in the middle two columns, but the bordered
+           *  box itself shrink-wraps the digits so the border hugs the LEDs
+           *  with minimal black space on either side. */}
+          <div className="col-span-2 flex justify-center">
+            <div className="h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center px-1">
+              <SevenSegDisplay value={displayFreq != null ? displayFreq.toFixed(1) : ""} />
+            </div>
           </div>
           <Tooltip label="Next station" position="bottom" align="end">
             <button
