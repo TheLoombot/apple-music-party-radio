@@ -366,8 +366,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
         </div>
 
         {/* Frequency + nav row — laid out on a 4-column grid so it aligns
-         * with the Mute/Chat row below and the Skip/Ban/Pool/+ row in the
-         * bottom panel. Prev=col1, LED=col2-3, Next=col4. */}
+         * with the Mute/Chat row below. Prev=col1, LED=col2-3, Next=col4. */}
         <div className="grid grid-cols-4 gap-2 px-4 pt-2 pb-2">
           <Tooltip label="Previous station" position="bottom" align="start">
             <button
@@ -380,7 +379,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <Rewind size={30} strokeWidth={2} fill="currentColor" stroke="none" />
             </button>
           </Tooltip>
-          {/* LED display spans the middle two columns, matching Ban+Pool width below */}
+          {/* LED display spans the middle two columns */}
           <div className="col-span-2 h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center">
             <SevenSegDisplay value={displayFreq != null ? displayFreq.toFixed(1) : ""} />
           </div>
@@ -517,40 +516,10 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               )}
             </motion.div>
 
-            {/* Controls */}
-            <div className="grid grid-cols-4 gap-2 px-4 pb-5">
-              <Tooltip label={canSkip ? "Skip" : "DJs only"} align="start">
-                <button
-                  onClick={onSkip}
-                  disabled={!canSkip}
-                  aria-label="Skip"
-                  className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white"
-                >
-                  <SkipForward size={20} />
-                </button>
-              </Tooltip>
-              <Tooltip label={!canSkip ? "DJs only" : "Skip & remove from pool"}>
-                <button
-                  onClick={onSkipAndBan}
-                  disabled={!canSkip || !onSkipAndBan}
-                  aria-label="Skip and remove from pool"
-                  className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
-                >
-                  <Ban size={20} />
-                </button>
-              </Tooltip>
-              <Tooltip label={onOpenPool ? "Open pool" : "DJs only"}>
-                <button
-                  onClick={onOpenPool}
-                  disabled={!onOpenPool}
-                  aria-label="Open pool"
-                  className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white"
-                >
-                  <Library size={20} />
-                </button>
-              </Tooltip>
+            {/* Controls — full-width Add on top, Pool/Skip/Ban below */}
+            <div className="px-4 pb-5 space-y-2">
               {onOpenAddTracks && (
-                <Tooltip label={addButtonLabel ?? "Add tracks"} align="end">
+                <Tooltip label={addButtonLabel ?? "Add tracks"}>
                   <button
                     onClick={onOpenAddTracks}
                     aria-label={addButtonLabel ?? "Add tracks"}
@@ -565,6 +534,38 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   </button>
                 </Tooltip>
               )}
+              <div className="grid grid-cols-3 gap-2">
+                <Tooltip label={onOpenPool ? "Open pool" : "DJs only"} align="start">
+                  <button
+                    onClick={onOpenPool}
+                    disabled={!onOpenPool}
+                    aria-label="Open pool"
+                    className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white"
+                  >
+                    <Library size={20} />
+                  </button>
+                </Tooltip>
+                <Tooltip label={canSkip ? "Skip" : "DJs only"}>
+                  <button
+                    onClick={onSkip}
+                    disabled={!canSkip}
+                    aria-label="Skip"
+                    className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white"
+                  >
+                    <SkipForward size={20} />
+                  </button>
+                </Tooltip>
+                <Tooltip label={!canSkip ? "DJs only" : "Skip & remove from pool"} align="end">
+                  <button
+                    onClick={onSkipAndBan}
+                    disabled={!canSkip || !onSkipAndBan}
+                    aria-label="Skip and remove from pool"
+                    className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
+                  >
+                    <Ban size={20} />
+                  </button>
+                </Tooltip>
+              </div>
             </div>
           </motion.div>
         ) : loading ? (
@@ -615,25 +616,10 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <p className="text-sm mt-0.5 invisible">album</p>
             </div>
 
-            {/* Controls — Skip/Ban/Pool disabled, Add active */}
-            <div className="grid grid-cols-4 gap-2 px-4 pb-5">
-              <Tooltip label="DJs only" align="start">
-                <button disabled aria-label="Skip" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
-                  <SkipForward size={20} />
-                </button>
-              </Tooltip>
-              <Tooltip label="DJs only">
-                <button disabled aria-label="Skip and remove from pool" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
-                  <Ban size={20} />
-                </button>
-              </Tooltip>
-              <Tooltip label="DJs only">
-                <button disabled aria-label="Open pool" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
-                  <Library size={20} />
-                </button>
-              </Tooltip>
+            {/* Controls — full-width Add on top, Pool/Skip/Ban disabled below */}
+            <div className="px-4 pb-5 space-y-2">
               {onOpenAddTracks && (
-                <Tooltip label={addButtonLabel ?? "Add tracks"} align="end">
+                <Tooltip label={addButtonLabel ?? "Add tracks"}>
                   <button
                     onClick={onOpenAddTracks}
                     aria-label={addButtonLabel ?? "Add tracks"}
@@ -649,6 +635,23 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   </button>
                 </Tooltip>
               )}
+              <div className="grid grid-cols-3 gap-2">
+                <Tooltip label="DJs only" align="start">
+                  <button disabled aria-label="Open pool" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
+                    <Library size={20} />
+                  </button>
+                </Tooltip>
+                <Tooltip label="DJs only">
+                  <button disabled aria-label="Skip" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
+                    <SkipForward size={20} />
+                  </button>
+                </Tooltip>
+                <Tooltip label="DJs only" align="end">
+                  <button disabled aria-label="Skip and remove from pool" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
+                    <Ban size={20} />
+                  </button>
+                </Tooltip>
+              </div>
             </div>
           </motion.div>
         )}
