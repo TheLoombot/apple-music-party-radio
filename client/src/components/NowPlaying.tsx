@@ -353,7 +353,7 @@ function FourteenSegDisplay({ value }: { value: string }) {
     if (fits) return
     // One-time initial pause so the start of the name is readable before it
     // scrolls left. Subsequent cycles scroll through continuously.
-    const INITIAL_PAUSE_TICKS = 4
+    const INITIAL_PAUSE_TICKS = 10
     let holding = INITIAL_PAUSE_TICKS
     const id = setInterval(() => {
       if (holding > 0) { holding--; return }
@@ -493,22 +493,22 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             title={stationName}
             className="flex-1 min-w-0"
           >
-            <div className="h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center overflow-hidden">
+            <div className="h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center overflow-hidden px-2">
               <FourteenSegDisplay value={stationName} />
             </div>
           </button>
           <button
             onClick={openInfo}
-            className="text-muted/40 hover:text-white/70 transition-colors w-7 h-7 flex items-center justify-center shrink-0"
+            className="text-muted/40 hover:text-white/70 transition-colors w-7 h-12 flex items-center justify-center shrink-0"
             title="Station info"
           >
             <Info size={14} />
           </button>
         </div>
 
-        {/* Frequency + nav row — laid out on a 4-column grid so it aligns
-         * with the Mute/Chat row below. Prev=col1, LED=col2-3, Next=col4. */}
-        <div className="grid grid-cols-4 gap-2 px-4 pt-2 pb-2">
+        {/* Frequency + nav row — three equal columns, matching the
+         * Pool/Skip/Ban row in the bottom panel. Prev | Freq LED | Next. */}
+        <div className="grid grid-cols-3 gap-2 px-4 pt-2 pb-2">
           <Tooltip label="Previous station" position="bottom" align="start">
             <button
               onClick={handlePrevNav}
@@ -520,13 +520,8 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <Rewind size={30} strokeWidth={2} fill="currentColor" stroke="none" />
             </button>
           </Tooltip>
-          {/* LED display sits in the middle two columns, but the bordered
-           *  box itself shrink-wraps the digits so the border hugs the LEDs
-           *  with minimal black space on either side. */}
-          <div className="col-span-2 flex justify-center">
-            <div className="h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center px-1">
-              <SevenSegDisplay value={displayFreq != null ? displayFreq.toFixed(1) : ""} />
-            </div>
+          <div className="min-w-0 h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center overflow-hidden px-2">
+            <SevenSegDisplay value={displayFreq != null ? displayFreq.toFixed(1) : ""} />
           </div>
           <Tooltip label="Next station" position="bottom" align="end">
             <button
