@@ -506,9 +506,10 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           </button>
         </div>
 
-        {/* Frequency + nav row — three equal columns, matching the
-         * Pool/Skip/Ban row in the bottom panel. Prev | Freq LED | Next. */}
-        <div className="grid grid-cols-3 gap-2 px-4 pt-2 pb-2">
+        {/* Frequency + nav row — freq LED is naturally sized in the middle,
+         * prev/next buttons split the remaining row width equally on either
+         * side. Strict thirds would clip the LED on narrow mobile widths. */}
+        <div className="grid grid-cols-[1fr_auto_1fr] gap-2 px-4 pt-2 pb-2">
           <Tooltip label="Previous station" position="bottom" align="start">
             <button
               onClick={handlePrevNav}
@@ -520,7 +521,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <Rewind size={30} strokeWidth={2} fill="currentColor" stroke="none" />
             </button>
           </Tooltip>
-          <div className="min-w-0 h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center overflow-hidden px-2">
+          <div className="h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center px-2">
             <SevenSegDisplay value={displayFreq != null ? displayFreq.toFixed(1) : ""} />
           </div>
           <Tooltip label="Next station" position="bottom" align="end">
