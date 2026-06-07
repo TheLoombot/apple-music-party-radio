@@ -40,14 +40,60 @@ interface Props {
   onVoteSuggestion: (key: string) => void
   onEnqueueSuggestion?: (key: string) => void
   onRemoveSuggestion?: (key: string) => void
+  mode?: "modal" | "panel"
 }
 
-export function DiscoveryModal({ onClose, catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTrack, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
+export function DiscoveryModal({ onClose, catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTrack, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion, mode = "modal" }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     document.addEventListener("keydown", handler)
     return () => document.removeEventListener("keydown", handler)
   }, [onClose])
+
+  const header = (
+    <div className="px-4 py-3 border-b border-border flex items-center justify-between flex-shrink-0">
+      <span className="text-xs text-muted font-medium uppercase tracking-wider">
+        {isPrivileged ? "Add or Request" : "Request a Track"}
+      </span>
+      <button onClick={onClose} className="text-muted hover:text-white transition-colors w-10 h-10 flex items-center justify-center flex-shrink-0">
+        <X size={18} />
+      </button>
+    </div>
+  )
+
+  const content = (
+    <DiscoveryErrorBoundary onClose={onClose}>
+      <Discovery
+        catalog={catalog}
+        queuedIsrcs={queuedIsrcs}
+        suggestedIsrcs={suggestedIsrcs}
+        queue={queue}
+        onAddTrack={onAddTrack}
+        embedded
+        suggestions={suggestions}
+        isPrivileged={isPrivileged}
+        currentUserId={currentUserId}
+        onVoteSuggestion={onVoteSuggestion}
+        onEnqueueSuggestion={onEnqueueSuggestion}
+        onRemoveSuggestion={onRemoveSuggestion}
+      />
+    </DiscoveryErrorBoundary>
+  )
+
+  if (mode === "panel") {
+    return (
+      <motion.div
+        className="w-[320px] flex-shrink-0 self-start sticky top-4 bg-panel rounded-xl overflow-hidden flex flex-col max-h-[calc(100vh-2rem)]"
+        initial={{ x: -20, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: -20, opacity: 0 }}
+        transition={{ duration: 0.2 }}
+      >
+        {header}
+        {content}
+      </motion.div>
+    )
+  }
 
   return (
     <motion.div
@@ -66,30 +112,8 @@ export function DiscoveryModal({ onClose, catalog, queuedIsrcs, suggestedIsrcs, 
         transition={{ duration: 0.2 }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between flex-shrink-0">
-          <span className="text-xs text-muted font-medium uppercase tracking-wider">
-            {isPrivileged ? "Add or Request" : "Request a Track"}
-          </span>
-          <button onClick={onClose} className="text-muted hover:text-white transition-colors w-10 h-10 flex items-center justify-center flex-shrink-0">
-            <X size={18} />
-          </button>
-        </div>
-        <DiscoveryErrorBoundary onClose={onClose}>
-          <Discovery
-            catalog={catalog}
-            queuedIsrcs={queuedIsrcs}
-            suggestedIsrcs={suggestedIsrcs}
-            queue={queue}
-            onAddTrack={onAddTrack}
-            embedded
-            suggestions={suggestions}
-            isPrivileged={isPrivileged}
-            currentUserId={currentUserId}
-            onVoteSuggestion={onVoteSuggestion}
-            onEnqueueSuggestion={onEnqueueSuggestion}
-            onRemoveSuggestion={onRemoveSuggestion}
-          />
-        </DiscoveryErrorBoundary>
+        {header}
+        {content}
       </motion.div>
     </motion.div>
   )

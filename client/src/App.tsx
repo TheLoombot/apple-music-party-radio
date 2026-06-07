@@ -45,6 +45,7 @@ export default function App() {
   const [stationModalOpen, setStationModalOpen] = useState(false)
   const [chatModalOpen, setChatModalOpen] = useState(false)
   const [discoveryModalOpen, setDiscoveryModalOpen] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia("(min-width: 1024px)").matches)
   const [lastReadSentAt, setLastReadSentAt] = useState(() => Date.now())
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [isMuted, setIsMuted] = useState(false)
@@ -83,6 +84,13 @@ export default function App() {
     setPreviewFrequency(pickAvailableFreqId(taken))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createModalOpen])
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)")
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
+    mq.addEventListener("change", handler)
+    return () => mq.removeEventListener("change", handler)
+  }, [])
 
   // Boot: check config, init MusicKit
   useEffect(() => {
@@ -652,7 +660,7 @@ export default function App() {
       )}
 
       <AnimatePresence>
-        {chatModalOpen && (
+        {chatModalOpen && !isDesktop && (
           <ChatModal
             onClose={() => setChatModalOpen(false)}
             messages={chatMessages}
@@ -663,7 +671,7 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {discoveryModalOpen && (
+        {discoveryModalOpen && !isDesktop && (
           <DiscoveryModal
             onClose={() => setDiscoveryModalOpen(false)}
             catalog={catalog.current}
@@ -698,7 +706,30 @@ export default function App() {
           </div>
         </div>
       ) : (
-      <div className="flex-1 max-w-[480px] w-full mx-auto px-4 py-4 space-y-4">
+      <div className="flex-1 flex items-start justify-center py-4 gap-3">
+
+        {/* Add/Request side panel — desktop left */}
+        <AnimatePresence>
+          {discoveryModalOpen && isDesktop && (
+            <DiscoveryModal
+              mode="panel"
+              onClose={() => setDiscoveryModalOpen(false)}
+              catalog={catalog.current}
+              queuedIsrcs={queuedIsrcs}
+              suggestedIsrcs={suggestedIsrcs}
+              queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
+              onAddTrack={isPrivileged ? handleAddTrack : handleSuggestTrack}
+              suggestions={suggestions}
+              isPrivileged={isPrivileged}
+              currentUserId={user.uid}
+              onVoteSuggestion={handleVoteSuggestion}
+              onEnqueueSuggestion={isPrivileged ? handleEnqueueSuggestion : undefined}
+              onRemoveSuggestion={isPrivileged ? handleRemoveSuggestion : undefined}
+            />
+          )}
+        </AnimatePresence>
+
+        <div className="w-full max-w-[480px] px-4 space-y-4 flex-shrink-0 min-w-0">
 
         <NowPlaying
           track={nowPlaying}
@@ -726,10 +757,10 @@ export default function App() {
           loading={stationLoading}
           onOpenChat={() => {
             setLastReadSentAt(chatMessages[chatMessages.length - 1]?.sentAt ?? Date.now())
-            setChatModalOpen(true)
+            setChatModalOpen(v => !v)
           }}
           unreadCount={unreadCount}
-          onOpenAddTracks={() => setDiscoveryModalOpen(true)}
+          onOpenAddTracks={() => setDiscoveryModalOpen(v => !v)}
           addButtonLabel={isPrivileged
             ? suggestions.length > 0
               ? `Add tracks (${suggestions.length} ${suggestions.length === 1 ? "request" : "requests"})`
@@ -766,6 +797,21 @@ export default function App() {
             onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
           />
         )}
+
+        </div>{/* end main content column */}
+
+        {/* Chat side panel — desktop right */}
+        <AnimatePresence>
+          {chatModalOpen && isDesktop && (
+            <ChatModal
+              mode="panel"
+              onClose={() => setChatModalOpen(false)}
+              messages={chatMessages}
+              currentUser={user}
+              onSend={(text) => stationSocket.sendChatMessage(text)}
+            />
+          )}
+        </AnimatePresence>
 
       </div>
       )}
