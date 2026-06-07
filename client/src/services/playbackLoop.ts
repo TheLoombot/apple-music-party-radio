@@ -231,16 +231,18 @@ export class PlaybackLoop {
     }
 
     // The track we were attempting to play got bypassed before its expiration.
-    // Most common cause: unplayable in user's storefront / DRM-restricted /
-    // preview-only, so MusicKit silently skipped it. Surface this explicitly —
-    // otherwise the only signal is the divergence warning below.
+    // Surface this explicitly. Cause is unclear from JS alone — could be the
+    // track is genuinely unplayable in this session, OR our setQueue didn't
+    // actually clear MusicKit's prior queue and MusicKit is still playing
+    // something we never set. The native-queue snapshot in the divergence
+    // warning below is the best signal for distinguishing the two.
     if (this.currentTrack && this.currentTrack.expirationTime > Date.now() + 1000) {
-      log.playback.warn("track skipped before expiry (likely unplayable in user's storefront)", {
-        skipped: this.currentTrack.name,
-        skippedAppleId: this.currentTrack.platformIds?.apple,
+      log.playback.warn("track bypassed before expiry", {
+        intended: this.currentTrack.name,
+        intendedAppleId: this.currentTrack.platformIds?.apple,
         remainingMs: this.currentTrack.expirationTime - Date.now(),
-        advancedTo: matched.name,
-        advancedToAppleId: itemId,
+        actuallyPlaying: matched.name,
+        actuallyPlayingAppleId: itemId,
       })
     }
 

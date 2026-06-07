@@ -214,13 +214,17 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
 
   if (isCancelled?.()) return
 
+  // Snapshot before/after setQueue so we can prove whether MusicKit actually
+  // replaced its queue or kept a phantom item at position 0. Compare these
+  // two in the log when a "track bypassed before expiry" warning fires.
+  log.sync.debug("setQueue before", { intend: catalogId, tail: tailIds?.length ?? 0, native: snapshotNativeQueue() })
   const tSetQueueStart = performance.now()
   if (tailIds && tailIds.length > 0) {
     await music.setQueue({ songs: [catalogId, ...tailIds] })
   } else {
     await music.setQueue({ song: catalogId })
   }
-  log.sync.debug("setQueue done", { ms: Math.round(performance.now() - tSetQueueStart), head: catalogId, tail: tailIds?.length ?? 0 })
+  log.sync.debug("setQueue after", { ms: Math.round(performance.now() - tSetQueueStart), native: snapshotNativeQueue() })
 
   // Critical cancel point: if the caller superseded us (station switch, new playAtOffset,
   // or stop()), bail BEFORE play(). The setQueue side-effect on MusicKit's internal queue

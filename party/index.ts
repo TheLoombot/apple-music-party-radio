@@ -1147,15 +1147,18 @@ export default class RadioParty implements Party.Server {
       const needed = TARGET_ROBOT_DEPTH - robotTailCount
       if (needed <= 0) return
 
-      // Build an exclusion set so we don't immediately repeat a track already in the queue.
-      // When the pool is smaller than the queue depth we cycle: clear the set (keeping only
-      // the currently-playing track) and allow repeats rather than leaving slots empty.
+      // Exclusion set so we never push a duplicate Apple ID / ISRC into the
+      // queue. If the pool is smaller than TARGET_ROBOT_DEPTH we just leave
+      // the queue shorter — duplicate IDs end up confusing MusicKit's native
+      // queue (positions drift, syncQueueTail miscomputes prefix/append,
+      // tracks get appended twice). Better short and clean than long and
+      // duplicated. The next track expiry will trigger another fill which
+      // can then reuse the just-expired track without violating uniqueness.
       const alreadyQueued = new Set<string>(
         queue.flatMap(q => [q.isrc, q.platformIds?.apple].filter((v): v is string => !!v))
       )
 
       let changed = false
-      let poolCycled = false
       let filled = 0
       let attempts = 0
       while (filled < needed && attempts < needed * 4) {
@@ -1165,15 +1168,7 @@ export default class RadioParty implements Party.Server {
           if (t.platformIds?.apple && alreadyQueued.has(t.platformIds.apple)) return false
           return true
         })
-        if (candidates.length === 0) {
-          if (poolCycled) break  // still no candidates after cycling — give up
-          // Pool fully cycled through the queue — allow repeats (keep pool looping forever)
-          poolCycled = true
-          alreadyQueued.clear()
-          if (queue[0]?.isrc) alreadyQueued.add(queue[0].isrc)
-          if (queue[0]?.platformIds?.apple) alreadyQueued.add(queue[0].platformIds.apple)
-          continue
-        }
+        if (candidates.length === 0) break  // pool exhausted — leave queue short
 
         const pick = candidates[Math.floor(Math.random() * candidates.length)]
         if (pick.isrc) alreadyQueued.add(pick.isrc)
