@@ -6,6 +6,7 @@
  *  indexSocket    — connects to the "index" room, manages station discovery
  */
 import PartySocket from "partysocket"
+import { log } from "./log"
 import type { QueueItem, Track, PoolTrack, Station, ChatMessage, SuggestedTrack } from "../types"
 
 // Ensure every track from the server has a platformIds object.
@@ -58,15 +59,17 @@ export class StationSocket {
     // chat and presence are silently broken because the server requires a join
     // before it'll process chat messages or include the user in the listener list.
     this.socket.onopen = () => {
+      log.net.info("station socket open", { room: stationId })
       if (this.lastJoinParams) {
         this.socket?.send(JSON.stringify({ type: "join", ...this.lastJoinParams }))
       }
     }
+    this.socket.onclose = () => log.net.info("station socket closed", { room: stationId })
 
     this.socket.onmessage = (e) => {
       let msg: any
       try { msg = JSON.parse(e.data) } catch (err) {
-        console.error("[StationSocket] failed to parse message:", err)
+        log.net.error("StationSocket failed to parse message:", err)
         return
       }
       if (msg.type === "state") {
@@ -97,7 +100,7 @@ export class StationSocket {
       }
     }
 
-    this.socket.onerror = (e) => console.error("[StationSocket]", e)
+    this.socket.onerror = (e) => log.net.error("StationSocket error:", e)
 
     // Keep the WebSocket alive while the tab is backgrounded on iOS.
     // The server ignores unknown message types so this is a no-op server-side.
@@ -205,10 +208,12 @@ export class IndexSocket {
       : { host: HOST, room: "index" }
     this.socket = new PartySocket(opts)
     this.socket.onopen = () => {
+      log.net.info("index socket open")
       if (this.disconnectTimer) { clearTimeout(this.disconnectTimer); this.disconnectTimer = null }
       this.onConnectionChange?.(true)
     }
     this.socket.onclose = () => {
+      log.net.info("index socket closed")
       this.disconnectTimer = setTimeout(() => {
         this.disconnectTimer = null
         this.onConnectionChange?.(false)
@@ -217,7 +222,7 @@ export class IndexSocket {
     this.socket.onmessage = (e) => {
       let msg: any
       try { msg = JSON.parse(e.data) } catch (err) {
-        console.error("[IndexSocket] failed to parse message:", err)
+        log.net.error("IndexSocket failed to parse message:", err)
         return
       }
       if (msg.type === "stations_update") {

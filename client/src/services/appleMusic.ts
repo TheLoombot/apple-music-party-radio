@@ -1,4 +1,5 @@
 import { getMusicUserToken, artworkUrl } from "./musickit"
+import { log } from "./log"
 import type { Track, SearchItem, LibraryPlaylistResult, LibraryAlbumResult, PlaylistResult, AlbumResult } from "../types"
 
 function headers(): HeadersInit {
@@ -295,7 +296,7 @@ export async function getHeavyRotationMixTracks(storefront = "us"): Promise<Trac
     { headers: headers() }
   )
   if (!res.ok) {
-    console.warn("[heavyRotation] /v1/me/recommendations HTTP", res.status, res.statusText)
+    log.net.warn("heavyRotation /v1/me/recommendations HTTP", res.status, res.statusText)
     return []
   }
   const data = await res.json()
@@ -311,7 +312,7 @@ export async function getHeavyRotationMixTracks(storefront = "us"): Promise<Trac
     }
   }
   if (!playlistId) {
-    console.warn("[heavyRotation] no playlist matching /heavy rotation/i found in recommendations")
+    log.app.warn("heavyRotation: no playlist matching /heavy rotation/i found in recommendations")
     return []
   }
   return getPlaylistTracks(playlistId, storefront)

@@ -19,6 +19,7 @@
 import { stationSocket } from "./partykit"
 import { UnavailableError } from "./player"
 import { onNowPlayingItemChange, isPreviewOnly } from "./musickit"
+import { log } from "./log"
 import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
 
@@ -46,8 +47,50 @@ export class PlaybackLoop {
   onPlaybackBlocked?: () => void
   onMutedChange?: (muted: boolean) => void
   onPreviewOnly?: () => void
+  /** Fires when the actual audio playback state flips (real samples being
+   *  produced vs not). See MusicPlayer.isActuallyPlaying for distinction
+   *  from the requested/intended state. */
+  onActuallyPlayingChange?: (playing: boolean) => void
 
-  constructor(private player: MusicPlayer) {}
+  // Stall watchdog — when we expect audio (autoplay on, track set, not muted)
+  // but isActuallyPlaying stays false for STALL_WINDOW_MS, log a warning so
+  // we can spot silent failures (autoplay block, network stall, OS interrupt).
+  // No automated retry yet — observation only.
+  private static readonly STALL_WINDOW_MS = 3000
+  private stallTimer: ReturnType<typeof setTimeout> | null = null
+
+  constructor(private player: MusicPlayer) {
+    this.player.onActuallyPlayingChange(playing => {
+      this.onActuallyPlayingChange?.(playing)
+      this.updateStallWatchdog(playing)
+    })
+  }
+
+  isActuallyPlaying(): boolean {
+    return this.player.isActuallyPlaying()
+  }
+
+  private expectsAudio(): boolean {
+    return this.autoplayEnabled && !this.muted && this.currentTrack !== null
+  }
+
+  private updateStallWatchdog(playing: boolean): void {
+    if (playing) {
+      if (this.stallTimer) { clearTimeout(this.stallTimer); this.stallTimer = null }
+      return
+    }
+    if (!this.expectsAudio() || this.stallTimer) return
+    this.stallTimer = setTimeout(() => {
+      this.stallTimer = null
+      if (this.player.isActuallyPlaying() || !this.expectsAudio()) return
+      log.playback.warn("stall detected — expected audio but element isn't producing samples", {
+        playbackState: (this.player as any).isPlaying?.(),
+        track: this.currentTrack?.name,
+        autoplayEnabled: this.autoplayEnabled,
+        muted: this.muted,
+      })
+    }, PlaybackLoop.STALL_WINDOW_MS)
+  }
 
   async start(stationId: string) {
     if (this.autoplayEnabled && this.player.isPlaying()) {
@@ -105,15 +148,16 @@ export class PlaybackLoop {
     const seq = ++this.playSequence
     ++this.tailSequence  // play path also supersedes any in-flight tail sync
     this.nativeCurrentId = track.platformIds.apple ?? null
+    log.playback.info("play", { source: "resume", track: track.name, offsetSec: Math.round(offsetSeconds) })
     try {
       await this.player.playAtOffset(track, offsetSeconds, tail, () => this.playSequence !== seq)
       if (this.playSequence !== seq) return
     } catch (err) {
       if (err instanceof UnavailableError) {
-        console.warn("[PlaybackLoop] track unavailable on resume, skipping:", track.name, track.key)
+        log.playback.warn("track unavailable on resume, skipping:", track.name, track.key)
         stationSocket.expireTrack(track.key, false)
       } else {
-        console.error("[PlaybackLoop] resume error:", err)
+        log.playback.error("resume error:", err)
       }
     }
   }
@@ -142,16 +186,17 @@ export class PlaybackLoop {
     const seq = ++this.playSequence
     ++this.tailSequence  // play path also supersedes any in-flight tail sync
     this.nativeCurrentId = track.platformIds.apple ?? null
+    log.playback.info("play", { source: "refresh", track: track.name, offsetSec: Math.round(offsetSeconds) })
     try {
       await this.player.playAtOffset(track, offsetSeconds, tail, () => this.playSequence !== seq)
       if (this.playSequence !== seq) return
       this.reassertMute()
     } catch (err) {
       if (err instanceof UnavailableError) {
-        console.warn("[PlaybackLoop] track unavailable on refresh, skipping:", track.name, track.key)
+        log.playback.warn("track unavailable on refresh, skipping:", track.name, track.key)
         stationSocket.expireTrack(track.key, false)
       } else {
-        console.error("[PlaybackLoop] refresh error:", err)
+        log.playback.error("refresh error:", err)
       }
     }
   }
@@ -165,7 +210,7 @@ export class PlaybackLoop {
   // MusicKit auto-advanced to the next track natively.
   private handleNowPlayingItemChange = (item: MusicKit.MediaItem | null) => {
     const itemId = item ? String(item.id) : null
-    console.debug("[PlaybackLoop] nowPlayingItemDidChange", {
+    log.sync.debug("nowPlayingItemDidChange", {
       itemId,
       nativeCurrentId: this.nativeCurrentId,
       expectedNextId: this.lastKnownQueue[1]?.platformIds?.apple ?? null,
@@ -180,17 +225,17 @@ export class PlaybackLoop {
     // further down. Updating the UI to the truth is better than holding stale.
     const matched = this.lastKnownQueue.find(q => q.platformIds?.apple === itemId)
     if (!matched) {
-      console.warn("[PlaybackLoop] nowPlayingItemDidChange to", itemId, "not in lastKnownQueue — reconcile tick will retry")
+      log.sync.warn("nowPlayingItemDidChange to", itemId, "not in lastKnownQueue — reconcile tick will retry")
       return
     }
 
     const expectedNextId = this.lastKnownQueue[1]?.platformIds?.apple
     if (itemId !== expectedNextId) {
-      console.warn("[PlaybackLoop] unexpected native advance — expected", expectedNextId, "got", itemId, "(", matched.name, ") — applying anyway")
+      log.sync.warn("unexpected native advance — expected", expectedNextId, "got", itemId, "(", matched.name, ") — applying anyway")
     }
 
     if (isPreviewOnly()) {
-      console.warn("[PlaybackLoop] preview-only mode detected — suppressing auto-advance")
+      log.playback.warn("preview-only mode detected — suppressing auto-advance")
       this.onPreviewOnly?.()
       return
     }
@@ -198,7 +243,7 @@ export class PlaybackLoop {
     // Advance nowPlaying immediately — avoids a blank "station is quiet"
     // window while waiting for the server's alarm to broadcast the updated queue.
     this.nativeCurrentId = itemId
-    console.debug("[PlaybackLoop] native advance → nowPlaying", matched.name)
+    log.sync.info("native advance → nowPlaying", matched.name)
     this.onNowPlayingChange?.(matched)
   }
 
@@ -223,7 +268,7 @@ export class PlaybackLoop {
     }
     const matched = this.lastKnownQueue.find(q => q.platformIds?.apple === liveId)
     if (!matched) { this.lastSeenDriftId = null; return }  // unknown track — ignore
-    console.warn("[PlaybackLoop] reconcile drift: live", liveId, "≠ expected", this.nativeCurrentId, "→ advancing UI to", matched.name)
+    log.sync.warn("reconcile drift: live", liveId, "≠ expected", this.nativeCurrentId, "→ advancing UI to", matched.name)
     this.currentTrack = matched
     this.currentTrackKey = matched.key
     this.nativeCurrentId = liveId
@@ -261,7 +306,7 @@ export class PlaybackLoop {
         try {
           await this.player.syncQueueTail(tail, () => this.tailSequence !== seq)
         } catch (err) {
-          console.error("[PlaybackLoop] visibility restore syncQueueTail error:", err)
+          log.playback.error("visibility restore syncQueueTail error:", err)
         }
       }
       return
@@ -284,16 +329,17 @@ export class PlaybackLoop {
     const seq = ++this.playSequence
     ++this.tailSequence  // play path also supersedes any in-flight tail sync
     this.nativeCurrentId = wantedId ?? null
+    log.playback.info("play", { source: "visibility", track: track.name, offsetSec: Math.round(offsetSeconds) })
     try {
       await this.player.playAtOffset(track, offsetSeconds, tail, () => this.playSequence !== seq)
       if (this.playSequence !== seq) return
       this.reassertMute()
     } catch (err) {
       if (err instanceof UnavailableError) {
-        console.warn("[PlaybackLoop] track unavailable on tab focus, skipping:", track.name, track.key)
+        log.playback.warn("track unavailable on tab focus, skipping:", track.name, track.key)
         stationSocket.expireTrack(track.key, false)
       } else {
-        console.error("[PlaybackLoop] tab focus restore error:", err)
+        log.playback.error("tab focus restore error:", err)
       }
     }
   }
@@ -321,6 +367,16 @@ export class PlaybackLoop {
   }
 
   private async processQueueUpdate(queue: QueueItem[]) {
+    // Snapshot diagnostic — captures every server-driven queue change so the
+    // timeline reads as: server pushed N tracks, head is X, expires in Yms.
+    const head = queue[0]
+    const headChanged = head?.key !== this.currentTrackKey
+    log.queue.info("update", {
+      count: queue.length,
+      head: head ? `${head.name}` : null,
+      headChanged,
+      etaMs: head ? Math.max(0, head.expirationTime - Date.now()) : null,
+    })
     this.onQueueChange?.(queue.slice(1))
     this.lastKnownQueue = queue
 
@@ -368,7 +424,7 @@ export class PlaybackLoop {
       const playerActuallyPlaying = this.player.isPlaying()
       if (wantedId && (wantedId === this.nativeCurrentId || (wantedId === liveId && playerActuallyPlaying))) {
         this.nativeCurrentId = wantedId
-        console.debug("[PlaybackLoop] native auto-advance detected, skipping setQueue", { wantedId, liveId, nativeCurrentId: this.nativeCurrentId })
+        log.sync.info("native auto-advance detected, skipping setQueue", { wantedId, liveId })
         // Do NOT bump playSequence here — this branch starts no new play, so cancelling
         // any in-flight playAtOffset (e.g. handleVisibilityChange's rehydrate) would
         // leave audio silent. Only the tail sync is "new", so only tailSequence bumps.
@@ -376,7 +432,7 @@ export class PlaybackLoop {
         try {
           await this.player.syncQueueTail(tail, () => this.tailSequence !== seq)
         } catch (err) {
-          console.error("[PlaybackLoop] syncQueueTail after auto-advance error:", err)
+          log.playback.error("syncQueueTail after auto-advance error:", err)
         }
         return
       }
@@ -393,16 +449,17 @@ export class PlaybackLoop {
       const seq = ++this.playSequence
       ++this.tailSequence  // play path also supersedes any in-flight tail sync
       this.nativeCurrentId = wantedId
+      log.playback.info("play", { source: "queue-update", track: track0.name, offsetSec: Math.round(offsetSeconds) })
       try {
         await this.player.playAtOffset(track0, offsetSeconds, tail, () => this.playSequence !== seq)
         if (this.playSequence !== seq) return
         this.reassertMute()
       } catch (err) {
         if (err instanceof UnavailableError) {
-          console.warn("[PlaybackLoop] track unavailable, skipping:", track0.name)
+          log.playback.warn("track unavailable, skipping:", track0.name)
           stationSocket.expireTrack(track0.key, false)
         } else {
-          console.error("[PlaybackLoop] playback error:", err)
+          log.playback.error("playback error:", err)
         }
       }
       return
@@ -412,7 +469,7 @@ export class PlaybackLoop {
     if (!musicKitAlreadyAdvanced) {
       this.onNowPlayingChange?.(track0)
     } else {
-      console.debug("[PlaybackLoop] soft update: native already advanced, holding nowPlaying", { nativeCurrentId: this.nativeCurrentId, track0: track0.name })
+      log.sync.debug("soft update: native already advanced, holding nowPlaying", { nativeCurrentId: this.nativeCurrentId, track0: track0.name })
     }
     // During the transition window (MusicKit advanced to next track, server catching up),
     // compute tail relative to where MusicKit actually is to avoid duplicating now-playing
@@ -427,7 +484,7 @@ export class PlaybackLoop {
     try {
       await this.player.syncQueueTail(syncTail, () => this.tailSequence !== seq)
     } catch (err) {
-      console.error("[PlaybackLoop] syncQueueTail error:", err)
+      log.playback.error("syncQueueTail error:", err)
     }
   }
 }

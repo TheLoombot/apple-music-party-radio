@@ -6,6 +6,72 @@ import type { QueueItem } from "../types"
 const isNotFound = (err: any) => err?.errorCode === "NOT_FOUND" || String(err).includes("NOT_FOUND")
 
 export class AppleMusicPlayer implements MusicPlayer {
+  // ── Actual-playback monitor ────────────────────────────────────────────────
+  // MusicKit's playbackState reports its intended state (we called play(),
+  // didn't pause). The underlying <audio> element can still be silent — muted,
+  // paused at the OS level, stalled on buffering, blocked by autoplay policy.
+  // We poll the audio element's currentTime to detect actual sample production.
+  // Polling (vs event listeners) handles two things cleanly: (1) MusicKit
+  // creates the <audio> element lazily on first play, so we'd miss it if we
+  // only attached once on construction; (2) some browsers throttle timeupdate
+  // under certain conditions, but currentTime always reflects truth.
+  private monitoredAudio: HTMLAudioElement | null = null
+  private lastCurrentTime = -1
+  private lastAdvancedAt = 0
+  private cachedActuallyPlaying = false
+  private listeners = new Set<(playing: boolean) => void>()
+  private pollTimer: ReturnType<typeof setInterval> | null = null
+
+  constructor() {
+    // 250ms gives ≤250ms latency on UI state transitions; CPU cost is trivial.
+    this.pollTimer = setInterval(() => this.tick(), 250)
+  }
+
+  private tick(): void {
+    const audio = document.querySelector("audio") as HTMLAudioElement | null
+    if (audio !== this.monitoredAudio) {
+      this.monitoredAudio = audio
+      this.lastCurrentTime = -1
+    }
+    if (audio && !audio.paused && audio.currentTime !== this.lastCurrentTime) {
+      this.lastAdvancedAt = Date.now()
+      this.lastCurrentTime = audio.currentTime
+    }
+    this.recompute()
+  }
+
+  private computeActuallyPlaying(): boolean {
+    try {
+      const music = getMusicKit() as any
+      if (music.playbackState !== 2) return false
+      const audio = this.monitoredAudio
+      if (!audio) return false
+      if (audio.paused || audio.muted || audio.volume === 0) return false
+      // currentTime must have advanced within ~2 poll intervals to count as
+      // actively playing; longer means stalled/paused/interrupted.
+      return (Date.now() - this.lastAdvancedAt) < 600
+    } catch { return false }
+  }
+
+  private recompute(): void {
+    const next = this.computeActuallyPlaying()
+    if (next === this.cachedActuallyPlaying) return
+    this.cachedActuallyPlaying = next
+    this.listeners.forEach(cb => { try { cb(next) } catch { /* ignore */ } })
+  }
+
+  isActuallyPlaying(): boolean {
+    return this.cachedActuallyPlaying
+  }
+
+  onActuallyPlayingChange(cb: (playing: boolean) => void): () => void {
+    this.listeners.add(cb)
+    // Fire with current state so the subscriber doesn't sit at the default
+    // (false) until the next transition.
+    try { cb(this.cachedActuallyPlaying) } catch { /* ignore */ }
+    return () => { this.listeners.delete(cb) }
+  }
+
   async playAtOffset(track: QueueItem, offsetSeconds: number, tail?: QueueItem[], isCancelled?: () => boolean): Promise<void> {
     const appleId = track.platformIds.apple
     if (!appleId) throw new UnavailableError("apple", track)

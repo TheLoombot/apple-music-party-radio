@@ -429,6 +429,10 @@ function useFrequencyScan(frequency: number | undefined) {
 export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, unreadCount, onOpenAddTracks, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote }: Props) {
   const isMobile = useIsMobile()
   const { progress, elapsed } = useProgress(track)
+  // Both `isPlaying` (MediaSession OS controls) and `quiet` (mute icon/label)
+  // reflect user intent — not the audio element's real-time state. Stall
+  // detection lives separately inside PlaybackLoop's watchdog so it doesn't
+  // bleed into the UI.
   const isPlaying = !isMuted && !isBlocked
   const quiet = isMuted || isBlocked
   const [artworkOpen, setArtworkOpen] = useState(false)

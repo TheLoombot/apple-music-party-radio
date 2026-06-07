@@ -19,6 +19,7 @@ import { isValidFreqId, pickAvailableFreqId } from "./services/frequency"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
 import { AppleMusicCatalog } from "./services/catalog"
+import { log } from "./services/log"
 import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack, ChatMessage, SuggestedTrack } from "./types"
 
 type AppState = "loading" | "setup" | "naming" | "auth" | "ready"
@@ -98,7 +99,7 @@ export default function App() {
           return
         }
         if (isAuthorized()) {
-          console.log("[boot] session restored, completing auth silently")
+          log.auth.info("session restored, completing auth silently")
           await completeAuth()
         } else {
           setAppState("auth")
@@ -295,7 +296,7 @@ export default function App() {
       await authorize()
       await playbackLoop.current.refresh()
     } catch (err: any) {
-      console.error("[reauth]", err)
+      log.auth.error("reauth failed:", err)
     }
   }, [])
 
@@ -332,6 +333,7 @@ export default function App() {
 
   const handleSelectStation = useCallback((stationId: string) => {
     if (stationId === currentStationId) return
+    log.app.info("select station", { from: currentStationId || null, to: stationId })
     window.history.pushState(null, "", `${import.meta.env.BASE_URL}${stationId}`)
     setNowPlaying(null)
     setUpNext([])
@@ -347,6 +349,7 @@ export default function App() {
 
   const handleRemoveStation = useCallback((stationId: string) => {
     if (!user) return
+    log.app.info("remove station", { stationId })
     indexSocket.removeStation(stationId, user.uid)
     removeOwnedStationId(stationId)
     setOwnedStationIds(getOwnedStationIds())
@@ -372,6 +375,7 @@ export default function App() {
       return
     }
     const freq = result.frequency
+    log.app.info("create station", { freq, name })
     setStationName(freq, name)
     addOwnedStationId(freq)
     setOwnedStationIds(getOwnedStationIds())

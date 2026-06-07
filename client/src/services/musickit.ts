@@ -1,10 +1,12 @@
+import { log } from "./log"
+
 let initialized = false
 let initPromise: Promise<void> | null = null
 let _musicUserToken = ""
 
 export async function initMusicKit(): Promise<void> {
-  if (initialized) { console.log("[auth] initMusicKit: already initialized"); return }
-  if (initPromise) { console.log("[auth] initMusicKit: reusing in-flight promise"); return initPromise }
+  if (initialized) { log.auth.debug("initMusicKit: already initialized"); return }
+  if (initPromise) { log.auth.debug("initMusicKit: reusing in-flight promise"); return initPromise }
 
   initPromise = (async () => {
     await waitForMusicKit()
@@ -47,23 +49,22 @@ function waitForAuthRestore(): Promise<void> {
   return new Promise(async (resolve) => {
     const music = await waitForMusicKitInstance()
     if (!music) {
-      console.warn("[auth] getInstance() still null after 2s — giving up")
+      log.auth.warn("getInstance() still null after 2s — giving up")
       resolve(); return
     }
     if (music.isAuthorized) {
-      console.log("[auth] already authorized on init")
+      log.auth.info("already authorized on init")
       resolve(); return
     }
 
-    console.log("[auth] waiting for MusicKit session restore…", {
+    log.auth.debug("waiting for MusicKit session restore", {
       authorizationStatus: (music as any).authorizationStatus
     })
 
     const done = (reason: string) => {
       clearTimeout(timer)
       music!.removeEventListener(MusicKit.Events.authorizationStatusDidChange, handler)
-      console.log(`[auth] resolve: ${reason} — isAuthorized:`, music!.isAuthorized,
-        "authorizationStatus:", (music as any).authorizationStatus)
+      log.auth.info("session restore complete", { reason, isAuthorized: music!.isAuthorized, status: (music as any).authorizationStatus })
       resolve()
     }
 
@@ -249,7 +250,7 @@ export async function syncQueueTail(tailIds: string[], isCancelled?: () => boole
   // no audio. The next playAtOffset (e.g. from the next queue_update's hard
   // switch) will rebuild the queue correctly.
   if (position < 0) {
-    console.debug("[MusicKit queue] syncQueueTail skipped — position < 0 (MusicKit between tracks)")
+    log.sync.debug("syncQueueTail skipped — position < 0 (MusicKit between tracks)")
     return
   }
 
@@ -268,7 +269,7 @@ export async function syncQueueTail(tailIds: string[], isCancelled?: () => boole
 
   if (isPrefixAppend) {
     const toAdd = tailIds.slice(nativeTailIds.length)
-    console.debug("[MusicKit queue] syncQueueTail prefix-append", { adding: toAdd })
+    log.sync.debug("syncQueueTail prefix-append", { adding: toAdd })
     for (const id of toAdd) {
       if (isCancelled?.()) return
       await music.playLater({ song: id })
@@ -276,7 +277,7 @@ export async function syncQueueTail(tailIds: string[], isCancelled?: () => boole
     return
   }
 
-  console.debug("[MusicKit queue] syncQueueTail full re-sync", {
+  log.sync.debug("syncQueueTail full re-sync", {
     position,
     nativeTail: nativeTailIds,
     wantedTail: tailIds,
@@ -298,7 +299,7 @@ export async function syncQueueTail(tailIds: string[], isCancelled?: () => boole
     await music.playLater({ song: id })
   }
 
-  console.debug("[MusicKit queue] syncQueueTail done — new tail:", tailIds)
+  log.sync.debug("syncQueueTail done — new tail:", tailIds)
 }
 
 /** Call once from the browser console to enable verbose MusicKit queue logging. */

@@ -4,15 +4,14 @@ import { motion } from "framer-motion"
 import { X } from "lucide-react"
 import { Discovery } from "./Discovery"
 import type { MusicCatalog } from "../services/catalog"
+import { log } from "../services/log"
 import type { Track, QueueItem, SuggestedTrack } from "../types"
 
 class DiscoveryErrorBoundary extends Component<{ children: ReactNode; onClose: () => void }, { error: Error | null }> {
   state = { error: null }
   static getDerivedStateFromError(error: Error) { return { error } }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[DiscoveryModal] crash:", error.message)
-    console.error(error.stack)
-    console.error("Component stack:", info.componentStack)
+    log.app.error("DiscoveryModal crash:", error.message, error.stack, "Component stack:", info.componentStack)
   }
   render() {
     if (this.state.error) {
