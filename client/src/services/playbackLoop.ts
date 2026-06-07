@@ -18,7 +18,7 @@
  */
 import { stationSocket } from "./partykit"
 import { UnavailableError } from "./player"
-import { onNowPlayingItemChange, isPreviewOnly } from "./musickit"
+import { onNowPlayingItemChange, isPreviewOnly, snapshotNativeQueue } from "./musickit"
 import { log } from "./log"
 import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
@@ -215,6 +215,7 @@ export class PlaybackLoop {
       nativeCurrentId: this.nativeCurrentId,
       expectedNextId: this.lastKnownQueue[1]?.platformIds?.apple ?? null,
       currentTrackKey: this.currentTrackKey,
+      native: snapshotNativeQueue(),
     })
 
     if (!itemId || !this.currentTrackKey) return
@@ -229,9 +230,23 @@ export class PlaybackLoop {
       return
     }
 
+    // The track we were attempting to play got bypassed before its expiration.
+    // Most common cause: unplayable in user's storefront / DRM-restricted /
+    // preview-only, so MusicKit silently skipped it. Surface this explicitly —
+    // otherwise the only signal is the divergence warning below.
+    if (this.currentTrack && this.currentTrack.expirationTime > Date.now() + 1000) {
+      log.playback.warn("track skipped before expiry (likely unplayable in user's storefront)", {
+        skipped: this.currentTrack.name,
+        skippedAppleId: this.currentTrack.platformIds?.apple,
+        remainingMs: this.currentTrack.expirationTime - Date.now(),
+        advancedTo: matched.name,
+        advancedToAppleId: itemId,
+      })
+    }
+
     const expectedNextId = this.lastKnownQueue[1]?.platformIds?.apple
     if (itemId !== expectedNextId) {
-      log.sync.warn("unexpected native advance — expected", expectedNextId, "got", itemId, "(", matched.name, ") — applying anyway")
+      log.sync.warn("unexpected native advance — expected", expectedNextId, "got", itemId, "(", matched.name, ") — applying anyway", { app: this.lastKnownQueue.map((t, i) => `${i}: [${t.platformIds?.apple ?? "?"}] ${t.name}`), native: snapshotNativeQueue() })
     }
 
     if (isPreviewOnly()) {
@@ -268,7 +283,7 @@ export class PlaybackLoop {
     }
     const matched = this.lastKnownQueue.find(q => q.platformIds?.apple === liveId)
     if (!matched) { this.lastSeenDriftId = null; return }  // unknown track — ignore
-    log.sync.warn("reconcile drift: live", liveId, "≠ expected", this.nativeCurrentId, "→ advancing UI to", matched.name)
+    log.sync.warn("reconcile drift: live", liveId, "≠ expected", this.nativeCurrentId, "→ advancing UI to", matched.name, { app: this.lastKnownQueue.map((t, i) => `${i}: [${t.platformIds?.apple ?? "?"}] ${t.name}`), native: snapshotNativeQueue() })
     this.currentTrack = matched
     this.currentTrackKey = matched.key
     this.nativeCurrentId = liveId
@@ -377,6 +392,9 @@ export class PlaybackLoop {
       headChanged,
       etaMs: head ? Math.max(0, head.expirationTime - Date.now()) : null,
     })
+    // Detail (debug-only) — full track list at every position. Use this to
+    // confirm what the app's queue ordering is vs MusicKit's native queue.
+    log.queue.debug("update detail", queue.map((t, i) => `${i}: [${t.platformIds?.apple ?? "?"}] ${t.name}`))
     this.onQueueChange?.(queue.slice(1))
     this.lastKnownQueue = queue
 

@@ -28,10 +28,54 @@ export async function initMusicKit(): Promise<void> {
     // Wait for the authorizationStatusDidChange event, with a timeout fallback.
     await waitForAuthRestore()
 
+    // Attach error listeners early so we catch failures on the very first track.
+    try {
+      const music = MusicKit.getInstance()
+      if (music) attachPlaybackErrorListeners(music)
+    } catch (e) {
+      log.auth.warn("could not attach MusicKit error listeners:", e)
+    }
+
     initialized = true
   })()
 
   return initPromise
+}
+
+/** MusicKit JS fires playback-related error events that we want to surface in
+ *  the log. The exact event names vary across SDK versions, so we listen on
+ *  several known/expected names; unknown names are silent no-ops. */
+function attachPlaybackErrorListeners(music: MusicKit.MusicKitInstance) {
+  // Primary error event — fires when a media item can't be played (DRM,
+  // unavailable in storefront, network failure, etc.).
+  music.addEventListener("mediaPlaybackError", (e: any) => {
+    const item = e?.mediaItem ?? e?.item ?? e?.target
+    log.playback.error("MusicKit mediaPlaybackError", {
+      code: e?.error?.code ?? e?.code ?? null,
+      message: e?.error?.message ?? e?.message ?? null,
+      itemId: item?.id ?? null,
+      itemName: item?.attributes?.name ?? null,
+    })
+  })
+
+  // Alternative event name used in some SDK versions.
+  music.addEventListener("playbackError", (e: any) => {
+    log.playback.error("MusicKit playbackError", e)
+  })
+
+  // Fires on every state transition of a media item. We only flag the bad
+  // states (`notPlayable`, etc.) — `playable`, `loading`, etc. are normal.
+  music.addEventListener("mediaItemStateDidChange", (e: any) => {
+    const state = e?.state ?? e?.target?.state
+    if (state && /(notPlayable|error|unavailable|restricted)/i.test(String(state))) {
+      const item = e?.target ?? e?.mediaItem ?? e?.item
+      log.playback.warn("MusicKit media item became unplayable", {
+        state,
+        itemId: item?.id ?? null,
+        itemName: item?.attributes?.name ?? null,
+      })
+    }
+  })
 }
 
 async function waitForMusicKitInstance(): Promise<MusicKit.MusicKitInstance | null> {
@@ -111,6 +155,30 @@ export function isAuthorized(): boolean {
   try { return getMusicKit().isAuthorized } catch { return false }
 }
 
+/** Snapshot MusicKit's native queue state for diagnostic logging. Cheap
+ *  read; safe to call even when MusicKit isn't fully initialized. */
+export function snapshotNativeQueue(): {
+  position: number
+  state: number | string
+  nowPlaying: string | null
+  items: string[]
+} | null {
+  try {
+    const m = getMusicKit() as any
+    const q = m.queue
+    return {
+      position: q.position,
+      state: (MusicKit as any).PlaybackStates?.[m.playbackState] ?? m.playbackState,
+      nowPlaying: m.nowPlayingItem
+        ? `[${m.nowPlayingItem.id}] ${m.nowPlayingItem.attributes?.name ?? "?"}`
+        : null,
+      items: q.items.map((it: any, i: number) =>
+        `${i === q.position ? "▶" : " "} [${it.id}] ${it.attributes?.name ?? "?"}`
+      ),
+    }
+  } catch { return null }
+}
+
 /** Returns true if MusicKit is in preview-only mode (no DRM / FairPlay not available).
  *  Detected by checking currentPlaybackDuration after playback starts — previews are ≤30s
  *  even when the track is a full-length song. Chrome lacks FairPlay support. */
@@ -146,11 +214,13 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
 
   if (isCancelled?.()) return
 
+  const tSetQueueStart = performance.now()
   if (tailIds && tailIds.length > 0) {
     await music.setQueue({ songs: [catalogId, ...tailIds] })
   } else {
     await music.setQueue({ song: catalogId })
   }
+  log.sync.debug("setQueue done", { ms: Math.round(performance.now() - tSetQueueStart), head: catalogId, tail: tailIds?.length ?? 0 })
 
   // Critical cancel point: if the caller superseded us (station switch, new playAtOffset,
   // or stop()), bail BEFORE play(). The setQueue side-effect on MusicKit's internal queue
@@ -177,7 +247,9 @@ export async function playTrackAtOffset(catalogId: string, offsetSeconds: number
     }
   }
 
+  const tPlayStart = performance.now()
   await music.play()
+  log.sync.debug("play() resolved", { ms: Math.round(performance.now() - tPlayStart), state: (music as any).playbackState })
 
   // After play() — if cancelled, stop the audio we just started so a stale call
   // doesn't leak audibly.
