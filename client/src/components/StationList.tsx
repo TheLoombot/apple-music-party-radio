@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Trash2, Mic } from "lucide-react"
 import type { Station } from "../types"
-import { DJFace, RobotFace } from "./FaceGenerator"
+import { DJFace } from "./FaceGenerator"
 import { artworkUrl } from "../services/musickit"
 
 function LiveDot() {
@@ -91,20 +91,15 @@ function StationRow({
           </p>
         </div>
 
-        {/* Right side: DJ face + live dot, or nothing when offline */}
-        {isLive && (
+        {/* Right side: DJ face + live dot, only for human DJs. Robot-spun
+         * stations get no DJ marker — the radio is unattended. */}
+        {isLive && spunBy && !isRobot && (
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <div className="relative group/dj">
-              {isRobot
-                ? <RobotFace size={28} />
-                : spunBy
-                ? <DJFace uid={spunBy} size={28} />
-                : null}
-              {(isRobot || spunBy) && (
-                <div className="absolute top-full right-0 mt-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover/dj:opacity-100 transition-opacity z-50 text-xs text-white">
-                  {isRobot ? "robot" : spunBy === userId ? userDisplayName : station.nowPlayingAddedByName ?? spunBy}
-                </div>
-              )}
+              <DJFace uid={spunBy} size={28} />
+              <div className="absolute top-full right-0 mt-1.5 px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap opacity-0 pointer-events-none group-hover/dj:opacity-100 transition-opacity z-50 text-xs text-white">
+                {spunBy === userId ? userDisplayName : station.nowPlayingAddedByName ?? spunBy}
+              </div>
             </div>
             <LiveDot />
           </div>
