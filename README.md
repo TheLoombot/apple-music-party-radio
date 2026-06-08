@@ -2,6 +2,8 @@
 
 A real-time collaborative radio station app built on Apple Music. One person owns a station; anyone with the link can tune in, add tracks to the shared queue, and hear the same song at the same moment. A Robot DJ automatically fills the queue from the station's pool of previously-played tracks when humans go quiet.
 
+**Live at [hat.fm](https://hat.fm)**
+
 ---
 
 ## Architecture
