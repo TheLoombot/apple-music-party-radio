@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ChevronRight, ListMusic, Search, X } from "lucide-react"
+import { ChevronRight, ListMusic, Music, Search, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { TrackRow } from "./TrackRow"
 import { SuggestionRow } from "./SuggestionRow"
@@ -355,9 +355,15 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                         {/* Sentinel — IntersectionObserver fires loadMoreSearch when this
                          *  scrolls within 200px of the viewport. Spacer height + LoadingDots
                          *  give visible feedback while the next page is fetching. */}
-                        {searchHasMore && (
+                        {searchHasMore ? (
                           <div ref={sentinelRef} className="py-6 text-center text-muted text-sm">
                             {loadingMore ? <LoadingDots /> : <span className="opacity-50">↓</span>}
+                          </div>
+                        ) : (
+                          /* End-of-results marker. Faint music note so it's
+                           *  clearly a terminator rather than a control. */
+                          <div className="py-6 flex items-center justify-center text-muted/30">
+                            <Music size={14} />
                           </div>
                         )}
                       </>
