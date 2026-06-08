@@ -39,14 +39,27 @@ export async function getUserStorefront(): Promise<string> {
   return data.data?.[0]?.id ?? "us"
 }
 
-export async function searchCatalog(term: string, storefront = "us"): Promise<SearchItem[]> {
-  if (!term.trim()) return []
-  const params = new URLSearchParams({ term, types: "songs,albums,playlists", limit: "8", extend: "offers" })
+export const SEARCH_PAGE_SIZE = 10
+
+export interface SearchPage {
+  items: SearchItem[]
+  hasMore: boolean
+}
+
+export async function searchCatalog(term: string, storefront = "us", offset = 0): Promise<SearchPage> {
+  if (!term.trim()) return { items: [], hasMore: false }
+  const params = new URLSearchParams({
+    term,
+    types: "songs,albums,playlists",
+    limit: String(SEARCH_PAGE_SIZE),
+    offset: String(offset),
+    extend: "offers",
+  })
   const res = await fetch(
     `https://api.music.apple.com/v1/catalog/${storefront}/search?${params}`,
     { headers: headers() }
   )
-  if (!res.ok) return []
+  if (!res.ok) return { items: [], hasMore: false }
   const data = await res.json()
 
   type SongItem = { kind: "song"; track: Track }
@@ -81,13 +94,23 @@ export async function searchCatalog(term: string, storefront = "us"): Promise<Se
   // Interleave songs first, then albums and playlists together
   const containers = albums.flatMap((a, i) => playlists[i] ? [a, playlists[i]] : [a])
     .concat(playlists.slice(albums.length))
-  const results: SearchItem[] = []
+  const items: SearchItem[] = []
   const maxLen = Math.max(songs.length, containers.length)
   for (let i = 0; i < maxLen; i++) {
-    if (i < songs.length) results.push(songs[i])
-    if (i < containers.length) results.push(containers[i])
+    if (i < songs.length) items.push(songs[i])
+    if (i < containers.length) items.push(containers[i])
   }
-  return results
+
+  // Apple's response includes a `next` cursor per result type when more
+  // pages exist for that type. If any type still has more, there's more
+  // to load overall.
+  const hasMore = !!(
+    data.results?.songs?.next ||
+    data.results?.albums?.next ||
+    data.results?.playlists?.next
+  )
+
+  return { items, hasMore }
 }
 
 export async function getAlbumTracks(albumId: string, storefront = "us"): Promise<Track[]> {

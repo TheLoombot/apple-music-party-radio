@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { ChevronRight, ListMusic, Search, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
@@ -47,28 +47,78 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
   // ── Search tab state ────────────────────────────────────────────────────────
   const [query, setQuery] = useState("")
   const [searchResults, setSearchResults] = useState<SearchItem[]>([])
+  // Initial fetch for a new term, vs background fetch of additional pages.
   const [searching, setSearching] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [searchHasMore, setSearchHasMore] = useState(false)
+  // Token bumped on every new term — stale page-fetch resolutions check it
+  // and bail so they don't append results into a newer query's list.
+  const searchTokenRef = useRef(0)
+  const searchOffsetRef = useRef(0)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isSearching = query.trim().length > 0
 
   useEffect(() => {
     if (tab === "search") searchInputRef.current?.focus()
   }, [tab])
 
+  // Debounced initial search whenever the term changes.
   useEffect(() => {
     clearTimeout(debounceRef.current)
-    if (!isSearching) { setSearchResults([]); return }
+    if (!isSearching) {
+      searchTokenRef.current++
+      setSearchResults([])
+      setSearchHasMore(false)
+      searchOffsetRef.current = 0
+      return
+    }
     debounceRef.current = setTimeout(async () => {
+      const token = ++searchTokenRef.current
+      searchOffsetRef.current = 0
       setSearching(true)
       try {
-        setSearchResults(await catalog.search(query))
+        const page = await catalog.search(query, 0)
+        if (token !== searchTokenRef.current) return
+        setSearchResults(page.items)
+        setSearchHasMore(page.hasMore)
+        searchOffsetRef.current = page.items.length
       } finally {
-        setSearching(false)
+        if (token === searchTokenRef.current) setSearching(false)
       }
     }, 350)
     return () => clearTimeout(debounceRef.current)
   }, [query, catalog])
+
+  // Load the next page when the sentinel scrolls into view.
+  const loadMoreSearch = useCallback(async () => {
+    if (loadingMore || searching || !searchHasMore) return
+    const token = searchTokenRef.current
+    setLoadingMore(true)
+    try {
+      const page = await catalog.search(query, searchOffsetRef.current)
+      if (token !== searchTokenRef.current) return
+      setSearchResults(prev => [...prev, ...page.items])
+      setSearchHasMore(page.hasMore)
+      searchOffsetRef.current += page.items.length
+    } finally {
+      if (token === searchTokenRef.current) setLoadingMore(false)
+    }
+  }, [catalog, query, loadingMore, searching, searchHasMore])
+
+  // IntersectionObserver fires loadMoreSearch when the sentinel becomes visible.
+  useEffect(() => {
+    if (!sentinelRef.current || !scrollContainerRef.current) return
+    if (!isSearching || !searchHasMore) return
+    const obs = new IntersectionObserver(
+      entries => { if (entries.some(e => e.isIntersecting)) loadMoreSearch() },
+      { root: scrollContainerRef.current, rootMargin: "200px" }
+    )
+    obs.observe(sentinelRef.current)
+    return () => obs.disconnect()
+  }, [isSearching, searchHasMore, loadMoreSearch])
 
   // ── Charts / Heavy Rotation state ───────────────────────────────────────────
   const [chartTracks, setChartTracks] = useState<Track[]>([])
@@ -257,7 +307,7 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                 )}
               </div>
             </div>
-            <div className={`overflow-y-auto ${embedded ? "flex-1 min-h-0" : "h-96"}`}>
+            <div ref={scrollContainerRef} className={`overflow-y-auto ${embedded ? "flex-1 min-h-0" : "h-96"}`}>
               <AnimatePresence mode="wait">
                 {isSearching && (
                   <motion.div
@@ -272,35 +322,45 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                     ) : searchResults.length === 0 ? (
                       <div className="p-6 text-center text-muted text-sm">No results</div>
                     ) : (
-                      <ul>
-                        {searchResults
-                          .filter((item, i, arr) => {
-                            if (item.kind !== "song") return true
-                            return arr.findIndex(x =>
-                              x.kind === "song" &&
-                              (x.track.isrc || x.track.platformIds?.apple) === (item.track.isrc || item.track.platformIds?.apple)
-                            ) === i
-                          })
-                          .map(item =>
-                            item.kind === "song" ? (
-                              <TrackRow
-                                key={item.track.platformIds?.apple || item.track.isrc || item.track.name}
-                                track={item.track}
-                                added={queuedForRow.has(item.track.isrc) || queuedForRow.has(item.track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(item.track.isrc) || suggestedIsrcs.has(item.track.platformIds?.apple ?? "")))}
-                                isNowPlaying={nowPlayingIds.has(item.track.isrc) || nowPlayingIds.has(item.track.platformIds?.apple ?? "")}
-                                onAdd={() => onAddTrack(item.track)}
-                                onAlbumClick={item.track.platformIds?.apple ? () => handleAlbumClick(item.track) : undefined}
-                                requestMode={!isPrivileged}
-                              />
-                            ) : (
-                              <PlaylistRow
-                                key={item.id}
-                                playlist={item}
-                                onSelect={() => handleSelectPlaylist(item)}
-                              />
-                            )
-                          )}
-                      </ul>
+                      <>
+                        <ul>
+                          {searchResults
+                            .filter((item, i, arr) => {
+                              if (item.kind !== "song") return true
+                              return arr.findIndex(x =>
+                                x.kind === "song" &&
+                                (x.track.isrc || x.track.platformIds?.apple) === (item.track.isrc || item.track.platformIds?.apple)
+                              ) === i
+                            })
+                            .map(item =>
+                              item.kind === "song" ? (
+                                <TrackRow
+                                  key={item.track.platformIds?.apple || item.track.isrc || item.track.name}
+                                  track={item.track}
+                                  added={queuedForRow.has(item.track.isrc) || queuedForRow.has(item.track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(item.track.isrc) || suggestedIsrcs.has(item.track.platformIds?.apple ?? "")))}
+                                  isNowPlaying={nowPlayingIds.has(item.track.isrc) || nowPlayingIds.has(item.track.platformIds?.apple ?? "")}
+                                  onAdd={() => onAddTrack(item.track)}
+                                  onAlbumClick={item.track.platformIds?.apple ? () => handleAlbumClick(item.track) : undefined}
+                                  requestMode={!isPrivileged}
+                                />
+                              ) : (
+                                <PlaylistRow
+                                  key={item.id}
+                                  playlist={item}
+                                  onSelect={() => handleSelectPlaylist(item)}
+                                />
+                              )
+                            )}
+                        </ul>
+                        {/* Sentinel — IntersectionObserver fires loadMoreSearch when this
+                         *  scrolls within 200px of the viewport. Spacer height + LoadingDots
+                         *  give visible feedback while the next page is fetching. */}
+                        {searchHasMore && (
+                          <div ref={sentinelRef} className="py-6 text-center text-muted text-sm">
+                            {loadingMore ? <LoadingDots /> : <span className="opacity-50">↓</span>}
+                          </div>
+                        )}
+                      </>
                     )}
                   </motion.div>
                 )}

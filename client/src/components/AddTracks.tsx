@@ -36,7 +36,7 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
     debounceRef.current = setTimeout(async () => {
       setSearching(true)
       try {
-        setSearchResults(await catalog.search(query))
+        setSearchResults((await catalog.search(query)).items)
       } finally {
         setSearching(false)
       }

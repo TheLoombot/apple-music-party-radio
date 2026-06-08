@@ -1,5 +1,6 @@
 import {
   searchCatalog,
+  SEARCH_PAGE_SIZE,
   getAlbumTracks,
   getPlaylistTracks,
   getLibraryPlaylists,
@@ -13,10 +14,12 @@ import {
   getPlaylistEditorial,
 } from "./appleMusic"
 import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult, AlbumResult } from "../types"
-export type { ChartResult, AlbumEditorialInfo } from "./appleMusic"
+export type { ChartResult, AlbumEditorialInfo, SearchPage } from "./appleMusic"
+export { SEARCH_PAGE_SIZE } from "./appleMusic"
+import type { SearchPage } from "./appleMusic"
 
 export interface MusicCatalog {
-  search(term: string): Promise<SearchItem[]>
+  search(term: string, offset?: number): Promise<SearchPage>
   getAlbumTracks(albumId: string): Promise<Track[]>
   getPlaylistTracks(playlistId: string): Promise<Track[]>
   getLibraryPlaylists(): Promise<LibraryPlaylistResult[]>
@@ -40,7 +43,7 @@ export class AppleMusicCatalog implements MusicCatalog {
     return this.cache.get(key)!
   }
 
-  search(term: string) { return searchCatalog(term, this.storefront) }
+  search(term: string, offset = 0) { return searchCatalog(term, this.storefront, offset) }
   getAlbumTracks(id: string) { return this.cached(`album:${id}`, () => getAlbumTracks(id, this.storefront)) }
   getPlaylistTracks(id: string) { return this.cached(`playlist:${id}`, () => getPlaylistTracks(id, this.storefront)) }
   getLibraryPlaylists() { return getLibraryPlaylists() }
