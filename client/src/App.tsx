@@ -803,8 +803,10 @@ export default function App() {
             setLastReadSentAt(chatMessages[chatMessages.length - 1]?.sentAt ?? Date.now())
             setChatModalOpen(v => !v)
           }}
+          chatPanelOpen={chatModalOpen}
           unreadCount={unreadCount}
           onOpenAddTracks={() => setDiscoveryModalOpen(v => !v)}
+          addTracksPanelOpen={discoveryModalOpen}
           addButtonLabel={isPrivileged
             ? suggestions.length > 0
               ? `Add tracks (${suggestions.length} ${suggestions.length === 1 ? "request" : "requests"})`

@@ -57,8 +57,13 @@ interface Props {
    *  Lets us distinguish "haven't heard from the server yet" from "confirmed empty queue". */
   loading?: boolean
   onOpenChat?: () => void
+  /** Whether the chat side-panel is currently open — keeps the trigger
+   *  button visually depressed while the panel is showing. */
+  chatPanelOpen?: boolean
   unreadCount?: number
   onOpenAddTracks?: () => void
+  /** Whether the add/request side-panel is currently open — same idea. */
+  addTracksPanelOpen?: boolean
   addButtonLabel?: string
   /** Shown as a red badge on the + button — e.g. number of pending suggestions. */
   addBadgeCount?: number
@@ -426,7 +431,7 @@ function useFrequencyScan(frequency: number | undefined) {
   return displayFreq
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, unreadCount, onOpenAddTracks, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, chatPanelOpen, unreadCount, onOpenAddTracks, addTracksPanelOpen, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote }: Props) {
   const isMobile = useIsMobile()
   const { progress, elapsed } = useProgress(track)
   // Both `isPlaying` (MediaSession OS controls) and `quiet` (mute icon/label)
@@ -564,7 +569,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 <button
                   onClick={onOpenChat}
                   aria-label="Chat"
-                  className="btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white/80 hover:text-white"
+                  className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white/80 hover:text-white ${chatPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
                 >
                   <MessageCircle size={20} />
                   {(unreadCount ?? 0) > 0 && (
@@ -668,7 +673,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   <button
                     onClick={onOpenAddTracks}
                     aria-label={addButtonLabel ?? "Add tracks"}
-                    className="btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white"
+                    className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white ${addTracksPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
                   >
                     <Plus size={24} strokeWidth={3} />
                     {(addBadgeCount ?? 0) > 0 && (
@@ -768,7 +773,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   <button
                     onClick={onOpenAddTracks}
                     aria-label={addButtonLabel ?? "Add tracks"}
-                    className="btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white"
+                    className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white ${addTracksPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
                   >
                     {/* Queue is confirmed empty — pulse the icon to draw attention. */}
                     <Plus size={24} strokeWidth={3} className="attention-pulse" />

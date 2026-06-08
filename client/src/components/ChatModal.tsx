@@ -22,7 +22,7 @@ export function ChatModal({ onClose, messages, currentUser, onSend, mode = "moda
   if (mode === "panel") {
     return (
       <motion.div
-        className="w-[320px] flex-shrink-0 self-start sticky top-4 bg-panel rounded-xl overflow-hidden flex flex-col max-h-[calc(100vh-2rem)]"
+        className="w-[400px] flex-shrink-0 self-start sticky top-4 bg-panel rounded-xl overflow-hidden flex flex-col h-[calc(100vh-2rem)]"
         initial={{ x: 20, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: 20, opacity: 0 }}

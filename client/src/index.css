@@ -158,6 +158,18 @@ svg.attention-pulse {
   border-color: rgb(255 255 255 / 0.25);  /* match the hover-visible border */
 }
 
+/* Variant of pressed that suppresses the amber glow + bright border
+ * highlight. For buttons that toggle a side panel — they need to
+ * communicate "open" via the depressed pose, but the surrounding chassis
+ * shouldn't light up like an alarm. Use with .btn-3d-pressed. */
+.btn-3d-pressed-quiet.btn-3d-pressed {
+  border-color: rgb(255 255 255 / 0.1);  /* same as resting */
+  text-shadow: none;
+}
+.btn-3d-pressed-quiet.btn-3d-pressed svg {
+  filter: none;
+}
+
 /* Disabled — depressed AND flat: sits in the down position with no underside
  * shadow and no content glow, like a switch that's unplugged. Icon/text is
  * dimmed via color (not opacity) so the chassis stays solid on the panel. */
