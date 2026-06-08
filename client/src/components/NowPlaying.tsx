@@ -444,22 +444,25 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
   const closeArtwork = useCallback(() => setArtworkOpen(false), [])
   const [infoOpen, setInfoOpen] = useState(false)
   const [nameInput, setNameInput] = useState("")
-  const [navBusy, setNavBusy] = useState(false)
+  // Tracks which nav button is in its post-press cooldown. The pressed
+  // button stays depressed; the other goes glow-off (raised but dim) to
+  // signal "currently unavailable" without looking equally clicked.
+  const [navBusy, setNavBusy] = useState<null | "prev" | "next">(null)
   const navCooldownRef = useRef<ReturnType<typeof setTimeout>>()
   const displayFreq = useFrequencyScan(frequency)
 
   const handlePrevNav = useCallback(() => {
     if (navBusy || !onPrevStation) return
-    setNavBusy(true)
+    setNavBusy("prev")
     onPrevStation()
-    navCooldownRef.current = setTimeout(() => setNavBusy(false), 1000)
+    navCooldownRef.current = setTimeout(() => setNavBusy(null), 1000)
   }, [navBusy, onPrevStation])
 
   const handleNextNav = useCallback(() => {
     if (navBusy || !onNextStation) return
-    setNavBusy(true)
+    setNavBusy("next")
     onNextStation()
-    navCooldownRef.current = setTimeout(() => setNavBusy(false), 1000)
+    navCooldownRef.current = setTimeout(() => setNavBusy(null), 1000)
   }, [navBusy, onNextStation])
 
   useEffect(() => () => clearTimeout(navCooldownRef.current), [])
@@ -522,10 +525,14 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           <Tooltip label="Previous station" position="bottom" align="start">
             <button
               onClick={handlePrevNav}
-              disabled={!onPrevStation || navBusy}
+              disabled={!onPrevStation}
+              aria-disabled={navBusy != null}
               aria-label="Previous station"
               className={`btn-3d w-full h-12 flex items-center justify-center rounded-lg
-                ${!onPrevStation ? "invisible" : navBusy ? "btn-3d-pressed text-white/25 cursor-not-allowed" : "text-white/70 hover:text-white"}`}
+                ${!onPrevStation ? "invisible"
+                  : navBusy === "prev" ? "btn-3d-pressed text-white/25 cursor-not-allowed"
+                  : navBusy === "next" ? "btn-3d-quiet text-white/25 pointer-events-none"
+                  : "text-white/70 hover:text-white"}`}
             >
               <Rewind size={30} strokeWidth={2} fill="currentColor" stroke="none" />
             </button>
@@ -536,10 +543,14 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           <Tooltip label="Next station" position="bottom" align="end">
             <button
               onClick={handleNextNav}
-              disabled={!onNextStation || navBusy}
+              disabled={!onNextStation}
+              aria-disabled={navBusy != null}
               aria-label="Next station"
               className={`btn-3d w-full h-12 flex items-center justify-center rounded-lg
-                ${!onNextStation ? "invisible" : navBusy ? "btn-3d-pressed text-white/25 cursor-not-allowed" : "text-white/70 hover:text-white"}`}
+                ${!onNextStation ? "invisible"
+                  : navBusy === "next" ? "btn-3d-pressed text-white/25 cursor-not-allowed"
+                  : navBusy === "prev" ? "btn-3d-quiet text-white/25 pointer-events-none"
+                  : "text-white/70 hover:text-white"}`}
             >
               <FastForward size={30} strokeWidth={2} fill="currentColor" stroke="none" />
             </button>
