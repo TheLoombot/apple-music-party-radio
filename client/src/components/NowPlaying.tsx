@@ -556,7 +556,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <button
                 onClick={isBlocked ? onResume : onMuteToggle}
                 aria-label={muteLabel}
-                className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-3 ${isMuted ? "btn-3d-pressed" : ""}`}
+                className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-3 ${quiet ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
               >
                 <SoundBars playing={!!track} muted={isMuted || isBlocked} />
                 {quiet
