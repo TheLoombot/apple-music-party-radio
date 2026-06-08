@@ -820,6 +820,42 @@ export default class RadioParty implements Party.Server {
       if (userQueued >= MAX_USER_QUEUE_DEPTH) return false
     }
 
+    // Promotion: if the track is already in the queue tail as a robot pick,
+    // a user "adding" it should move it into the user-tail section (change
+    // attribution from "robot" to the requesting user). Avoids creating a
+    // duplicate and lets DJs claim a robot-spun track without re-queuing.
+    if (addedBy !== "robot") {
+      const robotIdx = queue.findIndex((q, i) =>
+        i > 0 && q.addedBy === "robot" && sameTrack(q, track)
+      )
+      if (robotIdx >= 0) {
+        const [robotItem] = queue.splice(robotIdx, 1)
+        const insertAt = this.getInsertionIndex(queue)
+        const predecessor = queue[insertAt - 1] ?? null
+        const promoted: QueueItem = {
+          ...robotItem,
+          addedBy,
+          addedByName,
+          addedAt: Date.now(),
+          expirationTime: predecessor
+            ? Math.max(predecessor.expirationTime, Date.now()) + robotItem.durationMs
+            : Date.now() + robotItem.durationMs,
+        }
+        queue.splice(insertAt, 0, promoted)
+        // Re-stamp expirations for everything after the new position.
+        let cursor = promoted.expirationTime
+        for (let i = insertAt + 1; i < queue.length; i++) {
+          cursor += queue[i].durationMs
+          queue[i] = { ...queue[i], expirationTime: cursor }
+        }
+        await this.room.storage.put("queue", queue)
+        await this.broadcastQueue(queue)
+        // Refill the robot tail to compensate for the slot we just took.
+        await this.fillRobotQueue()
+        return true
+      }
+    }
+
     // Robot tracks always append at the tail; user tracks insert before the robot tail.
     const insertAt = addedBy === "robot" ? queue.length : this.getInsertionIndex(queue)
 

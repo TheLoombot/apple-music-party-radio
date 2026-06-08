@@ -21,6 +21,8 @@ function pickRandom<T>(arr: T[], n: number): T[] {
 interface Props {
   catalog: MusicCatalog
   queuedIsrcs: Set<string>
+  userQueuedIds: Set<string>
+  nowPlayingIds: Set<string>
   suggestedIsrcs: Set<string>
   queue: QueueItem[]
   onAddTrack: (track: Track) => void
@@ -33,7 +35,11 @@ interface Props {
   onRemoveSuggestion?: (key: string) => void
 }
 
-export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTrack, embedded, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
+export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, suggestedIsrcs, queue, onAddTrack, embedded, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
+  // For the "already in queue" indicator: DJs use userQueuedIds (robot tracks
+  // show as addable so they can be promoted on click); non-DJs use queuedIsrcs
+  // (the request-track flow can't promote, so robot tracks stay marked).
+  const queuedForRow = isPrivileged ? userQueuedIds : queuedIsrcs
   // Land on "Heavy" when the station is empty — "Related" needs at least one
   // queued track to seed from, so it's unhelpful on a fresh/empty station.
   const [tab, setTab] = useState<Tab>(queue.length === 0 ? "heavy" : "related")
@@ -280,7 +286,8 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                               <TrackRow
                                 key={item.track.platformIds?.apple || item.track.isrc || item.track.name}
                                 track={item.track}
-                                added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(item.track.isrc) || suggestedIsrcs.has(item.track.platformIds?.apple ?? "")))}
+                                added={queuedForRow.has(item.track.isrc) || queuedForRow.has(item.track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(item.track.isrc) || suggestedIsrcs.has(item.track.platformIds?.apple ?? "")))}
+                                isNowPlaying={nowPlayingIds.has(item.track.isrc) || nowPlayingIds.has(item.track.platformIds?.apple ?? "")}
                                 onAdd={() => onAddTrack(item.track)}
                                 onAlbumClick={item.track.platformIds?.apple ? () => handleAlbumClick(item.track) : undefined}
                                 requestMode={!isPrivileged}
@@ -314,7 +321,8 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                       key={track.platformIds?.apple ?? track.isrc}
                       track={track}
                       rankNumber={i + 1}
-                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
+                      added={queuedForRow.has(track.isrc) || queuedForRow.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
+                      isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.platformIds?.apple ?? "")}
                       onAdd={() => onAddTrack(track)}
                       onAlbumClick={track.platformIds?.apple ? () => handleAlbumClick(track) : undefined}
                       requestMode={!isPrivileged}
@@ -336,7 +344,8 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                   <TrackRow
                     key={track.platformIds?.apple ?? track.isrc ?? track.name}
                     track={track}
-                    added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
+                    added={queuedForRow.has(track.isrc) || queuedForRow.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
+                    isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.platformIds?.apple ?? "")}
                     onAdd={() => onAddTrack(track)}
                     onAlbumClick={track.platformIds?.apple ? () => handleAlbumClick(track) : undefined}
                     requestMode={!isPrivileged}
@@ -437,7 +446,8 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
                     <TrackRow
                       key={track.platformIds?.apple ?? track.isrc}
                       track={track}
-                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
+                      added={queuedForRow.has(track.isrc) || queuedForRow.has(track.platformIds?.apple ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.platformIds?.apple ?? "")))}
+                      isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.platformIds?.apple ?? "")}
                       onAdd={() => onAddTrack(track)}
                       onAlbumClick={track.platformIds?.apple ? () => handleAlbumClick(track) : undefined}
                       requestMode={!isPrivileged}
@@ -473,7 +483,8 @@ export function Discovery({ catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTr
           <PlaylistModal
             playlist={modal.playlist}
             tracks={modal.tracks}
-            queuedIsrcs={queuedIsrcs}
+            queuedIsrcs={queuedForRow}
+            nowPlayingIds={nowPlayingIds}
             onAddTrack={onAddTrack}
             onClose={() => { modalOpRef.current++; setModal(null) }}
             catalog={catalog}

@@ -16,6 +16,9 @@ interface Props {
   playlist: PlaylistResult | LibraryPlaylistResult | AlbumResult | LibraryAlbumResult
   tracks: Track[] | null
   queuedIsrcs: Set<string>
+  /** When omitted (e.g. legacy callers without a station-active concept),
+   *  no row is rendered as the now-playing track. */
+  nowPlayingIds?: Set<string>
   onAddTrack: (track: Track) => void
   onClose: () => void
   catalog?: MusicCatalog
@@ -23,7 +26,9 @@ interface Props {
   onSaveDjNote?: (itemId: string, note: string) => void
 }
 
-export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClose, catalog, djNotes, onSaveDjNote }: Props) {
+const EMPTY_SET = new Set<string>()
+
+export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = EMPTY_SET, onAddTrack, onClose, catalog, djNotes, onSaveDjNote }: Props) {
   const [navStack, setNavStack] = useState<NavEntry[]>([])
   const [navCurrent, setNavCurrent] = useState<NavEntry | null>(null)
   const [artworkOpen, setArtworkOpen] = useState(false)
@@ -153,6 +158,7 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
                     trackNumber={isAlbumish ? i + 1 : undefined}
                     hideArtist={isAlbumish && track.artistName === displayPlaylist.subtitle}
                     added={!isUnavailable && (queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? ""))}
+                    isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.platformIds?.apple ?? "")}
                     unavailable={isUnavailable}
                     onAdd={() => onAddTrack(track)}
                     onAlbumClick={catalog && track.platformIds?.apple && !isAlbumish
@@ -167,9 +173,13 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, onAddTrack, onClo
 
         {/* Footer — Add all */}
         {displayTracks && displayTracks.length > 0 && (() => {
+          // Exclude tracks already queued by the user AND the now-playing
+          // track (server would refuse to add it; we shouldn't try). Robot-
+          // queued tracks remain addable — server promotes them.
           const unqueued = displayTracks.filter(t =>
             t.platformIds?.apple &&
-            !queuedIsrcs.has(t.isrc) && !queuedIsrcs.has(t.platformIds.apple)
+            !queuedIsrcs.has(t.isrc) && !queuedIsrcs.has(t.platformIds.apple) &&
+            !nowPlayingIds.has(t.isrc) && !nowPlayingIds.has(t.platformIds.apple)
           )
           return unqueued.length > 0 ? (
             <div className="border-t border-border flex-shrink-0">
