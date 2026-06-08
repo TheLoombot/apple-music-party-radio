@@ -92,10 +92,19 @@ export class PlaybackLoop {
     }, PlaybackLoop.STALL_WINDOW_MS)
   }
 
+  // Monotonically bumped on every start() entry AND every stop(). Used to
+  // abort the continuation of a stale start() whose fadeOut awaited longer
+  // than the next station switch — without this guard, a delayed start() can
+  // run stop() + connect() AFTER a newer start() has set up its socket,
+  // closing the wrong socket and connecting to the wrong station.
+  private startSeq = 0
+
   async start(stationId: string) {
+    const seq = ++this.startSeq
     if (this.autoplayEnabled && this.player.isPlaying()) {
       await this.player.fadeOut(200)
     }
+    if (seq !== this.startSeq) return  // superseded by another start() or stop()
     this.stop()
     this.setMuted(false)
     stationSocket.onQueueUpdate = this.handleQueueUpdate
@@ -106,9 +115,13 @@ export class PlaybackLoop {
   }
 
   stop() {
-    // Bump both sequences first — this signals any in-flight playAtOffset/syncQueueTail to
-    // bail at their next cancel checkpoint, so a stale setQueue+play from the previous
-    // station can't audibly start after we've moved on.
+    // Bump start sequence too — a delayed start() (mid-fadeOut) that resumes
+    // after this call should abort instead of running connect().
+    ++this.startSeq
+    // Bump both play/tail sequences first — this signals any in-flight
+    // playAtOffset/syncQueueTail to bail at their next cancel checkpoint,
+    // so a stale setQueue+play from the previous station can't audibly start
+    // after we've moved on.
     ++this.playSequence
     ++this.tailSequence
     if (this.reconcileTimer) { clearInterval(this.reconcileTimer); this.reconcileTimer = null }
