@@ -496,6 +496,22 @@ export default function App() {
     })
   }, [nowPlaying, pool])
 
+  // Diagnostic: presence collapsed to empty for the station we're on while
+  // we're still connected to the index. Pairs with the server-side
+  // [presence] hibernation desync warning. Lives above early returns to
+  // satisfy Rules of Hooks.
+  const currentListenerCount = stations.find(s => s.id === currentStationId)?.listeners?.length ?? 0
+  const prevListenerCountRef = useRef<number | null>(null)
+  useEffect(() => {
+    const prev = prevListenerCountRef.current
+    if (prev != null && prev > 0 && currentListenerCount === 0 && serverConnected) {
+      log.app.warn("listeners panel collapsed to empty while connected", {
+        stationId: currentStationId, previousCount: prev,
+      })
+    }
+    prevListenerCountRef.current = currentListenerCount
+  }, [currentListenerCount, currentStationId, serverConnected])
+
   if (appState === "setup") return <SetupScreen error={setupError} />
 
   if (appState === "loading") {

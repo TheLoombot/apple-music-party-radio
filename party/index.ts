@@ -1315,6 +1315,17 @@ export default class RadioParty implements Party.Server {
 
   private async notifyIndexPresence() {
     const listeners: Listener[] = [...this.connListeners.values()].map(({ userId, displayName, isDJ }) => ({ userId, displayName, isDJ }))
+    // Hibernation desync check: if connListeners is empty but room.getConnections()
+    // has live WebSockets, we're about to broadcast a misleading "nobody listening"
+    // state. CLAUDE.md describes this exact scenario — DO hibernation wipes the
+    // in-memory map but the conns survive, and the next presence push tells the
+    // index room everyone's gone.
+    try {
+      const liveConns = [...this.room.getConnections()].length
+      if (liveConns > 0 && listeners.length === 0) {
+        console.warn(`[presence] hibernation desync? room=${this.cachedRoomId} liveConns=${liveConns} tracked=0 — about to push empty listeners`)
+      }
+    } catch { /* getConnections may throw pre-init; ignore */ }
     try {
       await this.room.context.parties.main.get("index").fetch("/", {
         method: "POST",
