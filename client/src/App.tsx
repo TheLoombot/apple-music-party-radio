@@ -4,6 +4,7 @@ import { SetupScreen } from "./components/SetupScreen"
 import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
 import { RobotQueue } from "./components/RobotQueue"
+import { FaceGenerator } from "./components/FaceGenerator"
 import { PoolModal } from "./components/PoolModal"
 import { StationModal } from "./components/StationModal"
 import { StationList } from "./components/StationList"
@@ -26,9 +27,18 @@ type AppState = "loading" | "setup" | "naming" | "auth" | "ready"
 
 const DEV_TOKEN_SET = !!import.meta.env.VITE_APPLE_DEVELOPER_TOKEN
 
-// Feature flag — flip back to `true` to surface the robot queue panel again.
-// Server still fills the queue from the pool; this only controls the UI panel.
-const SHOW_ROBOT_QUEUE = false
+// Debug panel toggles persisted to localStorage so dev settings survive reloads.
+// Surfaced via the small "debug" link in the footer.
+interface DebugSettings { robotQueue: boolean; faceStudio: boolean }
+const DEFAULT_DEBUG: DebugSettings = { robotQueue: false, faceStudio: false }
+function loadDebugSettings(): DebugSettings {
+  try {
+    const raw = localStorage.getItem("ampr_debug")
+    if (!raw) return DEFAULT_DEBUG
+    const parsed = JSON.parse(raw)
+    return { ...DEFAULT_DEBUG, ...parsed }
+  } catch { return DEFAULT_DEBUG }
+}
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>("loading")
@@ -69,6 +79,15 @@ export default function App() {
   // Lets NowPlaying distinguish "tuning in" from "confirmed empty queue".
   const [stationLoading, setStationLoading] = useState<boolean>(() => isValidFreqId(window.location.pathname.slice(import.meta.env.BASE_URL.length)))
   const [easterEggOpen, setEasterEggOpen] = useState(false)
+  const [debugMenuOpen, setDebugMenuOpen] = useState(false)
+  const [debugSettings, setDebugSettings] = useState<DebugSettings>(loadDebugSettings)
+  const toggleDebug = useCallback((key: keyof DebugSettings) => {
+    setDebugSettings(prev => {
+      const next = { ...prev, [key]: !prev[key] }
+      try { localStorage.setItem("ampr_debug", JSON.stringify(next)) } catch { /* ignore */ }
+      return next
+    })
+  }, [])
   const renameRef = useRef<HTMLInputElement>(null)
   const albumModalOpRef = useRef(0)
   const playbackLoop = useRef(new PlaybackLoop(new AppleMusicPlayer()))
@@ -237,9 +256,13 @@ export default function App() {
     if (!user) return
     if (!track.platformIds?.apple) return
     const fullQueue = [...(nowPlaying ? [nowPlaying] : []), ...upNext]
+    // Only treat user-spun queue entries as "already added" — clicking + on
+    // a robot-queued track should promote it via addTrack (server moves it
+    // from robot tail to user tail), not remove it.
     const existing = fullQueue.find(i =>
-      (track.isrc && i.isrc === track.isrc) ||
-      (track.platformIds?.apple && i.platformIds?.apple === track.platformIds.apple)
+      i.addedBy !== "robot" &&
+      ((track.isrc && i.isrc === track.isrc) ||
+       (track.platformIds?.apple && i.platformIds?.apple === track.platformIds.apple))
     )
     if (existing) {
       stationSocket.removeTrack(existing.key)
@@ -412,6 +435,21 @@ export default function App() {
       .flatMap(i => [i.isrc, i.platformIds?.apple])
       .filter(Boolean) as string[]
   ), [nowPlaying, upNext])
+  /** Subset of queuedIsrcs for tracks added by a human (not the robot DJ).
+   *  Used to drive the "check / already queued" indicator in pickers — robot
+   *  tracks deliberately show as addable so a DJ can claim/promote them. */
+  const userQueuedIds = useMemo(() => new Set(
+    [...(nowPlaying && nowPlaying.addedBy !== "robot" ? [nowPlaying] : []),
+     ...upNext.filter(i => i.addedBy !== "robot")]
+      .flatMap(i => [i.isrc, i.platformIds?.apple])
+      .filter(Boolean) as string[]
+  ), [nowPlaying, upNext])
+  /** Identifiers of the currently-playing track. Components rendering pickers
+   *  (Discovery/Pool/Playlist) use this to mark a row as "now playing" and
+   *  disable add/remove operations on it. */
+  const nowPlayingIds = useMemo(() => new Set(
+    nowPlaying ? [nowPlaying.isrc, nowPlaying.platformIds?.apple].filter(Boolean) as string[] : []
+  ), [nowPlaying])
   const suggestedIsrcs = useMemo(() => new Set(
     suggestions.flatMap(s => [s.isrc, s.platformIds?.apple].filter(Boolean) as string[])
   ), [suggestions])
@@ -560,7 +598,8 @@ export default function App() {
           <PlaylistModal
             playlist={albumModal.playlist}
             tracks={albumModal.tracks}
-            queuedIsrcs={queuedIsrcs}
+            queuedIsrcs={userQueuedIds}
+            nowPlayingIds={nowPlayingIds}
             onAddTrack={handleAddTrack}
             onClose={() => { albumModalOpRef.current++; setAlbumModal(null) }}
             catalog={catalog.current}
@@ -577,7 +616,8 @@ export default function App() {
             currentUser={user}
             canManagePool={isPrivileged}
             canClearPool={isOwnStation}
-            queuedIsrcs={queuedIsrcs}
+            queuedIsrcs={userQueuedIds}
+            nowPlayingIds={nowPlayingIds}
             onAddTrack={handleAddTrack}
             onRemoveFromPool={handleRemoveFromPool}
             onClearPool={handleClearPool}
@@ -668,6 +708,8 @@ export default function App() {
             onClose={() => setDiscoveryModalOpen(false)}
             catalog={catalog.current}
             queuedIsrcs={queuedIsrcs}
+            userQueuedIds={userQueuedIds}
+            nowPlayingIds={nowPlayingIds}
             suggestedIsrcs={suggestedIsrcs}
             queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
             onAddTrack={isPrivileged ? handleAddTrack : handleSuggestTrack}
@@ -759,7 +801,7 @@ export default function App() {
           onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
         />
 
-        {SHOW_ROBOT_QUEUE && (
+        {debugSettings.robotQueue && (
           <RobotQueue
             queue={robotQueue}
             onRemove={isPrivileged ? handleRemoveTrack : undefined}
@@ -786,6 +828,11 @@ export default function App() {
             className="hover:text-white transition-colors"
           >Party Radio</button>
           <span className="font-mono text-muted/25">{__COMMIT__}</span>
+          <button
+            onClick={() => setDebugMenuOpen(v => !v)}
+            className="font-mono text-muted/25 hover:text-white/70 transition-colors"
+            title="Debug panels"
+          >debug</button>
         </div>
         <div className="text-xs">
           {renamingDJ ? (
@@ -808,6 +855,73 @@ export default function App() {
           )}
         </div>
       </footer>
+
+      {/* Debug menu — small popover anchored at the footer "debug" link.
+       *  Click outside (the backdrop) to dismiss. Each toggle persists. */}
+      <AnimatePresence>
+        {debugMenuOpen && (
+          <motion.div
+            className="fixed inset-0 z-[70] flex items-end justify-start p-3"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            onClick={() => setDebugMenuOpen(false)}
+          >
+            <motion.div
+              className="bg-panel border border-border rounded-xl shadow-2xl p-3 min-w-[200px]"
+              initial={{ y: 10, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 10, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <p className="text-muted/60 text-[10px] uppercase tracking-widest mb-2">Debug panels</p>
+              <label className="flex items-center gap-2 py-1.5 text-sm text-white cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={debugSettings.robotQueue}
+                  onChange={() => toggleDebug("robotQueue")}
+                />
+                Robot queue
+              </label>
+              <label className="flex items-center gap-2 py-1.5 text-sm text-white cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={debugSettings.faceStudio}
+                  onChange={() => toggleDebug("faceStudio")}
+                />
+                Face studio
+              </label>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Face studio — debug tool to inspect / iterate on the avatar generator. */}
+      <AnimatePresence>
+        {debugSettings.faceStudio && (
+          <motion.div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => toggleDebug("faceStudio")}
+          >
+            <motion.div
+              className="w-full max-w-md max-h-[90vh] overflow-y-auto"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <FaceGenerator />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Easter egg — tap the 🎵 in the footer */}
       <AnimatePresence>

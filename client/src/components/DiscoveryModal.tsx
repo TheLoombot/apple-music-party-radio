@@ -31,6 +31,8 @@ interface Props {
   onClose: () => void
   catalog: MusicCatalog
   queuedIsrcs: Set<string>
+  userQueuedIds: Set<string>
+  nowPlayingIds: Set<string>
   suggestedIsrcs: Set<string>
   queue: QueueItem[]
   onAddTrack: (track: Track) => void
@@ -42,7 +44,7 @@ interface Props {
   onRemoveSuggestion?: (key: string) => void
 }
 
-export function DiscoveryModal({ onClose, catalog, queuedIsrcs, suggestedIsrcs, queue, onAddTrack, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
+export function DiscoveryModal({ onClose, catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, suggestedIsrcs, queue, onAddTrack, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     document.addEventListener("keydown", handler)
@@ -78,6 +80,8 @@ export function DiscoveryModal({ onClose, catalog, queuedIsrcs, suggestedIsrcs, 
           <Discovery
             catalog={catalog}
             queuedIsrcs={queuedIsrcs}
+            userQueuedIds={userQueuedIds}
+            nowPlayingIds={nowPlayingIds}
             suggestedIsrcs={suggestedIsrcs}
             queue={queue}
             onAddTrack={onAddTrack}

@@ -1,4 +1,4 @@
-import { Trash2, ArrowUp, Plus, Check } from "lucide-react"
+import { Trash2, ArrowUp, Plus, Check, Music } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { Tooltip } from "./Tooltip"
@@ -13,11 +13,14 @@ interface Props {
   onAdd: () => void
   onRemove?: () => void
   unavailable?: boolean
+  /** True when this row's track matches the station's currently-playing item.
+   *  All add/remove operations are disabled and a "playing" indicator shows. */
+  isNowPlaying?: boolean
   onAlbumClick?: () => void
   requestMode?: boolean
 }
 
-export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, onAdd, onRemove, unavailable, onAlbumClick, requestMode }: Props) {
+export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, onAdd, onRemove, unavailable, isNowPlaying, onAlbumClick, requestMode }: Props) {
   return (
     <div className={`flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 group ${unavailable ? "opacity-50" : ""}`}>
       {rankNumber != null && (
@@ -52,46 +55,59 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
       <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(track.durationMs)}</span>
 
       <div className="flex items-center gap-2 flex-shrink-0">
-        {onRemove && (
-          <Tooltip label="Remove from pool" align="end">
-            <button
-              onClick={onRemove}
-              aria-label="Remove from pool"
-              className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-muted hover:text-red-400"
+        {isNowPlaying ? (
+          <Tooltip label="Now playing on this station" align="end">
+            <div
+              aria-label="Now playing"
+              className="btn-3d btn-3d-pressed w-14 h-12 rounded-lg flex items-center justify-center text-amber-400 cursor-default"
             >
-              <Trash2 size={18} />
-            </button>
+              <Music size={20} />
+            </div>
           </Tooltip>
+        ) : (
+          <>
+            {onRemove && (
+              <Tooltip label="Remove from pool" align="end">
+                <button
+                  onClick={onRemove}
+                  aria-label="Remove from pool"
+                  className="btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-muted hover:text-red-400"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </Tooltip>
+            )}
+            {(() => {
+              const addLabel = unavailable
+                ? "Not available in Apple Music"
+                : added
+                  ? (requestMode ? "Already requested" : "Remove from queue")
+                  : (requestMode ? "Request track" : "Add to queue")
+              return (
+                <Tooltip label={addLabel} align="end">
+                  <button
+                    onClick={onAdd}
+                    disabled={unavailable}
+                    aria-label={addLabel}
+                    className={`btn-3d w-14 h-12 rounded-lg flex items-center justify-center ${
+                      added
+                        ? "btn-3d-pressed text-white/35 hover:text-red-400"
+                        : unavailable
+                          ? "text-muted opacity-50 cursor-not-allowed"
+                          : "text-white"
+                    }`}
+                  >
+                    {added
+                      ? <Check size={24} strokeWidth={3} style={{ filter: "none" }} />
+                      : requestMode
+                        ? <ArrowUp size={24} strokeWidth={3} />
+                        : <Plus size={24} strokeWidth={3} />}
+                  </button>
+                </Tooltip>
+              )
+            })()}
+          </>
         )}
-        {(() => {
-          const addLabel = unavailable
-            ? "Not available in Apple Music"
-            : added
-              ? (requestMode ? "Already requested" : "Remove from queue")
-              : (requestMode ? "Request track" : "Add to queue")
-          return (
-            <Tooltip label={addLabel} align="end">
-              <button
-                onClick={onAdd}
-                disabled={unavailable}
-                aria-label={addLabel}
-                className={`btn-3d w-14 h-12 rounded-lg flex items-center justify-center ${
-                  added
-                    ? "btn-3d-pressed text-white/35 hover:text-red-400"
-                    : unavailable
-                      ? "text-muted opacity-50 cursor-not-allowed"
-                      : "text-white"
-                }`}
-              >
-                {added
-                  ? <Check size={24} strokeWidth={3} style={{ filter: "none" }} />
-                  : requestMode
-                    ? <ArrowUp size={24} strokeWidth={3} />
-                    : <Plus size={24} strokeWidth={3} />}
-              </button>
-            </Tooltip>
-          )
-        })()}
       </div>
     </div>
   )
