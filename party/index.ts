@@ -172,9 +172,6 @@ export default class RadioParty implements Party.Server {
   // context, so notifyIndex skips the binding attempt and goes straight to the URL path.
   private inAlarm = false
 
-  // Debounce timer for presence notifications only (join/leave coalescing)
-  private presenceTimer: ReturnType<typeof setTimeout> | null = null
-
   private async isDeleted(): Promise<boolean> {
     if (this.cachedDeleted === null) {
       this.cachedDeleted = (await this.room.storage.get<boolean>("deleted")) === true
@@ -488,6 +485,14 @@ export default class RadioParty implements Party.Server {
           return new Response("ignored: non-frequency id", { status: 200, headers: corsHeaders })
         }
         if (msg.type === "station_status") {
+          // Refresh presence from the piggybacked listener list. This is what
+          // heals a stale presenceMap after the index DO hibernates — every
+          // station_status ping (onConnect, queue change, alarm) re-asserts
+          // the station's current listener set. Only update when the field is
+          // present so we don't accidentally clear presence from older clients.
+          if (Array.isArray(msg.listeners)) {
+            this.presenceMap.set(msg.id, msg.listeners)
+          }
           const stations = await this.storage<Station[]>("stations", [])
           const idx = stations.findIndex(s => s.id === msg.id)
           if (idx >= 0) {
@@ -1073,6 +1078,9 @@ export default class RadioParty implements Party.Server {
       const djs = await this.getDJs()
       listener = { userId: msg.userId, displayName: msg.displayName ?? msg.userId, isDJ: djs.includes(msg.userId) }
       this.connListeners.set(sender.id, listener)
+      // Re-registering after hibernation means this user is missing from the
+      // index's presenceMap. Push presence now so other listeners see them.
+      this.schedulePresenceNotify()
     }
     const now = Date.now()
     if (listener.lastCommentAt && now - listener.lastCommentAt < COMMENT_RATE_LIMIT_MS) return
@@ -1101,6 +1109,7 @@ export default class RadioParty implements Party.Server {
       const djs = await this.getDJs()
       listener = { userId: msg.userId, displayName: msg.displayName ?? msg.userId, isDJ: djs.includes(msg.userId) }
       this.connListeners.set(sender.id, listener)
+      this.schedulePresenceNotify()
     }
     const now = Date.now()
     if (listener.lastSuggestionAt && now - listener.lastSuggestionAt < 3000) return
@@ -1156,6 +1165,7 @@ export default class RadioParty implements Party.Server {
       const djs = await this.getDJs()
       listener = { userId: msg.userId, displayName: msg.displayName ?? msg.userId, isDJ: djs.includes(msg.userId) }
       this.connListeners.set(sender.id, listener)
+      this.schedulePresenceNotify()
     }
     const now = Date.now()
     if (listener.lastVoteAt && now - listener.lastVoteAt < 500) return
@@ -1350,8 +1360,10 @@ export default class RadioParty implements Party.Server {
   }
 
   private schedulePresenceNotify() {
-    if (this.presenceTimer) clearTimeout(this.presenceTimer)
-    this.presenceTimer = setTimeout(() => void this.notifyIndexPresence(), 500)
+    // No setTimeout debounce — PartyKit DOs hibernate aggressively and in-memory
+    // timers don't survive hibernation, so a debounced push can be silently lost.
+    // The index broadcast is cheap; just fire it now.
+    void this.notifyIndexPresence()
   }
 
   private async notifyIndexPresence() {
@@ -1400,7 +1412,13 @@ export default class RadioParty implements Party.Server {
     // Tombstoned rooms must never ping the index — that's the exact path that
     // used to resurrect deleted stations via the auto-revive in handleIndex.
     if (await this.isDeleted()) return
-    const body = JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName, nowPlayingArtworkUrl })
+    // Piggyback the current listener list onto every status ping so the index's
+    // in-memory presenceMap heals itself after hibernation. station_status fires
+    // on every onConnect, queue change, and alarm — much more often than the
+    // join/leave events that drive presence pushes — so this guarantees that
+    // a stale empty presenceMap entry gets corrected within seconds.
+    const listeners: Listener[] = [...this.connListeners.values()].map(({ userId, displayName, isDJ }) => ({ userId, displayName, isDJ }))
+    const body = JSON.stringify({ type: "station_status", id: this.getRoomId(), liveUntil, nowPlayingAddedBy, nowPlayingAddedByName, nowPlayingTrackName, nowPlayingArtistName, nowPlayingArtworkUrl, listeners })
     const headers = { "Content-Type": "application/json" }
 
     // Primary: internal service binding — bypasses public-URL auth. Not available in onAlarm context.

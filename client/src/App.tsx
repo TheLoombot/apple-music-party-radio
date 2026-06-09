@@ -501,15 +501,24 @@ export default function App() {
   // [presence] hibernation desync warning. Lives above early returns to
   // satisfy Rules of Hooks.
   const currentListenerCount = stations.find(s => s.id === currentStationId)?.listeners?.length ?? 0
-  const prevListenerCountRef = useRef<number | null>(null)
+  const prevListenerCountRef = useRef<{ stationId: string; count: number } | null>(null)
   useEffect(() => {
     const prev = prevListenerCountRef.current
-    if (prev != null && prev > 0 && currentListenerCount === 0 && serverConnected) {
+    // Only compare counts within the same station — switching stations
+    // legitimately moves between different presence lists and would
+    // otherwise produce spurious warnings.
+    if (
+      prev != null &&
+      prev.stationId === currentStationId &&
+      prev.count > 0 &&
+      currentListenerCount === 0 &&
+      serverConnected
+    ) {
       log.app.warn("listeners panel collapsed to empty while connected", {
-        stationId: currentStationId, previousCount: prev,
+        stationId: currentStationId, previousCount: prev.count,
       })
     }
-    prevListenerCountRef.current = currentListenerCount
+    prevListenerCountRef.current = { stationId: currentStationId, count: currentListenerCount }
   }, [currentListenerCount, currentStationId, serverConnected])
 
   if (appState === "setup") return <SetupScreen error={setupError} />
