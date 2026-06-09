@@ -771,30 +771,37 @@ export default function App() {
           </div>
         </div>
       ) : (
-      <div className="flex-1 flex items-start justify-center py-4 gap-3">
+      <div className="flex-1 overflow-x-auto">
+      <div className={`flex items-start py-4 gap-3 ${isDesktop ? "w-max mx-auto" : "w-full justify-center"}`}>
 
-        {/* Add/Request side panel — desktop left */}
-        <AnimatePresence>
-          {discoveryModalOpen && isDesktop && (
-            <DiscoveryModal
-              mode="panel"
-              onClose={() => setDiscoveryModalOpen(false)}
-              catalog={catalog.current}
-              queuedIsrcs={queuedIsrcs}
-              userQueuedIds={userQueuedIds}
-              nowPlayingIds={nowPlayingIds}
-              suggestedIsrcs={suggestedIsrcs}
-              queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
-              onAddTrack={isPrivileged ? handleAddTrack : handleSuggestTrack}
-              suggestions={suggestions}
-              isPrivileged={isPrivileged}
-              currentUserId={user.uid}
-              onVoteSuggestion={handleVoteSuggestion}
-              onEnqueueSuggestion={isPrivileged ? handleEnqueueSuggestion : undefined}
-              onRemoveSuggestion={isPrivileged ? handleRemoveSuggestion : undefined}
-            />
-          )}
-        </AnimatePresence>
+        {/* Add/Request side panel slot — desktop left. The slot is always
+         *  reserved (400px) on desktop so the main column stays centered
+         *  regardless of whether the panel inside is open. */}
+        {isDesktop && (
+          <div className="w-[400px] flex-shrink-0">
+            <AnimatePresence>
+              {discoveryModalOpen && (
+                <DiscoveryModal
+                  mode="panel"
+                  onClose={() => setDiscoveryModalOpen(false)}
+                  catalog={catalog.current}
+                  queuedIsrcs={queuedIsrcs}
+                  userQueuedIds={userQueuedIds}
+                  nowPlayingIds={nowPlayingIds}
+                  suggestedIsrcs={suggestedIsrcs}
+                  queue={[...(nowPlaying ? [nowPlaying] : []), ...upNext]}
+                  onAddTrack={isPrivileged ? handleAddTrack : handleSuggestTrack}
+                  suggestions={suggestions}
+                  isPrivileged={isPrivileged}
+                  currentUserId={user.uid}
+                  onVoteSuggestion={handleVoteSuggestion}
+                  onEnqueueSuggestion={isPrivileged ? handleEnqueueSuggestion : undefined}
+                  onRemoveSuggestion={isPrivileged ? handleRemoveSuggestion : undefined}
+                />
+              )}
+            </AnimatePresence>
+          </div>
+        )}
 
         <div className="w-full max-w-[480px] px-4 space-y-4 flex-shrink-0 min-w-0">
 
@@ -856,26 +863,33 @@ export default function App() {
 
         </div>{/* end main content column */}
 
-        {/* Comments side panel — desktop right (combined listeners + comments) */}
-        <AnimatePresence>
-          {commentsPanelOpen && isDesktop && (
-            <CommentsPanel
-              mode="panel"
-              onClose={() => setCommentsPanelOpen(false)}
-              listeners={currentStation?.listeners ?? []}
-              comments={comments}
-              visits={visits}
-              currentUser={user}
-              ownerUid={currentStation?.ownerUid}
-              djUserIds={djUserIds}
-              isStationOwner={isOwnStation}
-              onPostComment={(text) => stationSocket.postComment(text)}
-              onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
-              onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
-            />
-          )}
-        </AnimatePresence>
+        {/* Comments side panel slot — desktop right. Slot is always
+         *  reserved on desktop; the inner AnimatePresence animates the
+         *  panel in/out. */}
+        {isDesktop && (
+          <div className="w-[400px] flex-shrink-0">
+            <AnimatePresence>
+              {commentsPanelOpen && (
+                <CommentsPanel
+                  mode="panel"
+                  onClose={() => setCommentsPanelOpen(false)}
+                  listeners={currentStation?.listeners ?? []}
+                  comments={comments}
+                  visits={visits}
+                  currentUser={user}
+                  ownerUid={currentStation?.ownerUid}
+                  djUserIds={djUserIds}
+                  isStationOwner={isOwnStation}
+                  onPostComment={(text) => stationSocket.postComment(text)}
+                  onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
+                  onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
+                />
+              )}
+            </AnimatePresence>
+          </div>
+        )}
 
+        </div>
       </div>
       )}
 

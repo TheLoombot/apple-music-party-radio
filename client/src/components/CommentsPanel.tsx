@@ -244,7 +244,9 @@ export function CommentsPanel({
   if (mode === "panel") {
     return (
       <motion.div
-        className="w-[400px] flex-shrink-0 self-start sticky top-4 bg-panel rounded-xl overflow-hidden flex flex-col h-[calc(100vh-2rem)]"
+        /* In-flow side panel — lives inside its 400px slot. Sticky so it
+         *  stays pinned near the top as the page scrolls. */
+        className="w-full sticky top-0 bg-panel rounded-xl overflow-hidden flex flex-col h-[calc(100vh-2rem)]"
         initial={{ x: 20, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: 20, opacity: 0 }}
