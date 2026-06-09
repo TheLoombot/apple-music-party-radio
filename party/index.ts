@@ -53,12 +53,23 @@ interface PoolTrack extends Track {
   playCount: number
 }
 
-interface ChatMessage {
-  id: string
+/** Per-user "currently saying" message. Each user has at most one — posting
+ *  again replaces their prior comment with the new text + timestamp. */
+interface Comment {
   userId: string
   displayName: string
   text: string
-  sentAt: number
+  postedAt: number
+}
+
+/** Persistent record of a user having been in the room. Updated on join and
+ *  on disconnect (lastSeenAt = max of those events). Lets the "recent"
+ *  section in the comments panel include people who passed through without
+ *  saying anything. */
+interface Visit {
+  userId: string
+  displayName: string
+  lastSeenAt: number
 }
 
 interface Listener {
@@ -69,7 +80,7 @@ interface Listener {
 
 interface ConnectedListener extends Listener {
   isDJ: boolean
-  lastMessageAt?: number    // for per-connection chat rate limiting
+  lastCommentAt?: number    // for per-connection comment rate limiting
   lastSuggestionAt?: number // for per-connection suggest rate limiting (3s)
   lastVoteAt?: number       // for per-connection vote rate limiting (500ms)
 }
@@ -112,8 +123,19 @@ const TARGET_ROBOT_DEPTH = 8
 /** Max tracks a single non-robot user may have queued at once (prevents queue flooding). */
 const MAX_USER_QUEUE_DEPTH = 100
 
-/** Min milliseconds between chat messages per connection (prevents chat flooding). */
-const CHAT_RATE_LIMIT_MS = 1000
+/** Min milliseconds between comment posts per connection (prevents flooding). */
+const COMMENT_RATE_LIMIT_MS = 1000
+
+/** Max characters in a single comment. */
+const MAX_COMMENT_LENGTH = 256
+
+/** Max comments retained in storage. The client filters to present + 25 recent
+ *  non-present; this cap is just to keep the DO storage bounded. */
+const MAX_COMMENT_HISTORY = 100
+
+/** Max visit records retained. Client filters out present users + takes the
+ *  25 most-recent from the union of visits and comments for the recent list. */
+const MAX_VISIT_HISTORY = 100
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 
@@ -221,11 +243,12 @@ export default class RadioParty implements Party.Server {
     } else {
       try {
         const { queue, pool } = await this.flushExpired()
-        const chat = await this.storage<ChatMessage[]>("chat", [])
+        const comments = await this.storage<Comment[]>("comments", [])
+        const visits = await this.storage<Visit[]>("visits", [])
         const djs = await this.getDJs()
         const suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
         const djNotes = await this.storage<Record<string, string>>("dj_notes", {})
-        conn.send(json({ type: "state", queue, pool, chat, djs, suggestions, djNotes }))
+        conn.send(json({ type: "state", queue, pool, comments, visits, djs, suggestions, djNotes }))
         // Sync live status to index on every connect so stale flags get corrected
         void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl)
         // Re-arm expiration alarm in case the DO restarted and lost it
@@ -236,7 +259,7 @@ export default class RadioParty implements Party.Server {
         void this.fillRobotQueue()
       } catch (err) {
         console.error(`[onConnect] error for room ${roomId}:`, err)
-        conn.send(json({ type: "state", queue: [], pool: [], chat: [], djs: [] }))
+        conn.send(json({ type: "state", queue: [], pool: [], comments: [], visits: [], djs: [] }))
       }
     }
   }
@@ -316,8 +339,12 @@ export default class RadioParty implements Party.Server {
 
   async onClose(conn: Party.Connection) {
     if (this.getRoomId() === "index") return
+    const departed = this.connListeners.get(conn.id)
     this.connListeners.delete(conn.id)
     this.schedulePresenceNotify()
+    // Record visit on leave too — captures the moment they last "were here"
+    // for ordering in the recent list.
+    if (departed) void this.recordVisit(departed.userId, departed.displayName)
     const remaining = [...this.room.getConnections()].filter(c => c.id !== conn.id)
     if (remaining.length > 0) return
     // Last listener left — liveUntil already encodes the correct expiry time,
@@ -326,6 +353,18 @@ export default class RadioParty implements Party.Server {
     if (queue.length === 0) {
       await this.notifyIndex(0)
     }
+  }
+
+  /** Upsert a visit record with a fresh lastSeenAt + broadcast. Called on
+   *  join AND on disconnect so the recent list orders users by their most
+   *  recent presence regardless of whether they ever commented. */
+  private async recordVisit(userId: string, displayName: string) {
+    if (!userId) return
+    let visits = await this.storage<Visit[]>("visits", [])
+    visits = visits.filter(v => v.userId !== userId)
+    visits = [{ userId, displayName, lastSeenAt: Date.now() }, ...visits].slice(0, MAX_VISIT_HISTORY)
+    await this.room.storage.put("visits", visits)
+    this.room.broadcast(json({ type: "visits_update", visits }))
   }
 
   async onMessage(raw: string, sender: Party.Connection) {
@@ -659,6 +698,7 @@ export default class RadioParty implements Party.Server {
         const isDJ = djs.includes(msg.userId)
         this.connListeners.set(sender.id, { userId: msg.userId, displayName: msg.displayName, isDJ })
         this.schedulePresenceNotify()
+        void this.recordVisit(msg.userId, msg.displayName)
         // Send current DJ list to the joining client
         sender.send(json({ type: "dj_update", djs }))
         // Legacy migration: if this room has no stored ownership and the room ID
@@ -736,7 +776,7 @@ export default class RadioParty implements Party.Server {
       case "enqueue_suggestion": if (!this.isPrivilegedConn(sender)) return; return this.handleEnqueueSuggestion(msg, sender)
       case "remove_suggestion":  if (!this.isPrivilegedConn(sender)) return; return this.handleRemoveSuggestion(msg)
       case "set_dj_note":      if (!this.isPrivilegedConn(sender)) return; return this.handleSetDjNote(msg)
-      case "chat_message":     return this.handleChatMessage(msg, sender)
+      case "post_comment":     return this.handlePostComment(msg, sender)
     }
   }
 
@@ -1023,9 +1063,8 @@ export default class RadioParty implements Party.Server {
     this.room.broadcast(json({ type: "dj_notes_update", djNotes: notes }))
   }
 
-  private async handleChatMessage(msg: any, sender: Party.Connection) {
-    const text = (msg.text ?? "").trim().slice(0, 500)
-    if (!text) return
+  private async handlePostComment(msg: any, sender: Party.Connection) {
+    const raw = (msg.text ?? "").trim().slice(0, MAX_COMMENT_LENGTH)
     let listener = this.connListeners.get(sender.id)
     if (!listener) {
       // DO may have woken from hibernation, losing in-memory connListeners.
@@ -1036,21 +1075,23 @@ export default class RadioParty implements Party.Server {
       this.connListeners.set(sender.id, listener)
     }
     const now = Date.now()
-    if (listener.lastMessageAt && now - listener.lastMessageAt < CHAT_RATE_LIMIT_MS) return
-    this.connListeners.set(sender.id, { ...listener, lastMessageAt: now })
-    const message: ChatMessage = {
-      id: crypto.randomUUID(),
-      userId: listener.userId,
-      displayName: listener.displayName,
-      text,
-      sentAt: Date.now(),
+    if (listener.lastCommentAt && now - listener.lastCommentAt < COMMENT_RATE_LIMIT_MS) return
+    this.connListeners.set(sender.id, { ...listener, lastCommentAt: now })
+
+    let comments = await this.storage<Comment[]>("comments", [])
+    // Strip any prior comment from this user — at most one per user.
+    comments = comments.filter(c => c.userId !== listener!.userId)
+    if (raw) {
+      // Prepend new comment (newest first), then cap.
+      comments = [{
+        userId: listener.userId,
+        displayName: listener.displayName,
+        text: raw,
+        postedAt: now,
+      }, ...comments].slice(0, MAX_COMMENT_HISTORY)
     }
-    let chat = await this.storage<ChatMessage[]>("chat", [])
-    chat = [...chat, message].slice(-100)
-    await this.room.storage.put("chat", chat)
-    // Broadcast to all other connections; send explicitly to sender
-    this.room.broadcast(json({ type: "chat_message", message }), [sender.id])
-    sender.send(json({ type: "chat_message", message }))
+    await this.room.storage.put("comments", comments)
+    this.room.broadcast(json({ type: "comments_update", comments }))
   }
 
   private async handleSuggestTrack(msg: any, sender: Party.Connection) {

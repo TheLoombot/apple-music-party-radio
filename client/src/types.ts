@@ -94,12 +94,22 @@ export interface PoolTrack extends Track {
   playCount: number
 }
 
-export interface ChatMessage {
-  id: string
+/** Per-user "currently saying" message. Each user has at most one comment
+ *  at a time — posting a new one replaces the prior. */
+export interface Comment {
   userId: string
   displayName: string
   text: string
-  sentAt: number
+  postedAt: number
+}
+
+/** Record that a user was present in the room at some point. Updated on
+ *  join and on disconnect (lastSeenAt = the most recent of those moments).
+ *  Lets the recent list include users who passed through without commenting. */
+export interface Visit {
+  userId: string
+  displayName: string
+  lastSeenAt: number
 }
 
 export interface AppUser {

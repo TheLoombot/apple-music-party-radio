@@ -8,9 +8,8 @@ import { FaceGenerator } from "./components/FaceGenerator"
 import { PoolModal } from "./components/PoolModal"
 import { StationModal } from "./components/StationModal"
 import { StationList } from "./components/StationList"
-import { ChatModal } from "./components/ChatModal"
+import { CommentsPanel } from "./components/CommentsPanel"
 import { DiscoveryModal } from "./components/DiscoveryModal"
-import { ListenersPanel } from "./components/ListenersPanel"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized, getMusicKit } from "./services/musickit"
 import { getUserStorefront } from "./services/appleMusic"
@@ -21,7 +20,7 @@ import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
 import { AppleMusicCatalog } from "./services/catalog"
 import { log } from "./services/log"
-import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack, ChatMessage, SuggestedTrack } from "./types"
+import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack, Comment, Visit, SuggestedTrack } from "./types"
 
 type AppState = "loading" | "setup" | "naming" | "auth" | "ready"
 
@@ -53,11 +52,11 @@ export default function App() {
   const [pool, setPool] = useState<PoolTrack[]>([])
   const [poolModalOpen, setPoolModalOpen] = useState(false)
   const [stationModalOpen, setStationModalOpen] = useState(false)
-  const [chatModalOpen, setChatModalOpen] = useState(false)
+  const [commentsPanelOpen, setCommentsPanelOpen] = useState(false)
   const [discoveryModalOpen, setDiscoveryModalOpen] = useState(false)
   const [isDesktop, setIsDesktop] = useState(() => window.matchMedia("(min-width: 1024px)").matches)
-  const [lastReadSentAt, setLastReadSentAt] = useState(() => Date.now())
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [comments, setComments] = useState<Comment[]>([])
+  const [visits, setVisits] = useState<Visit[]>([])
   const [isMuted, setIsMuted] = useState(false)
   const [playbackBlocked, setPlaybackBlocked] = useState(false)
   const [previewOnly, setPreviewOnly] = useState(false)
@@ -173,8 +172,8 @@ export default function App() {
         setUpNext([])
         setStationLoading(true)
         setPlaybackBlocked(false)
-        setChatMessages([])
-        setLastReadSentAt(Date.now())
+        setComments([])
+        setVisits([])
         playbackLoop.current.enableAutoplay()
         setStationSelected(true)
         setCurrentStationId(stationId)
@@ -184,7 +183,8 @@ export default function App() {
         setUpNext([])
         setStationLoading(false)
         setPlaybackBlocked(false)
-        setChatMessages([])
+        setComments([])
+        setVisits([])
         setSuggestions([])
         setCurrentStationId("")
         setStationSelected(false)
@@ -213,7 +213,8 @@ export default function App() {
     playbackLoop.current.onPlaybackBlocked = () => setPlaybackBlocked(true)
     playbackLoop.current.onMutedChange = setIsMuted
     stationSocket.onPoolUpdate = setPool
-    stationSocket.onChatUpdate = setChatMessages
+    stationSocket.onCommentsUpdate = setComments
+    stationSocket.onVisitsUpdate = setVisits
     stationSocket.onDJUpdate = setDJUserIds
     stationSocket.onQueueFull = (limit) => setQueueFullAlert(limit)
     stationSocket.onSuggestionsUpdate = setSuggestions
@@ -370,8 +371,8 @@ export default function App() {
     setUpNext([])
     setStationLoading(true)
     setPlaybackBlocked(false)
-    setChatMessages([])
-    setLastReadSentAt(Date.now())
+    setComments([])
+    setVisits([])
     setSuggestions([])
     playbackLoop.current.enableAutoplay()
     setStationSelected(true)
@@ -463,10 +464,9 @@ export default function App() {
   ), [suggestions])
   const userQueue = useMemo(() => upNext.filter(item => item.addedBy !== "robot"), [upNext])
   const robotQueue = useMemo(() => upNext.filter(item => item.addedBy === "robot"), [upNext])
-  const unreadCount = useMemo(
-    () => chatMessages.filter(m => m.userId !== user?.uid && m.sentAt > lastReadSentAt).length,
-    [chatMessages, lastReadSentAt, user?.uid]
-  )
+  // Listener count for the chat button. Shown only when >1 (i.e. someone
+  // besides the current user is listening) by the button itself.
+  const listenerCount = stations.find(s => s.id === currentStationId)?.listeners?.length ?? 0
   const activeStationCount = useMemo(
     () => stations.filter(s => s.liveUntil > Date.now() && s.id !== currentStationId).length,
     [stations, currentStationId]
@@ -716,12 +716,19 @@ export default function App() {
       )}
 
       <AnimatePresence>
-        {chatModalOpen && !isDesktop && (
-          <ChatModal
-            onClose={() => setChatModalOpen(false)}
-            messages={chatMessages}
+        {commentsPanelOpen && !isDesktop && (
+          <CommentsPanel
+            onClose={() => setCommentsPanelOpen(false)}
+            listeners={currentStation?.listeners ?? []}
+            comments={comments}
+            visits={visits}
             currentUser={user}
-            onSend={(text) => stationSocket.sendChatMessage(text)}
+            ownerUid={currentStation?.ownerUid}
+            djUserIds={djUserIds}
+            isStationOwner={isOwnStation}
+            onPostComment={(text) => stationSocket.postComment(text)}
+            onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
+            onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
           />
         )}
       </AnimatePresence>
@@ -815,12 +822,9 @@ export default function App() {
           onPrevStation={liveStations.length > 1 ? handlePrevStation : undefined}
           onNextStation={liveStations.length > 1 ? handleNextStation : undefined}
           loading={stationLoading}
-          onOpenChat={() => {
-            setLastReadSentAt(chatMessages[chatMessages.length - 1]?.sentAt ?? Date.now())
-            setChatModalOpen(v => !v)
-          }}
-          chatPanelOpen={chatModalOpen}
-          unreadCount={unreadCount}
+          onOpenChat={() => setCommentsPanelOpen(v => !v)}
+          chatPanelOpen={commentsPanelOpen}
+          unreadCount={listenerCount}
           onOpenAddTracks={() => setDiscoveryModalOpen(v => !v)}
           addTracksPanelOpen={discoveryModalOpen}
           addButtonLabel={isPrivileged
@@ -842,16 +846,6 @@ export default function App() {
           onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
         />
 
-        <ListenersPanel
-          listeners={currentStation?.listeners ?? []}
-          ownerUid={currentStation?.ownerUid}
-          currentUserId={user.uid}
-          djUserIds={djUserIds}
-          isStationOwner={isOwnStation}
-          onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
-          onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
-        />
-
         {debugSettings.robotQueue && (
           <RobotQueue
             queue={robotQueue}
@@ -862,15 +856,22 @@ export default function App() {
 
         </div>{/* end main content column */}
 
-        {/* Chat side panel — desktop right */}
+        {/* Comments side panel — desktop right (combined listeners + comments) */}
         <AnimatePresence>
-          {chatModalOpen && isDesktop && (
-            <ChatModal
+          {commentsPanelOpen && isDesktop && (
+            <CommentsPanel
               mode="panel"
-              onClose={() => setChatModalOpen(false)}
-              messages={chatMessages}
+              onClose={() => setCommentsPanelOpen(false)}
+              listeners={currentStation?.listeners ?? []}
+              comments={comments}
+              visits={visits}
               currentUser={user}
-              onSend={(text) => stationSocket.sendChatMessage(text)}
+              ownerUid={currentStation?.ownerUid}
+              djUserIds={djUserIds}
+              isStationOwner={isOwnStation}
+              onPostComment={(text) => stationSocket.postComment(text)}
+              onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
+              onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
             />
           )}
         </AnimatePresence>

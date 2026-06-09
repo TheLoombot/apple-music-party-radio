@@ -580,13 +580,11 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 <button
                   onClick={onOpenChat}
                   aria-label="Chat"
-                  className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white/80 hover:text-white ${chatPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
+                  className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-2 text-white/80 hover:text-white ${chatPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
                 >
                   <MessageCircle size={20} />
-                  {(unreadCount ?? 0) > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-accent rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 leading-none pointer-events-none">
-                      {unreadCount! > 9 ? "9+" : unreadCount}
-                    </span>
+                  {(unreadCount ?? 0) > 1 && (
+                    <span className="text-sm font-semibold tabular-nums">{unreadCount}</span>
                   )}
                 </button>
               </Tooltip>

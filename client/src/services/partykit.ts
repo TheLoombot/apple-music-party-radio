@@ -7,7 +7,7 @@
  */
 import PartySocket from "partysocket"
 import { log } from "./log"
-import type { QueueItem, Track, PoolTrack, Station, ChatMessage, SuggestedTrack } from "../types"
+import type { QueueItem, Track, PoolTrack, Station, Comment, Visit, SuggestedTrack } from "../types"
 
 // Ensure every track from the server has a platformIds object.
 // Mirrors the server-side migrateTrack — runs on every received queue/pool item.
@@ -34,12 +34,12 @@ function partyUrl(room: string, path = ""): string {
 export class StationSocket {
   private socket: PartySocket | null = null
   private pingInterval: ReturnType<typeof setInterval> | null = null
-  private chatMessages: ChatMessage[] = []
   private lastJoinParams: { userId: string; displayName: string } | null = null
 
   onQueueUpdate?: (queue: QueueItem[]) => void
   onPoolUpdate?: (pool: PoolTrack[]) => void
-  onChatUpdate?: (messages: ChatMessage[]) => void
+  onCommentsUpdate?: (comments: Comment[]) => void
+  onVisitsUpdate?: (visits: Visit[]) => void
   onDJUpdate?: (djUserIds: string[]) => void
   onQueueFull?: (limit: number) => void
   onSuggestionsUpdate?: (suggestions: SuggestedTrack[]) => void
@@ -48,7 +48,6 @@ export class StationSocket {
 
   connect(stationId: string) {
     this.disconnect()
-    this.chatMessages = []
     const opts = import.meta.env.DEV
       ? { host: HOST, room: stationId, protocol: "ws" as const }
       : { host: HOST, room: stationId }
@@ -75,8 +74,8 @@ export class StationSocket {
       if (msg.type === "state") {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
         this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean).map(migrateTrack))
-        this.chatMessages = msg.chat ?? []
-        this.onChatUpdate?.([...this.chatMessages])
+        this.onCommentsUpdate?.(msg.comments ?? [])
+        this.onVisitsUpdate?.(msg.visits ?? [])
         if (msg.djs) this.onDJUpdate?.(msg.djs)
         if (msg.suggestions) this.onSuggestionsUpdate?.(msg.suggestions)
         if (msg.djNotes) this.onDJNotesUpdate?.(msg.djNotes)
@@ -84,9 +83,10 @@ export class StationSocket {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
       } else if (msg.type === "pool_update") {
         this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean).map(migrateTrack))
-      } else if (msg.type === "chat_message") {
-        this.chatMessages = [...this.chatMessages, msg.message].slice(-100)
-        this.onChatUpdate?.([...this.chatMessages])
+      } else if (msg.type === "comments_update") {
+        this.onCommentsUpdate?.(msg.comments ?? [])
+      } else if (msg.type === "visits_update") {
+        this.onVisitsUpdate?.(msg.visits ?? [])
       } else if (msg.type === "dj_update") {
         this.onDJUpdate?.(msg.djs ?? [])
       } else if (msg.type === "queue_full") {
@@ -154,8 +154,9 @@ export class StationSocket {
     this.send({ type: "robot_dj" })
   }
 
-  sendChatMessage(text: string) {
-    this.send({ type: "chat_message", text, ...this.lastJoinParams })
+  /** Post (or clear, with empty text) the current user's single comment. */
+  postComment(text: string) {
+    this.send({ type: "post_comment", text, ...this.lastJoinParams })
   }
 
   grantDJ(userId: string) {
