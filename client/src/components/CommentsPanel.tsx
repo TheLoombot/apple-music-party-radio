@@ -45,6 +45,7 @@ function PortalTooltip({ label, children }: { label: string; children: ReactNode
 
 const MAX_MESSAGE_LENGTH = 256
 const MAX_RECENT_VISITORS = 25
+const RECENT_VISITOR_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 /** Scroll slack (px) within which we still consider the list "at bottom". */
 const AT_BOTTOM_SLACK = 40
@@ -110,8 +111,9 @@ export function CommentsPanel({
 
   const recentVisitors = useMemo(() => {
     const presentIds = new Set(listeners.map(l => l.userId))
+    const cutoff = Date.now() - RECENT_VISITOR_MAX_AGE_MS
     return visits
-      .filter(v => !presentIds.has(v.userId))
+      .filter(v => !presentIds.has(v.userId) && v.lastSeenAt >= cutoff)
       .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
       .slice(0, MAX_RECENT_VISITORS)
   }, [visits, listeners])
