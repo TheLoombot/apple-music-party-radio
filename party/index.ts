@@ -45,6 +45,9 @@ interface QueueItem extends Track {
   addedBy: string
   addedByName?: string   // display name resolved server-side from connListeners
   addedAt: number
+  // uids that hearted this play. Toggles freely until the track expires; the
+  // final length is then folded into the persistent track_hearts/dj_hearts maps.
+  heartedBy?: string[]
 }
 
 interface PoolTrack extends Track {
@@ -269,7 +272,9 @@ export default class RadioParty implements Party.Server {
         const djs = await this.getDJs()
         const suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
         const djNotes = await this.storage<Record<string, string>>("dj_notes", {})
-        conn.send(json({ type: "state", queue, pool, log, visits, djs, suggestions, djNotes }))
+        const trackHearts = await this.storage<Record<string, number>>("track_hearts", {})
+        const djHearts = await this.storage<Record<string, number>>("dj_hearts", {})
+        conn.send(json({ type: "state", queue, pool, log, visits, djs, suggestions, djNotes, trackHearts, djHearts }))
         // Sync live status to index on every connect so stale flags get corrected
         void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl)
         // Re-arm expiration alarm in case the DO restarted and lost it
@@ -852,7 +857,24 @@ export default class RadioParty implements Party.Server {
       // Debug-only: any client can seize ownership of the current station. No
       // auth check by design — exposed via the debug menu.
       case "transfer_ownership": return this.handleTransferOwnership(msg)
+      case "heart":            return this.handleHeart(msg)
     }
+  }
+
+  private async handleHeart(msg: any) {
+    if (!msg.userId || !msg.key) return
+    const queue = await this.storage<QueueItem[]>("queue", [])
+    // Only the current track is heartable — heart events on stale keys (e.g. a
+    // racing tap right as a track expired) are dropped.
+    if (queue[0]?.key !== msg.key) return
+    const head = queue[0]
+    const hearted = head.heartedBy ?? []
+    const next = hearted.includes(msg.userId)
+      ? hearted.filter(u => u !== msg.userId)
+      : [...hearted, msg.userId]
+    queue[0] = { ...head, heartedBy: next }
+    await this.room.storage.put("queue", queue)
+    this.room.broadcast(json({ type: "queue_update", queue }))
   }
 
   private async handleTransferOwnership(msg: any) {
@@ -1120,11 +1142,13 @@ export default class RadioParty implements Party.Server {
     queue = queue.slice(1)
     await this.room.storage.put("queue", queue)
 
+    await this.foldHearts(expired)
+
     if (addToPool) {
-      // Pull addedByName off the queue item so it doesn't leak into trackData
-      // as a stale single-name field on PoolTrack; we maintain a per-uid name
-      // map instead.
-      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, addedByName, ...trackData } = expired
+      // Pull addedByName/heartedBy off the queue item so they don't leak into
+      // trackData as stale fields on PoolTrack; addedByNames and the persistent
+      // track_hearts map carry that information separately.
+      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, addedByName, heartedBy: _h, ...trackData } = expired
       let pool = await this.storage<PoolTrack[]>("pool", [])
       const existing = pool.find(t => sameTrack(t, trackData))
       const prevUsers = existing?.addedByUsers ?? []
@@ -1142,6 +1166,24 @@ export default class RadioParty implements Party.Server {
 
     await this.broadcastQueue(queue)
     await this.fillRobotQueue()
+  }
+
+  /** Fold a finished play's hearts into the persistent station-scoped maps:
+   *  one increment per uid for the track (keyed by isrc), and parallel credit
+   *  to the DJ who queued it (skipped for robot). Broadcasts the updated maps
+   *  so all clients render the new totals immediately. */
+  private async foldHearts(item: QueueItem) {
+    const count = item.heartedBy?.length ?? 0
+    if (count === 0) return
+    const trackHearts = await this.storage<Record<string, number>>("track_hearts", {})
+    const djHearts = await this.storage<Record<string, number>>("dj_hearts", {})
+    if (item.isrc) trackHearts[item.isrc] = (trackHearts[item.isrc] ?? 0) + count
+    if (item.addedBy && item.addedBy !== "robot") {
+      djHearts[item.addedBy] = (djHearts[item.addedBy] ?? 0) + count
+    }
+    await this.room.storage.put("track_hearts", trackHearts)
+    await this.room.storage.put("dj_hearts", djHearts)
+    this.room.broadcast(json({ type: "hearts_update", trackHearts, djHearts }))
   }
 
   /** Merge a uid→displayName entry into a pool track's names map. Falls back
@@ -1460,7 +1502,9 @@ export default class RadioParty implements Party.Server {
     let changed = false
 
     while (queue.length > 0 && now >= queue[0].expirationTime) {
-      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, addedByName, ...trackData } = queue[0]
+      const expired = queue[0]
+      await this.foldHearts(expired)
+      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, addedByName, heartedBy: _h, ...trackData } = expired
       queue = queue.slice(1)
       const existing = pool.find(t => sameTrack(t, trackData))
       const prevUsers = existing?.addedByUsers ?? []

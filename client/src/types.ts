@@ -22,6 +22,10 @@ export interface QueueItem extends Track {
   addedBy: string
   addedByName?: string
   addedAt: number
+  // uids that hearted this play; toggles freely. Empty/undefined for old
+  // queue items pre-feature, or for items further down the queue (only the
+  // currently-playing item is heartable).
+  heartedBy?: string[]
 }
 
 export interface BrowsableResult {

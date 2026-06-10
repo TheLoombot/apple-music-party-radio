@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Volume2, VolumeX, SkipForward, Library, Info, Rewind, FastForward, Ban, MessageCircle, Plus } from "lucide-react"
+import { Volume2, VolumeX, SkipForward, Library, Info, Rewind, FastForward, Ban, MessageCircle, Plus, Heart } from "lucide-react"
 import { Tooltip } from "./Tooltip"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
@@ -72,6 +72,12 @@ interface Props {
   addBadgeCount?: number
   djNotes?: Record<string, string>
   onSaveDjNote?: (itemId: string, note: string) => void
+  /** Hearts tallied for the current play. Updates live as listeners toggle. */
+  liveHeartCount?: number
+  /** Whether the current user has hearted the currently-playing track. */
+  hasHearted?: boolean
+  /** Toggle the heart for the current track. Undefined when no track is playing. */
+  onHeartToggle?: () => void
 }
 
 function useProgress(track: QueueItem | null) {
@@ -434,7 +440,7 @@ function useFrequencyScan(frequency: number | undefined) {
   return displayFreq
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, chatPanelOpen, listenerCount, unreadChat, onOpenAddTracks, addTracksPanelOpen, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, chatPanelOpen, listenerCount, unreadChat, onOpenAddTracks, addTracksPanelOpen, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote, liveHeartCount = 0, hasHearted = false, onHeartToggle }: Props) {
   const isMobile = useIsMobile()
   const { progress, elapsed } = useProgress(track)
   // Both `isPlaying` (MediaSession OS controls) and `quiet` (mute icon/label)
@@ -683,24 +689,39 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               )}
             </motion.div>
 
-            {/* Controls — full-width Add on top, Pool/Skip/Ban below */}
+            {/* Controls — Add + Heart share the top row, Pool/Skip/Ban below */}
             <div className="px-4 pb-5 space-y-2">
-              {onOpenAddTracks && (
-                <Tooltip label={addButtonLabel ?? "Add tracks"}>
-                  <button
-                    onClick={onOpenAddTracks}
-                    aria-label={addButtonLabel ?? "Add tracks"}
-                    className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white ${addTracksPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
-                  >
-                    <Plus size={24} strokeWidth={3} />
-                    {(addBadgeCount ?? 0) > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-accent rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 leading-none pointer-events-none">
-                        {addBadgeCount! > 9 ? "9+" : addBadgeCount}
-                      </span>
-                    )}
-                  </button>
-                </Tooltip>
-              )}
+              <div className="grid grid-cols-2 gap-2">
+                {onOpenAddTracks && (
+                  <Tooltip label={addButtonLabel ?? "Add tracks"} align="start">
+                    <button
+                      onClick={onOpenAddTracks}
+                      aria-label={addButtonLabel ?? "Add tracks"}
+                      className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white ${addTracksPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
+                    >
+                      <Plus size={24} strokeWidth={3} />
+                      {(addBadgeCount ?? 0) > 0 && (
+                        <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-accent rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 leading-none pointer-events-none">
+                          {addBadgeCount! > 9 ? "9+" : addBadgeCount}
+                        </span>
+                      )}
+                    </button>
+                  </Tooltip>
+                )}
+                {onHeartToggle && (
+                  <Tooltip label={hasHearted ? "Take back your heart" : "Heart this track"} align="end">
+                    <button
+                      onClick={onHeartToggle}
+                      aria-label={hasHearted ? "Unheart" : "Heart this track"}
+                      aria-pressed={hasHearted}
+                      className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-2 text-white ${hasHearted ? "btn-3d-pressed text-red-400" : ""}`}
+                    >
+                      <Heart size={20} strokeWidth={2.5} className={hasHearted ? "fill-current" : ""} />
+                      <span className="text-base font-semibold tabular-nums">{liveHeartCount}</span>
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
               <div className="grid grid-cols-3 gap-2">
                 <Tooltip label={onOpenPool ? "Open pool" : "DJs only"} align="start">
                   <button

@@ -45,6 +45,7 @@ export class StationSocket {
   onSuggestionsUpdate?: (suggestions: SuggestedTrack[]) => void
   onSuggestionsFull?: (limit: number) => void
   onDJNotesUpdate?: (notes: Record<string, string>) => void
+  onHeartsUpdate?: (trackHearts: Record<string, number>, djHearts: Record<string, number>) => void
 
   connect(stationId: string) {
     this.disconnect()
@@ -79,6 +80,9 @@ export class StationSocket {
         if (msg.djs) this.onDJUpdate?.(msg.djs)
         if (msg.suggestions) this.onSuggestionsUpdate?.(msg.suggestions)
         if (msg.djNotes) this.onDJNotesUpdate?.(msg.djNotes)
+        this.onHeartsUpdate?.(msg.trackHearts ?? {}, msg.djHearts ?? {})
+      } else if (msg.type === "hearts_update") {
+        this.onHeartsUpdate?.(msg.trackHearts ?? {}, msg.djHearts ?? {})
       } else if (msg.type === "queue_update") {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
       } else if (msg.type === "pool_update") {
@@ -192,6 +196,11 @@ export class StationSocket {
    *  debug menu. */
   transferOwnership(userId: string, displayName: string) {
     this.send({ type: "transfer_ownership", userId, displayName })
+  }
+
+  /** Toggle the current user's heart on the currently-playing track. */
+  heart(key: string, userId: string) {
+    this.send({ type: "heart", key, userId })
   }
 
   private send(data: object) {

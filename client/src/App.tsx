@@ -80,6 +80,8 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<SuggestedTrack[]>([])
   const [suggestionsFullAlert, setSuggestionsFullAlert] = useState<number | null>(null)
   const [djNotes, setDjNotes] = useState<Record<string, string>>({})
+  const [trackHearts, setTrackHearts] = useState<Record<string, number>>({})
+  const [djHearts, setDjHearts] = useState<Record<string, number>>({})
   const [albumModal, setAlbumModal] = useState<{ playlist: AlbumResult; tracks: Track[] | null } | null>(null)
   // True between entering a station and receiving its first queue snapshot from the server.
   // Lets NowPlaying distinguish "tuning in" from "confirmed empty queue".
@@ -255,9 +257,12 @@ export default function App() {
     stationSocket.onSuggestionsUpdate = setSuggestions
     stationSocket.onSuggestionsFull = (limit) => setSuggestionsFullAlert(limit)
     stationSocket.onDJNotesUpdate = setDjNotes
+    stationSocket.onHeartsUpdate = (th, dh) => { setTrackHearts(th); setDjHearts(dh) }
     setDJUserIds([])
     setSuggestions([])
     setDjNotes({})
+    setTrackHearts({})
+    setDjHearts({})
     playbackLoop.current.start(currentStationId)
     stationSocket.join(user.uid, user.displayName)
     return () => playbackLoop.current.stop()
@@ -372,6 +377,11 @@ export default function App() {
   const handleSkipAndBan = useCallback(() => {
     stationSocket.skipAndRemoveFromPool()
   }, [])
+
+  const handleHeartToggle = useCallback(() => {
+    if (!user || !nowPlaying) return
+    stationSocket.heart(nowPlaying.key, user.uid)
+  }, [user, nowPlaying])
 
   const handleSuggestTrack = useCallback((track: Track) => {
     if (!user || !track.platformIds?.apple) return
@@ -925,6 +935,9 @@ export default function App() {
           addBadgeCount={isPrivileged ? suggestions.length : 0}
           djNotes={djNotes}
           onSaveDjNote={isPrivileged ? handleSaveDjNote : undefined}
+          liveHeartCount={nowPlaying?.heartedBy?.length ?? 0}
+          hasHearted={!!nowPlaying?.heartedBy?.includes(user.uid)}
+          onHeartToggle={nowPlaying ? handleHeartToggle : undefined}
         />
 
         <UpNext
