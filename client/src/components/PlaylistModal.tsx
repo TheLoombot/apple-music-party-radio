@@ -57,10 +57,10 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = E
   }, [onClose, artworkOpen])
 
   async function handleTrackAlbumClick(track: Track) {
-    if (!catalog || !track.appleId) return
+    if (!catalog || !track.platformIds?.apple) return
     const op = ++navOpRef.current
 
-    const album = await catalog.getAlbumForTrack(track.appleId)
+    const album = await catalog.getAlbumForTrack(track.platformIds.apple)
     if (navOpRef.current !== op || !album) return
 
     const savedScroll = scrollRef.current?.scrollTop ?? 0
@@ -121,7 +121,7 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = E
             {displayPlaylist.subtitle && <p className="text-muted text-sm truncate mt-0.5">{displayPlaylist.subtitle}</p>}
             <div className="flex items-center gap-2 mt-0.5">
               {displayTracks !== null && (() => {
-                const available = displayTracks.filter(t => t.appleId).length
+                const available = displayTracks.filter(t => t.platformIds?.apple).length
                 const total = displayTracks.length
                 const label = available < total
                   ? `${available} of ${total} tracks available`
@@ -150,18 +150,18 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = E
           ) : (
             <ul>
               {displayTracks.map((track, i) => {
-                const isUnavailable = !track.appleId
+                const isUnavailable = !track.platformIds?.apple
                 return (
                   <TrackRow
-                    key={track.appleId ?? track.isrc ?? track.name}
+                    key={track.platformIds?.apple ?? track.isrc ?? track.name}
                     track={track}
                     trackNumber={isAlbumish ? i + 1 : undefined}
                     hideArtist={isAlbumish && track.artistName === displayPlaylist.subtitle}
-                    added={!isUnavailable && (queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.appleId ?? ""))}
-                    isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")}
+                    added={!isUnavailable && (queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? ""))}
+                    isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.platformIds?.apple ?? "")}
                     unavailable={isUnavailable}
                     onAdd={() => onAddTrack(track)}
-                    onAlbumClick={catalog && track.appleId && !isAlbumish
+                    onAlbumClick={catalog && track.platformIds?.apple && !isAlbumish
                       ? () => handleTrackAlbumClick(track)
                       : undefined}
                   />
@@ -177,9 +177,9 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = E
           // track (server would refuse to add it; we shouldn't try). Robot-
           // queued tracks remain addable — server promotes them.
           const unqueued = displayTracks.filter(t =>
-            t.appleId &&
-            !queuedIsrcs.has(t.isrc) && !queuedIsrcs.has(t.appleId) &&
-            !nowPlayingIds.has(t.isrc) && !nowPlayingIds.has(t.appleId)
+            t.platformIds?.apple &&
+            !queuedIsrcs.has(t.isrc) && !queuedIsrcs.has(t.platformIds.apple) &&
+            !nowPlayingIds.has(t.isrc) && !nowPlayingIds.has(t.platformIds.apple)
           )
           return unqueued.length > 0 ? (
             <div className="border-t border-border flex-shrink-0">

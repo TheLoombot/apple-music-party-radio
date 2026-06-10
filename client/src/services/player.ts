@@ -1,8 +1,8 @@
-import type { QueueItem } from "../types"
+import type { Platform, QueueItem } from "../types"
 
 export class UnavailableError extends Error {
-  constructor(public track: QueueItem) {
-    super(`"${track.name}" is not available`)
+  constructor(public platform: Platform, public track: QueueItem) {
+    super(`"${track.name}" is not available on ${platform}`)
     this.name = "UnavailableError"
   }
 }
