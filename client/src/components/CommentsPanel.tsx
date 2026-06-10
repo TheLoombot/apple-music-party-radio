@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { X, Send, ArrowDown } from "lucide-react"
 import { DJFace } from "./FaceGenerator"
+import { Tooltip } from "./Tooltip"
 import type { Listener, LogEntry, UserLogEntry, Visit, AppUser } from "../types"
 
 const MAX_MESSAGE_LENGTH = 256
@@ -139,17 +140,17 @@ export function CommentsPanel({
 
   // ─── Presence strip + member card ─────────────────────────────────────────
   const avatarButton = (userId: string, displayName: string, present: boolean) => (
-    <button
-      key={userId}
-      onClick={() => setSelected(s => s?.userId === userId ? null : { userId, displayName })}
-      title={displayName}
-      aria-label={displayName}
-      className={`flex-shrink-0 rounded-lg transition-opacity ${present ? "" : "opacity-40 hover:opacity-70"} ${
-        selected?.userId === userId ? "ring-2 ring-accent" : ""
-      }`}
-    >
-      <DJFace uid={userId} size={44} />
-    </button>
+    <Tooltip key={userId} label={displayName} position="bottom">
+      <button
+        onClick={() => setSelected(s => s?.userId === userId ? null : { userId, displayName })}
+        aria-label={displayName}
+        className={`flex-shrink-0 rounded-lg transition-opacity ${present ? "" : "opacity-40 hover:opacity-70"} ${
+          selected?.userId === userId ? "ring-2 ring-accent" : ""
+        }`}
+      >
+        <DJFace uid={userId} size={44} />
+      </button>
+    </Tooltip>
   )
 
   const header = (
@@ -173,8 +174,8 @@ export function CommentsPanel({
     const isYou = selected.userId === currentUser.uid
     const isPresent = listeners.some(l => l.userId === selected.userId)
     return (
-      <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-shrink-0 bg-surface/40">
-        <DJFace uid={selected.userId} size={48} />
+      <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-shrink-0 bg-zinc-800/80 shadow-inner">
+        <DJFace uid={selected.userId} size={72} />
         <div className="flex-1 min-w-0">
           <div className="text-sm text-white truncate">
             {selected.displayName}
