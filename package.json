@@ -8,11 +8,13 @@
     "build": "npm run build --prefix client",
     "deploy": "npx partykit deploy && npm run build",
     "generate-token": "node scripts/generate-token.mjs",
+    "test": "vitest run shared",
     "install:all": "npm install && npm install --prefix client"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "partykit": "^0.0.107"
+    "partykit": "^0.0.107",
+    "vitest": "^3.2.6"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

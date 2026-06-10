@@ -13,6 +13,10 @@ Real-time collaborative radio stations backed by Apple Music. Listeners hear the
 
 ```
 party/index.ts          PartyKit Durable Object — all server logic
+shared/track.ts         migrateTrack / sameTrack — ONE implementation imported by
+                        BOTH party/index.ts and the client. Never fork/mirror these:
+                        mirror drift in a migration once wiped station pools.
+                        Tested by shared/track.test.ts (`npm test` at repo root).
 client/src/
   App.tsx               Root component, all state & handlers
   types.ts              Shared interfaces (Track, QueueItem, Station, ...)
@@ -289,6 +293,7 @@ Path-based (no `#`). `window.history.pushState` on station select; `popstate` li
 npm run install:all     # one-time: install root + client deps
 npm run dev             # partykit dev (port 1999) + vite (port 5173) concurrently
 npm run generate-token  # regenerate VITE_APPLE_DEVELOPER_TOKEN (expires every 180 days)
+npm test                # vitest over shared/ (track shape migration tests)
 ```
 
 Env vars live in `.env` at project root (Vite reads from there via `envDir` in `vite.config.ts`).

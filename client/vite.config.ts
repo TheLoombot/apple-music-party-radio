@@ -14,6 +14,9 @@ export default defineConfig(() => ({
   // Served from the apex `hat.fm` custom domain — base is `/` for both dev and build.
   // (Before the custom domain was set up this was '/apple-music-party-radio/' for builds.)
   base: '/',
-  server: { port: 5173, host: true, allowedHosts: true },
+  // fs.allow: the repo-root shared/ module (track-shape utilities) is imported
+  // from client code; without this Vite's dev server refuses to serve files
+  // outside the client directory.
+  server: { port: 5173, host: true, allowedHosts: true, fs: { allow: [path.resolve(__dirname, '..')] } },
   define: { __COMMIT__: JSON.stringify(commitHash) }
 }))

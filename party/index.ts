@@ -18,6 +18,7 @@
  *   on first join — ownership is bootstrapped lazily.
  */
 import type * as Party from "partykit/server"
+import { migrateTrack, sameTrack } from "../shared/track"
 
 // ─── Shared types (mirrored from client/src/types.ts) ────────────────────────
 
@@ -1407,12 +1408,16 @@ export default class RadioParty implements Party.Server {
     try {
       const queue = await this.storage<QueueItem[]>("queue", [])
       const rawPool = await this.storage<PoolTrack[]>("pool", [])
+      // Tracks without a playable ID are excluded as robot candidates but stay
+      // in storage — they may be shape-stranded by a migration gap or healable
+      // via ISRC later. A sanitizer here once permanently wiped entire pools
+      // when a migration bug left every record ID-less (June 2026). Quarantine,
+      // never delete: removal is owner-explicit (remove_from_pool, clear_pool,
+      // skip-and-ban) only.
       const pool = rawPool.filter(t => !!t.platformIds?.apple)
       if (pool.length < rawPool.length) {
-        const removed = rawPool.filter(t => !t.platformIds?.apple)
-        console.warn(`[fillRobotQueue] removing ${removed.length} pool track(s) with no Apple ID:`, removed.map(t => `"${t.name}" (isrc=${t.isrc || "none"})`).join(", "))
-        await this.room.storage.put("pool", pool)
-        this.room.broadcast(json({ type: "pool_update", pool }))
+        const stranded = rawPool.filter(t => !t.platformIds?.apple)
+        console.warn(`[fillRobotQueue] skipping ${stranded.length} pool track(s) with no Apple ID (kept in pool):`, stranded.map(t => `"${t.name}" (isrc=${t.isrc || "none"})`).join(", "))
       }
       if (pool.length === 0) return
 
@@ -1656,7 +1661,7 @@ export default class RadioParty implements Party.Server {
   private async storage<T>(key: string, fallback: T): Promise<T> {
     const raw = await this.room.storage.get<any>(key)
     if (raw == null) return fallback
-    if (key === "queue" || key === "pool") {
+    if (key === "queue" || key === "pool" || key === "suggestions") {
       return (raw as any[]).filter(Boolean).map(migrateTrack) as unknown as T
     }
     return raw as T
@@ -1706,18 +1711,13 @@ function liveUntilFromQueue(queue: QueueItem[]): number {
   return Math.max(queue[0].expirationTime, Date.now()) + LIVE_UNTIL_GRACE_MS
 }
 
-/** Match two tracks for pool deduplication.
- *  Never match on empty ISRC — that would collapse all ISRC-less tracks into one. */
 function sortSuggestions(s: SuggestedTrack[]): SuggestedTrack[] {
   return [...s].sort((a, b) => b.votes - a.votes || a.suggestedAt - b.suggestedAt)
 }
 
-function sameTrack(a: Track, b: Track): boolean {
-  if (a.isrc && b.isrc) return a.isrc === b.isrc
-  if (a.platformIds?.apple && b.platformIds?.apple) return a.platformIds.apple === b.platformIds.apple
-  if (a.platformIds?.spotify && b.platformIds?.spotify) return a.platformIds.spotify === b.platformIds.spotify
-  return false
-}
+// sameTrack and migrateTrack live in shared/track.ts — one implementation for
+// server and client. They were hand-mirrored once; the mirrors drifted and a
+// migration bug wiped station pools (June 2026). Don't fork them again.
 
 // ─── Frequency band ────────────────────────────────────────────────────────
 // Stations are identified by their FM frequency. Real US FM band: 88.1 to 107.9
@@ -1760,29 +1760,3 @@ function json(data: object): string {
   return JSON.stringify(data)
 }
 
-function hasAnyPlatformId(t: { platformIds: PlatformIds }): boolean {
-  return !!(t.platformIds?.apple || t.platformIds?.spotify)
-}
-
-// Migrate old catalogId-based track shape to the new platformIds shape.
-// Runs transparently on every queue/pool read until all stored data is updated.
-function migrateTrack(item: any): any {
-  if (item.platformIds) {
-    // Backfill fields for pool tracks that predate them
-    if ('lastPlayedAt' in item) {
-      return {
-        ...item,
-        addedByUsers: item.addedByUsers ?? [],
-        playCount: item.playCount ?? 1,
-      }
-    }
-    return item
-  }
-  const { catalogId, isrc, ...rest } = item
-  return {
-    ...rest,
-    isrc: isrc ?? "",
-    platformIds: { apple: catalogId },
-    addedViaPlatform: "apple",
-  }
-}

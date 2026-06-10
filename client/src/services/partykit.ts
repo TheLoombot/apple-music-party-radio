@@ -7,15 +7,8 @@
  */
 import PartySocket from "partysocket"
 import { log } from "./log"
+import { migrateTrack } from "../../../shared/track"
 import type { QueueItem, Track, PoolTrack, Station, LogEntry, Visit, SuggestedTrack } from "../types"
-
-// Ensure every track from the server has a platformIds object.
-// Mirrors the server-side migrateTrack — runs on every received queue/pool item.
-function migrateTrack<T extends object>(item: T): T {
-  const t = item as any
-  if (t?.platformIds) return item
-  return { ...item, platformIds: { apple: t?.catalogId }, addedViaPlatform: t?.addedViaPlatform ?? "apple" }
-}
 
 // In dev, partykit runs locally on port 1999.
 // In production, set VITE_PARTYKIT_HOST to your deployed host, e.g.:
@@ -78,7 +71,7 @@ export class StationSocket {
         this.onLogUpdate?.(msg.log ?? [])
         this.onVisitsUpdate?.(msg.visits ?? [])
         if (msg.djs) this.onDJUpdate?.(msg.djs)
-        if (msg.suggestions) this.onSuggestionsUpdate?.(msg.suggestions)
+        if (msg.suggestions) this.onSuggestionsUpdate?.((msg.suggestions as any[]).filter(Boolean).map(migrateTrack))
         if (msg.djNotes) this.onDJNotesUpdate?.(msg.djNotes)
         this.onHeartsUpdate?.(msg.trackHearts ?? {}, msg.djHearts ?? {})
       } else if (msg.type === "hearts_update") {
@@ -96,7 +89,7 @@ export class StationSocket {
       } else if (msg.type === "queue_full") {
         this.onQueueFull?.(msg.limit)
       } else if (msg.type === "suggestions_update") {
-        this.onSuggestionsUpdate?.(msg.suggestions ?? [])
+        this.onSuggestionsUpdate?.((msg.suggestions ?? []).filter(Boolean).map(migrateTrack))
       } else if (msg.type === "suggestions_full") {
         this.onSuggestionsFull?.(msg.limit)
       } else if (msg.type === "dj_notes_update") {
