@@ -1,8 +1,47 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { AnimatePresence, motion } from "framer-motion"
 import { X, Send, ArrowDown } from "lucide-react"
 import { DJFace } from "./FaceGenerator"
 import type { Listener, LogEntry, UserLogEntry, Visit, AppUser } from "../types"
+
+/** Tooltip that renders its label into a portal at document.body so it can
+ *  escape ancestors with `overflow-x: auto` (which implicitly clips the Y
+ *  axis per CSS spec, hiding the standard CSS-only Tooltip). Position is
+ *  measured from the trigger's bounding rect on hover/focus. */
+function PortalTooltip({ label, children }: { label: string; children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [rect, setRect] = useState<DOMRect | null>(null)
+  const show = () => { if (ref.current) setRect(ref.current.getBoundingClientRect()) }
+  const hide = () => setRect(null)
+  return (
+    <span
+      ref={ref}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      className="inline-block"
+    >
+      {children}
+      {rect && createPortal(
+        <div
+          role="tooltip"
+          style={{
+            position: "fixed",
+            top: rect.bottom + 6,
+            left: rect.left + rect.width / 2,
+            transform: "translateX(-50%)",
+          }}
+          className="z-[100] px-2 py-1 bg-surface border border-border rounded-lg whitespace-nowrap text-xs text-white pointer-events-none"
+        >
+          {label}
+        </div>,
+        document.body,
+      )}
+    </span>
+  )
+}
 
 const MAX_MESSAGE_LENGTH = 256
 const MAX_RECENT_VISITORS = 25
@@ -138,18 +177,20 @@ export function CommentsPanel({
   const remaining = MAX_MESSAGE_LENGTH - draft.length
 
   // ─── Presence strip + member card ─────────────────────────────────────────
+  // Use PortalTooltip (not the CSS-only Tooltip) so the label can escape the
+  // presence row's overflow-x-auto, which would otherwise clip it.
   const avatarButton = (userId: string, displayName: string, present: boolean) => (
-    <button
-      key={userId}
-      onClick={() => setSelected(s => s?.userId === userId ? null : { userId, displayName })}
-      title={displayName}
-      aria-label={displayName}
-      className={`flex-shrink-0 rounded-lg transition-opacity ${present ? "" : "opacity-40 hover:opacity-70"} ${
-        selected?.userId === userId ? "ring-2 ring-accent" : ""
-      }`}
-    >
-      <DJFace uid={userId} size={44} />
-    </button>
+    <PortalTooltip key={userId} label={displayName}>
+      <button
+        onClick={() => setSelected(s => s?.userId === userId ? null : { userId, displayName })}
+        aria-label={displayName}
+        className={`flex-shrink-0 rounded-lg transition-opacity ${present ? "" : "opacity-40 hover:opacity-70"} ${
+          selected?.userId === userId ? "ring-2 ring-accent" : ""
+        }`}
+      >
+        <DJFace uid={userId} size={44} />
+      </button>
+    </PortalTooltip>
   )
 
   const header = (
@@ -173,8 +214,8 @@ export function CommentsPanel({
     const isYou = selected.userId === currentUser.uid
     const isPresent = listeners.some(l => l.userId === selected.userId)
     return (
-      <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-shrink-0 bg-surface/40">
-        <DJFace uid={selected.userId} size={48} />
+      <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-shrink-0 bg-zinc-800/80 shadow-inner">
+        <DJFace uid={selected.userId} size={72} />
         <div className="flex-1 min-w-0">
           <div className="text-sm text-white truncate">
             {selected.displayName}
