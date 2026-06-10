@@ -93,6 +93,9 @@ export interface SuggestedTrack extends Track {
 export interface PoolTrack extends Track {
   lastPlayedAt: number
   addedByUsers: string[]
+  // uid → most-recent-known displayName. Optional because legacy pool entries
+  // saved before the names map was added don't have it.
+  addedByNames?: Record<string, string>
   playCount: number
 }
 

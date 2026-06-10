@@ -50,6 +50,10 @@ interface QueueItem extends Track {
 interface PoolTrack extends Track {
   lastPlayedAt: number
   addedByUsers: string[]
+  // uid → most-recent-known displayName. Optional so legacy entries without
+  // names render the raw uid (per the "no migration" decision); new and
+  // updated entries always populate this.
+  addedByNames?: Record<string, string>
   playCount: number
 }
 
@@ -1071,15 +1075,19 @@ export default class RadioParty implements Party.Server {
     await this.room.storage.put("queue", queue)
 
     if (addToPool) {
-      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, ...trackData } = expired
+      // Pull addedByName off the queue item so it doesn't leak into trackData
+      // as a stale single-name field on PoolTrack; we maintain a per-uid name
+      // map instead.
+      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, addedByName, ...trackData } = expired
       let pool = await this.storage<PoolTrack[]>("pool", [])
       const existing = pool.find(t => sameTrack(t, trackData))
       const prevUsers = existing?.addedByUsers ?? []
       const addedByUsers = addedBy && addedBy !== "robot"
         ? [...new Set([...prevUsers, addedBy])]
         : prevUsers
+      const addedByNames = this.mergePoolNames(existing?.addedByNames, addedBy, addedByName)
       pool = [
-        { ...trackData, lastPlayedAt: Date.now(), addedByUsers, playCount: (existing?.playCount ?? 0) + 1 },
+        { ...trackData, lastPlayedAt: Date.now(), addedByUsers, addedByNames, playCount: (existing?.playCount ?? 0) + 1 },
         ...pool.filter(t => !sameTrack(t, trackData))
       ].slice(0, 100)
       await this.room.storage.put("pool", pool)
@@ -1088,6 +1096,27 @@ export default class RadioParty implements Party.Server {
 
     await this.broadcastQueue(queue)
     await this.fillRobotQueue()
+  }
+
+  /** Merge a uid→displayName entry into a pool track's names map. Falls back
+   *  to the live connListeners (matched by userId) when the queue item didn't
+   *  carry an addedByName, so robot-promoted tracks and older queue items
+   *  still get a name when possible. Skips "robot" — that addedBy is sentinel. */
+  private mergePoolNames(
+    prev: Record<string, string> | undefined,
+    addedBy: string | undefined,
+    addedByName: string | undefined,
+  ): Record<string, string> {
+    const names = { ...(prev ?? {}) }
+    if (!addedBy || addedBy === "robot") return names
+    let resolved = addedByName
+    if (!resolved) {
+      for (const l of this.connListeners.values()) {
+        if (l.userId === addedBy) { resolved = l.displayName; break }
+      }
+    }
+    if (resolved) names[addedBy] = resolved
+    return names
   }
 
   private async removeFromPool(isrc: string) {
@@ -1385,14 +1414,15 @@ export default class RadioParty implements Party.Server {
     let changed = false
 
     while (queue.length > 0 && now >= queue[0].expirationTime) {
-      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, ...trackData } = queue[0]
+      const { key: _k, expirationTime: _e, addedBy, addedAt: _t, addedByName, ...trackData } = queue[0]
       queue = queue.slice(1)
       const existing = pool.find(t => sameTrack(t, trackData))
       const prevUsers = existing?.addedByUsers ?? []
       const addedByUsers = addedBy && addedBy !== "robot"
         ? [...new Set([...prevUsers, addedBy])]
         : prevUsers
-      pool = [{ ...trackData, lastPlayedAt: now, addedByUsers, playCount: (existing?.playCount ?? 0) + 1 }, ...pool.filter(t => !sameTrack(t, trackData))].slice(0, 100)
+      const addedByNames = this.mergePoolNames(existing?.addedByNames, addedBy, addedByName)
+      pool = [{ ...trackData, lastPlayedAt: now, addedByUsers, addedByNames, playCount: (existing?.playCount ?? 0) + 1 }, ...pool.filter(t => !sameTrack(t, trackData))].slice(0, 100)
       changed = true
     }
 

@@ -226,12 +226,17 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
                               <>
                                 <span className="mx-1">·</span>
                                 queued by{" "}
-                                {track.addedByUsers.map((u, i) => (
-                                  <span key={u}>
-                                    <span className="text-white/60">{u === currentUser.uid ? currentUser.displayName : u}</span>
-                                    {i < track.addedByUsers.length - 1 ? ", " : ""}
-                                  </span>
-                                ))}
+                                {track.addedByUsers.map((u, i) => {
+                                  const name = u === currentUser.uid
+                                    ? currentUser.displayName
+                                    : track.addedByNames?.[u] ?? u
+                                  return (
+                                    <span key={u}>
+                                      <span className="text-white/60">{name}</span>
+                                      {i < track.addedByUsers.length - 1 ? ", " : ""}
+                                    </span>
+                                  )
+                                })}
                               </>
                             )}
                           </p>
