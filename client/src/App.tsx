@@ -1068,6 +1068,22 @@ export default function App() {
                 />
                 Face studio
               </label>
+              {currentStationId && (
+                <>
+                  <p className="text-muted/60 text-[10px] uppercase tracking-widest mt-3 mb-2">Actions</p>
+                  <button
+                    onClick={() => {
+                      stationSocket.transferOwnership(user.uid, user.displayName)
+                      addOwnedStationId(currentStationId)
+                      setOwnedStationIds(getOwnedStationIds())
+                      setDebugMenuOpen(false)
+                    }}
+                    className="block w-full text-left text-sm text-white hover:text-accent py-1.5"
+                  >
+                    Take ownership of {currentStationId}
+                  </button>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}

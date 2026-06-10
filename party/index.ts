@@ -594,6 +594,21 @@ export default class RadioParty implements Party.Server {
           this.presenceMap.set(msg.id, msg.listeners ?? [])
           const stations = await this.storage<Station[]>("stations", [])
           this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
+        } else if (msg.type === "station_ownership") {
+          // Server-to-server push from a station room when ownership changes
+          // (currently only the debug transfer-ownership path). Update the
+          // index registry and broadcast so all clients see the new owner.
+          const stations = await this.storage<Station[]>("stations", [])
+          const idx = stations.findIndex(s => s.id === msg.id)
+          if (idx >= 0 && msg.ownerUid) {
+            stations[idx] = {
+              ...stations[idx],
+              ownerUid: msg.ownerUid,
+              ownerDisplayName: msg.ownerDisplayName ?? stations[idx].ownerDisplayName,
+            }
+            await this.room.storage.put("stations", stations)
+            this.room.broadcast(json({ type: "stations_update", stations: this.withPresence(stations) }))
+          }
         }
       }
     } else {
@@ -834,6 +849,37 @@ export default class RadioParty implements Party.Server {
       case "set_dj_note":      if (!this.isPrivilegedConn(sender)) return; return this.handleSetDjNote(msg)
       case "post_comment":     // legacy wire name — old clients with open tabs still send this
       case "post_message":     return this.handlePostMessage(msg, sender)
+      // Debug-only: any client can seize ownership of the current station. No
+      // auth check by design — exposed via the debug menu.
+      case "transfer_ownership": return this.handleTransferOwnership(msg)
+    }
+  }
+
+  private async handleTransferOwnership(msg: any) {
+    if (!msg.userId) return
+    const ownership: StationOwnership = { ownerUid: msg.userId, createdAt: Date.now() }
+    await this.room.storage.put("ownership", ownership)
+    this.cachedOwnerUid = msg.userId
+    // Push the change to the index so stations[].ownerUid updates for everyone,
+    // and re-derive any client-side gates (isOwnStation, canRemove, etc.).
+    await this.notifyIndexOwnership(msg.userId, msg.displayName)
+  }
+
+  private async notifyIndexOwnership(ownerUid: string, ownerDisplayName?: string) {
+    const body = JSON.stringify({
+      type: "station_ownership",
+      id: this.getRoomId(),
+      ownerUid,
+      ownerDisplayName,
+    })
+    try {
+      await this.room.context.parties.main.get("index").fetch("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      })
+    } catch (e) {
+      console.error("[notifyIndexOwnership] failed", e)
     }
   }
 

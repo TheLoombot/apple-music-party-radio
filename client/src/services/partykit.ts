@@ -187,6 +187,13 @@ export class StationSocket {
     this.send({ type: "set_dj_note", itemId, note })
   }
 
+  /** Debug only — seize ownership of the current station for the given user.
+   *  Server-side has no auth check; the button that calls this is in the
+   *  debug menu. */
+  transferOwnership(userId: string, displayName: string) {
+    this.send({ type: "transfer_ownership", userId, displayName })
+  }
+
   private send(data: object) {
     if (!this.socket) return
     // PartySocket buffers messages if not yet connected
