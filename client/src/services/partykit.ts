@@ -7,7 +7,7 @@
  */
 import PartySocket from "partysocket"
 import { log } from "./log"
-import type { QueueItem, Track, PoolTrack, Station, Comment, Visit, SuggestedTrack } from "../types"
+import type { QueueItem, Track, PoolTrack, Station, LogEntry, Visit, SuggestedTrack } from "../types"
 
 // Ensure every track from the server has a platformIds object.
 // Mirrors the server-side migrateTrack — runs on every received queue/pool item.
@@ -38,7 +38,7 @@ export class StationSocket {
 
   onQueueUpdate?: (queue: QueueItem[]) => void
   onPoolUpdate?: (pool: PoolTrack[]) => void
-  onCommentsUpdate?: (comments: Comment[]) => void
+  onLogUpdate?: (log: LogEntry[]) => void
   onVisitsUpdate?: (visits: Visit[]) => void
   onDJUpdate?: (djUserIds: string[]) => void
   onQueueFull?: (limit: number) => void
@@ -74,7 +74,7 @@ export class StationSocket {
       if (msg.type === "state") {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
         this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean).map(migrateTrack))
-        this.onCommentsUpdate?.(msg.comments ?? [])
+        this.onLogUpdate?.(msg.log ?? [])
         this.onVisitsUpdate?.(msg.visits ?? [])
         if (msg.djs) this.onDJUpdate?.(msg.djs)
         if (msg.suggestions) this.onSuggestionsUpdate?.(msg.suggestions)
@@ -83,8 +83,8 @@ export class StationSocket {
         this.onQueueUpdate?.((msg.queue ?? []).filter(Boolean).map(migrateTrack))
       } else if (msg.type === "pool_update") {
         this.onPoolUpdate?.((msg.pool ?? []).filter(Boolean).map(migrateTrack))
-      } else if (msg.type === "comments_update") {
-        this.onCommentsUpdate?.(msg.comments ?? [])
+      } else if (msg.type === "log_update") {
+        this.onLogUpdate?.(msg.log ?? [])
       } else if (msg.type === "visits_update") {
         this.onVisitsUpdate?.(msg.visits ?? [])
       } else if (msg.type === "dj_update") {
@@ -154,9 +154,9 @@ export class StationSocket {
     this.send({ type: "robot_dj" })
   }
 
-  /** Post (or clear, with empty text) the current user's single comment. */
-  postComment(text: string) {
-    this.send({ type: "post_comment", text, ...this.lastJoinParams })
+  /** Post a chat message to the station log. */
+  postMessage(text: string) {
+    this.send({ type: "post_message", text, ...this.lastJoinParams })
   }
 
   grantDJ(userId: string) {

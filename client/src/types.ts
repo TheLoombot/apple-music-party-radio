@@ -94,14 +94,30 @@ export interface PoolTrack extends Track {
   playCount: number
 }
 
-/** Per-user "currently saying" message. Each user has at most one comment
- *  at a time — posting a new one replaces the prior. */
-export interface Comment {
+/** A chat message in the station log. */
+export interface UserLogEntry {
+  kind: "user"
+  id: string
   userId: string
   displayName: string
   text: string
   postedAt: number
 }
+
+/** Track-change marker in the station log — rendered as a divider, not a
+ *  message. Logged server-side whenever the queue head changes. */
+export interface TrackLogEntry {
+  kind: "track"
+  id: string
+  trackKey: string
+  title: string
+  artist: string
+  postedAt: number
+}
+
+/** Station chat log entry. The log is a single capped array (oldest first);
+ *  track dividers count toward the cap, so old chatter scrolls out. */
+export type LogEntry = UserLogEntry | TrackLogEntry
 
 /** Record that a user was present in the room at some point. Updated on
  *  join and on disconnect (lastSeenAt = the most recent of those moments).

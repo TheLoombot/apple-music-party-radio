@@ -20,7 +20,7 @@ import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
 import { AppleMusicCatalog } from "./services/catalog"
 import { log } from "./services/log"
-import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack, Comment, Visit, SuggestedTrack } from "./types"
+import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack, LogEntry, Visit, SuggestedTrack } from "./types"
 
 type AppState = "loading" | "setup" | "naming" | "auth" | "ready"
 
@@ -55,8 +55,14 @@ export default function App() {
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false)
   const [discoveryModalOpen, setDiscoveryModalOpen] = useState(false)
   const [isDesktop, setIsDesktop] = useState(() => window.matchMedia("(min-width: 1024px)").matches)
-  const [comments, setComments] = useState<Comment[]>([])
+  const [chatLog, setChatLog] = useState<LogEntry[]>([])
   const [visits, setVisits] = useState<Visit[]>([])
+  // Unread chat accounting: messages from others that arrived while the panel
+  // was closed. lastSeen is bumped whenever the panel is open (or opens), so
+  // history already in the log when you join a station never counts as unread.
+  const [unreadChat, setUnreadChat] = useState(0)
+  const chatLastSeenRef = useRef(Date.now())
+  const chatOpenRef = useRef(false)
   const [isMuted, setIsMuted] = useState(false)
   const [playbackBlocked, setPlaybackBlocked] = useState(false)
   const [previewOnly, setPreviewOnly] = useState(false)
@@ -108,6 +114,22 @@ export default function App() {
     const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
     mq.addEventListener("change", handler)
     return () => mq.removeEventListener("change", handler)
+  }, [])
+
+  // Opening the chat panel marks everything as read; while it stays open the
+  // log-update handler keeps bumping lastSeen so nothing accrues.
+  useEffect(() => {
+    chatOpenRef.current = commentsPanelOpen
+    if (commentsPanelOpen) {
+      chatLastSeenRef.current = Date.now()
+      setUnreadChat(0)
+    }
+  }, [commentsPanelOpen])
+
+  const resetChat = useCallback(() => {
+    setChatLog([])
+    setUnreadChat(0)
+    chatLastSeenRef.current = Date.now()
   }, [])
 
   // Boot: check config, init MusicKit
@@ -172,7 +194,7 @@ export default function App() {
         setUpNext([])
         setStationLoading(true)
         setPlaybackBlocked(false)
-        setComments([])
+        resetChat()
         setVisits([])
         playbackLoop.current.enableAutoplay()
         setStationSelected(true)
@@ -183,7 +205,7 @@ export default function App() {
         setUpNext([])
         setStationLoading(false)
         setPlaybackBlocked(false)
-        setComments([])
+        resetChat()
         setVisits([])
         setSuggestions([])
         setCurrentStationId("")
@@ -213,7 +235,14 @@ export default function App() {
     playbackLoop.current.onPlaybackBlocked = () => setPlaybackBlocked(true)
     playbackLoop.current.onMutedChange = setIsMuted
     stationSocket.onPoolUpdate = setPool
-    stationSocket.onCommentsUpdate = setComments
+    stationSocket.onLogUpdate = (log) => {
+      setChatLog(log)
+      if (chatOpenRef.current) {
+        chatLastSeenRef.current = Date.now()
+      } else {
+        setUnreadChat(log.filter(e => e.kind === "user" && e.postedAt > chatLastSeenRef.current && e.userId !== user.uid).length)
+      }
+    }
     stationSocket.onVisitsUpdate = setVisits
     stationSocket.onDJUpdate = setDJUserIds
     stationSocket.onQueueFull = (limit) => setQueueFullAlert(limit)
@@ -371,7 +400,7 @@ export default function App() {
     setUpNext([])
     setStationLoading(true)
     setPlaybackBlocked(false)
-    setComments([])
+    resetChat()
     setVisits([])
     setSuggestions([])
     playbackLoop.current.enableAutoplay()
@@ -729,13 +758,13 @@ export default function App() {
           <CommentsPanel
             onClose={() => setCommentsPanelOpen(false)}
             listeners={currentStation?.listeners ?? []}
-            comments={comments}
+            log={chatLog}
             visits={visits}
             currentUser={user}
             ownerUid={currentStation?.ownerUid}
             djUserIds={djUserIds}
             isStationOwner={isOwnStation}
-            onPostComment={(text) => stationSocket.postComment(text)}
+            onPostMessage={(text) => stationSocket.postMessage(text)}
             onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
             onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
           />
@@ -840,7 +869,8 @@ export default function App() {
           loading={stationLoading}
           onOpenChat={() => setCommentsPanelOpen(v => !v)}
           chatPanelOpen={commentsPanelOpen}
-          unreadCount={listenerCount}
+          listenerCount={listenerCount}
+          unreadChat={unreadChat}
           onOpenAddTracks={() => setDiscoveryModalOpen(v => !v)}
           addTracksPanelOpen={discoveryModalOpen}
           addButtonLabel={isPrivileged
@@ -883,13 +913,13 @@ export default function App() {
                   mode="panel"
                   onClose={() => setCommentsPanelOpen(false)}
                   listeners={currentStation?.listeners ?? []}
-                  comments={comments}
+                  log={chatLog}
                   visits={visits}
                   currentUser={user}
                   ownerUid={currentStation?.ownerUid}
                   djUserIds={djUserIds}
                   isStationOwner={isOwnStation}
-                  onPostComment={(text) => stationSocket.postComment(text)}
+                  onPostMessage={(text) => stationSocket.postMessage(text)}
                   onGrantDJ={(uid) => stationSocket.grantDJ(uid)}
                   onRevokeDJ={(uid) => stationSocket.revokeDJ(uid)}
                 />

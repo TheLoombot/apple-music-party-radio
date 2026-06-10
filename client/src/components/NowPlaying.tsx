@@ -60,7 +60,10 @@ interface Props {
   /** Whether the chat side-panel is currently open — keeps the trigger
    *  button visually depressed while the panel is showing. */
   chatPanelOpen?: boolean
-  unreadCount?: number
+  /** Number of people currently tuned in — shown inline on the chat button. */
+  listenerCount?: number
+  /** Chat messages received while the panel was closed — shown as a red badge. */
+  unreadChat?: number
   onOpenAddTracks?: () => void
   /** Whether the add/request side-panel is currently open — same idea. */
   addTracksPanelOpen?: boolean
@@ -431,7 +434,7 @@ function useFrequencyScan(frequency: number | undefined) {
   return displayFreq
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, chatPanelOpen, unreadCount, onOpenAddTracks, addTracksPanelOpen, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, chatPanelOpen, listenerCount, unreadChat, onOpenAddTracks, addTracksPanelOpen, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote }: Props) {
   const isMobile = useIsMobile()
   const { progress, elapsed } = useProgress(track)
   // Both `isPlaying` (MediaSession OS controls) and `quiet` (mute icon/label)
@@ -580,11 +583,16 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 <button
                   onClick={onOpenChat}
                   aria-label="Chat"
-                  className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-2 text-white/80 hover:text-white ${chatPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
+                  className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center gap-2 text-white/80 hover:text-white ${chatPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
                 >
                   <MessageCircle size={20} />
-                  {(unreadCount ?? 0) > 1 && (
-                    <span className="text-sm font-semibold tabular-nums">{unreadCount}</span>
+                  {(listenerCount ?? 0) > 1 && (
+                    <span className="text-sm font-semibold tabular-nums">{listenerCount}</span>
+                  )}
+                  {(unreadChat ?? 0) > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-accent rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 leading-none pointer-events-none">
+                      {unreadChat! > 9 ? "9+" : unreadChat}
+                    </span>
                   )}
                 </button>
               </Tooltip>

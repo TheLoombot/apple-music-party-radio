@@ -53,14 +53,30 @@ interface PoolTrack extends Track {
   playCount: number
 }
 
-/** Per-user "currently saying" message. Each user has at most one — posting
- *  again replaces their prior comment with the new text + timestamp. */
-interface Comment {
+/** A chat message in the station log. */
+interface UserLogEntry {
+  kind: "user"
+  id: string
   userId: string
   displayName: string
   text: string
   postedAt: number
 }
+
+/** Track-change marker in the station log — rendered client-side as a divider,
+ *  not a message. Appended whenever the queue head changes (see logTrackChange). */
+interface TrackLogEntry {
+  kind: "track"
+  id: string
+  trackKey: string
+  title: string
+  artist: string
+  postedAt: number
+}
+
+/** Station chat log entry. Single capped array, oldest first; track dividers
+ *  count toward the cap, so old chatter scrolls out by message count. */
+type LogEntry = UserLogEntry | TrackLogEntry
 
 /** Persistent record of a user having been in the room. Updated on join and
  *  on disconnect (lastSeenAt = max of those events). Lets the "recent"
@@ -80,7 +96,7 @@ interface Listener {
 
 interface ConnectedListener extends Listener {
   isDJ: boolean
-  lastCommentAt?: number    // for per-connection comment rate limiting
+  lastMessageAt?: number    // for per-connection chat rate limiting
   lastSuggestionAt?: number // for per-connection suggest rate limiting (3s)
   lastVoteAt?: number       // for per-connection vote rate limiting (500ms)
 }
@@ -123,15 +139,15 @@ const TARGET_ROBOT_DEPTH = 8
 /** Max tracks a single non-robot user may have queued at once (prevents queue flooding). */
 const MAX_USER_QUEUE_DEPTH = 100
 
-/** Min milliseconds between comment posts per connection (prevents flooding). */
-const COMMENT_RATE_LIMIT_MS = 1000
+/** Min milliseconds between chat posts per connection (prevents flooding). */
+const MESSAGE_RATE_LIMIT_MS = 1000
 
-/** Max characters in a single comment. */
-const MAX_COMMENT_LENGTH = 256
+/** Max characters in a single chat message. */
+const MAX_MESSAGE_LENGTH = 256
 
-/** Max comments retained in storage. The client filters to present + 25 recent
- *  non-present; this cap is just to keep the DO storage bounded. */
-const MAX_COMMENT_HISTORY = 100
+/** Max chat log entries retained (user messages + track dividers combined).
+ *  The log is ephemeral by count — oldest entries fall off the front. */
+const MAX_LOG_ENTRIES = 200
 
 /** Max visit records retained. Client filters out present users + takes the
  *  25 most-recent from the union of visits and comments for the recent list. */
@@ -240,12 +256,12 @@ export default class RadioParty implements Party.Server {
     } else {
       try {
         const { queue, pool } = await this.flushExpired()
-        const comments = await this.storage<Comment[]>("comments", [])
+        const log = await this.storage<LogEntry[]>("log", [])
         const visits = await this.storage<Visit[]>("visits", [])
         const djs = await this.getDJs()
         const suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
         const djNotes = await this.storage<Record<string, string>>("dj_notes", {})
-        conn.send(json({ type: "state", queue, pool, comments, visits, djs, suggestions, djNotes }))
+        conn.send(json({ type: "state", queue, pool, log, visits, djs, suggestions, djNotes }))
         // Sync live status to index on every connect so stale flags get corrected
         void this.notifyIndex(liveUntilFromQueue(queue), queue[0]?.addedBy, queue[0]?.addedByName, queue[0]?.name, queue[0]?.artistName, queue[0]?.artworkUrl)
         // Re-arm expiration alarm in case the DO restarted and lost it
@@ -256,7 +272,7 @@ export default class RadioParty implements Party.Server {
         void this.fillRobotQueue()
       } catch (err) {
         console.error(`[onConnect] error for room ${roomId}:`, err)
-        conn.send(json({ type: "state", queue: [], pool: [], comments: [], visits: [], djs: [] }))
+        conn.send(json({ type: "state", queue: [], pool: [], log: [], visits: [], djs: [] }))
       }
     }
   }
@@ -589,7 +605,7 @@ export default class RadioParty implements Party.Server {
         await this.room.storage.deleteAlarm()
         // Wipe all per-station state — also closes the "re-create at same freq
         // returns 409" gap from CLAUDE.md. Keep `deleted` and `roomId`.
-        for (const key of ["ownership", "queue", "pool", "djs", "dj_notes", "chat", "suggestions"]) {
+        for (const key of ["ownership", "queue", "pool", "djs", "dj_notes", "comments", "log", "last_logged_track_key", "visits", "suggestions"]) {
           await this.room.storage.delete(key)
         }
         this.cachedOwnerUid = null
@@ -781,7 +797,8 @@ export default class RadioParty implements Party.Server {
       case "enqueue_suggestion": if (!this.isPrivilegedConn(sender)) return; return this.handleEnqueueSuggestion(msg, sender)
       case "remove_suggestion":  if (!this.isPrivilegedConn(sender)) return; return this.handleRemoveSuggestion(msg)
       case "set_dj_note":      if (!this.isPrivilegedConn(sender)) return; return this.handleSetDjNote(msg)
-      case "post_comment":     return this.handlePostComment(msg, sender)
+      case "post_comment":     // legacy wire name — old clients with open tabs still send this
+      case "post_message":     return this.handlePostMessage(msg, sender)
     }
   }
 
@@ -1068,8 +1085,9 @@ export default class RadioParty implements Party.Server {
     this.room.broadcast(json({ type: "dj_notes_update", djNotes: notes }))
   }
 
-  private async handlePostComment(msg: any, sender: Party.Connection) {
-    const raw = (msg.text ?? "").trim().slice(0, MAX_COMMENT_LENGTH)
+  private async handlePostMessage(msg: any, sender: Party.Connection) {
+    const text = (msg.text ?? "").trim().slice(0, MAX_MESSAGE_LENGTH)
+    if (!text) return
     let listener = this.connListeners.get(sender.id)
     if (!listener) {
       // DO may have woken from hibernation, losing in-memory connListeners.
@@ -1083,23 +1101,44 @@ export default class RadioParty implements Party.Server {
       this.schedulePresenceNotify()
     }
     const now = Date.now()
-    if (listener.lastCommentAt && now - listener.lastCommentAt < COMMENT_RATE_LIMIT_MS) return
-    this.connListeners.set(sender.id, { ...listener, lastCommentAt: now })
+    if (listener.lastMessageAt && now - listener.lastMessageAt < MESSAGE_RATE_LIMIT_MS) return
+    this.connListeners.set(sender.id, { ...listener, lastMessageAt: now })
 
-    let comments = await this.storage<Comment[]>("comments", [])
-    // Strip any prior comment from this user — at most one per user.
-    comments = comments.filter(c => c.userId !== listener!.userId)
-    if (raw) {
-      // Prepend new comment (newest first), then cap.
-      comments = [{
-        userId: listener.userId,
-        displayName: listener.displayName,
-        text: raw,
-        postedAt: now,
-      }, ...comments].slice(0, MAX_COMMENT_HISTORY)
-    }
-    await this.room.storage.put("comments", comments)
-    this.room.broadcast(json({ type: "comments_update", comments }))
+    await this.appendLogEntry({
+      kind: "user",
+      id: crypto.randomUUID(),
+      userId: listener.userId,
+      displayName: listener.displayName,
+      text,
+      postedAt: now,
+    })
+  }
+
+  /** Append one entry to the station chat log (capped FIFO) and broadcast. */
+  private async appendLogEntry(entry: LogEntry) {
+    let log = await this.storage<LogEntry[]>("log", [])
+    log = [...log, entry].slice(-MAX_LOG_ENTRIES)
+    await this.room.storage.put("log", log)
+    this.room.broadcast(json({ type: "log_update", log }))
+  }
+
+  /** Log a track-change divider when the queue head differs from the last
+   *  logged head. The marker is persisted so the check is idempotent across
+   *  hibernation and across the multiple paths that broadcast queue updates. */
+  private async logTrackChange(queue: QueueItem[]) {
+    const head = queue[0]
+    if (!head) return
+    const lastKey = await this.room.storage.get<string>("last_logged_track_key")
+    if (lastKey === head.key) return
+    await this.room.storage.put("last_logged_track_key", head.key)
+    await this.appendLogEntry({
+      kind: "track",
+      id: crypto.randomUUID(),
+      trackKey: head.key,
+      title: head.name,
+      artist: head.artistName,
+      postedAt: Date.now(),
+    })
   }
 
   private async handleSuggestTrack(msg: any, sender: Party.Connection) {
@@ -1334,6 +1373,7 @@ export default class RadioParty implements Party.Server {
       // whenever the DO wakes from hibernation with all tracks expired.
       if (queue.length > 0) {
         this.room.broadcast(json({ type: "queue_update", queue }))
+        await this.logTrackChange(queue)
       }
       this.room.broadcast(json({ type: "pool_update", pool }))
     }
@@ -1483,6 +1523,8 @@ export default class RadioParty implements Party.Server {
     if (queue.length > 0) {
       await this.room.storage.setAlarm(queue[0].expirationTime)
     }
+
+    await this.logTrackChange(queue)
 
     // Notify index inline — setTimeout is unreliable here because the DO can be
     // evicted from memory after the event handler returns (especially in no-listener
