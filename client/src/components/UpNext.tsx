@@ -1,6 +1,5 @@
-import { useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { ChevronDown, ChevronUp, GripVertical, X } from "lucide-react"
+import { ChevronsUp, X } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { DJFace, RobotFace } from "./FaceGenerator"
@@ -33,27 +32,11 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
   const canReorder = !!onReorder && queue.length > 1
   const totalMs = queue.reduce((sum, item) => sum + item.durationMs, 0)
 
-  const [draggedKey, setDraggedKey] = useState<string | null>(null)
-  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
-
-  const moveItem = (index: number, direction: -1 | 1) => {
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= queue.length) return
+  const moveToTop = (index: number) => {
     const keys = queue.map(i => i.key)
     const reordered = [...keys]
     const [removed] = reordered.splice(index, 1)
-    reordered.splice(newIndex, 0, removed)
-    onReorder!(reordered)
-  }
-
-  const handleDrop = (targetKey: string) => {
-    if (!draggedKey || draggedKey === targetKey) return
-    const keys = queue.map(i => i.key)
-    const from = keys.indexOf(draggedKey)
-    const to = keys.indexOf(targetKey)
-    const reordered = [...keys]
-    reordered.splice(from, 1)
-    reordered.splice(to, 0, draggedKey)
+    reordered.unshift(removed)
     onReorder!(reordered)
   }
 
@@ -91,67 +74,22 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, x: 40, transition: { duration: 0.18 } }}
                   transition={{ duration: 0.22, ease: "easeOut" }}
-                  draggable={canReorder}
-                  onDragStart={(e) => {
-                    setDraggedKey(item.key)
-                    ;(e as any).dataTransfer.effectAllowed = "move"
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    ;(e as any).dataTransfer.dropEffect = "move"
-                    if (dragOverKey !== item.key) setDragOverKey(item.key)
-                  }}
-                  onDragLeave={() => setDragOverKey(null)}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    handleDrop(item.key)
-                    setDraggedKey(null)
-                    setDragOverKey(null)
-                  }}
-                  onDragEnd={() => {
-                    setDraggedKey(null)
-                    setDragOverKey(null)
-                  }}
-                  className={[
-                    "flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 group transition-colors",
-                    canReorder ? "cursor-grab active:cursor-grabbing" : "",
-                    draggedKey === item.key ? "opacity-30" : "opacity-100",
-                    dragOverKey === item.key && draggedKey !== item.key ? "bg-accent/10 border-t-2 border-t-accent" : "hover:bg-surface/50",
-                  ].join(" ")}
+                  className="flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 group transition-colors hover:bg-surface/50"
                 >
-                  {/* Mobile: up/down arrows */}
-                  <div className="md:hidden flex-shrink-0 flex flex-col gap-1.5 h-14">
-                    {canReorder ? (
-                      <>
+                  {/* Position number or move-to-top button */}
+                  <div className="flex-shrink-0 flex items-center justify-center w-10">
+                    {canReorder && i > 0 ? (
+                      <Tooltip label="Move to top" align="start">
                         <button
-                          onClick={() => moveItem(i, -1)}
-                          disabled={i === 0}
-                          className="flex-1 w-10 flex items-center justify-center rounded border border-white/20 text-white/40 disabled:opacity-20 active:bg-white/10 active:border-white/40 active:text-white/80"
+                          onClick={() => moveToTop(i)}
+                          aria-label="Move to top of queue"
+                          className="btn-3d w-10 h-10 rounded-lg flex items-center justify-center text-muted hover:text-white"
                         >
-                          <ChevronUp size={18} />
+                          <ChevronsUp size={16} />
                         </button>
-                        <button
-                          onClick={() => moveItem(i, 1)}
-                          disabled={i === queue.length - 1}
-                          className="flex-1 w-10 flex items-center justify-center rounded border border-white/20 text-white/40 disabled:opacity-20 active:bg-white/10 active:border-white/40 active:text-white/80"
-                        >
-                          <ChevronDown size={18} />
-                        </button>
-                      </>
+                      </Tooltip>
                     ) : (
-                      <span className="text-xs text-muted w-4 text-center tabular-nums self-center">{i + 1}</span>
-                    )}
-                  </div>
-
-                  {/* Desktop: drag handle */}
-                  <div className="hidden md:flex flex-shrink-0 items-center">
-                    {canReorder ? (
-                      <GripVertical
-                        size={14}
-                        className="text-muted/40 group-hover:text-muted/70 cursor-grab active:cursor-grabbing"
-                      />
-                    ) : (
-                      <span className="text-xs text-muted w-4 text-center tabular-nums">{i + 1}</span>
+                      <span className="text-xs text-muted tabular-nums text-center">{i + 1}</span>
                     )}
                   </div>
 
