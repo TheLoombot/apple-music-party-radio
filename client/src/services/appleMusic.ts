@@ -88,6 +88,7 @@ export async function searchCatalog(term: string, storefront = "us", offset = 0)
       subtitle: item.attributes?.curatorName ?? item.attributes?.artistName ?? "",
       artworkUrl: item.attributes?.artwork?.url ?? "",
       lastModifiedAt: lmd ? new Date(lmd).getTime() : undefined,
+      description: item.attributes?.description?.short ?? item.attributes?.description?.standard ?? "",
     }
   })
 
@@ -163,7 +164,9 @@ export async function getLibraryPlaylists(): Promise<LibraryPlaylistResult[]> {
 
     for (const item of data.data ?? []) {
       const catalogAttrs = item.relationships?.catalog?.data?.[0]?.attributes
-      const curator = catalogAttrs?.curatorName ?? item.attributes?.description?.standard ?? ""
+      // Curator only — the description now has its own line in PlaylistRow,
+      // so falling back to it here would render the same text twice.
+      const curator = catalogAttrs?.curatorName ?? ""
       const lmd: string | undefined = catalogAttrs?.lastModifiedDate ?? item.attributes?.lastModifiedDate
       results.push({
         kind: "library-playlist" as const,
@@ -173,6 +176,8 @@ export async function getLibraryPlaylists(): Promise<LibraryPlaylistResult[]> {
         artworkUrl: item.attributes?.artwork?.url ?? catalogAttrs?.artwork?.url ?? "",
         trackCount: item.attributes?.trackCount ?? catalogAttrs?.trackCount ?? undefined,
         lastModifiedAt: lmd ? new Date(lmd).getTime() : undefined,
+        description: item.attributes?.description?.standard ?? catalogAttrs?.description?.standard ?? "",
+        catalogId: item.relationships?.catalog?.data?.[0]?.id ?? undefined,
       })
     }
 
@@ -279,6 +284,7 @@ export async function getRelatedPlaylistsForSong(songId: string, storefront = "u
       subtitle: item.attributes?.curatorName ?? "",
       artworkUrl: item.attributes?.artwork?.url ?? "",
       lastModifiedAt: lmd ? new Date(lmd).getTime() : undefined,
+      description: item.attributes?.description?.short ?? item.attributes?.description?.standard ?? "",
     }
   })
 }

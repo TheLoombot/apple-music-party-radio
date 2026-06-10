@@ -449,7 +449,10 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
               <div ref={playlistScrollRef} className="flex-1 overflow-y-auto">
                 <ul>
                   {libraryPlaylists
-                    .filter(pl => pl.name.toLowerCase().includes(playlistFilter.toLowerCase()))
+                    .filter(pl => {
+                      const q = playlistFilter.toLowerCase()
+                      return pl.name.toLowerCase().includes(q) || (pl.description ?? "").toLowerCase().includes(q)
+                    })
                     .map(pl => (
                       <PlaylistRow key={pl.id} playlist={pl} onSelect={() => handleSelectPlaylist(pl)} />
                     ))}
@@ -603,6 +606,7 @@ function PlaylistRow({ playlist, onSelect }: {
         <div className="flex-1 min-w-0">
           <p className="text-white text-base truncate">{playlist.name}</p>
           {subtitle && <p className="text-muted text-sm truncate">{subtitle}</p>}
+          {playlist.description && <p className="text-muted/70 text-xs line-clamp-2 mt-0.5">{playlist.description}</p>}
         </div>
         <ChevronRight size={14} className="text-muted flex-shrink-0" />
       </div>

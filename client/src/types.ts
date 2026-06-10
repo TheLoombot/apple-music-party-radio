@@ -29,6 +29,7 @@ export interface BrowsableResult {
   name: string
   subtitle: string   // artistName for albums, curator for playlists
   artworkUrl: string
+  description?: string  // playlist description — shown in PlaylistRow, matched by the LISTS filter
 }
 
 export interface AlbumResult extends BrowsableResult {
@@ -45,6 +46,7 @@ export interface LibraryPlaylistResult extends BrowsableResult {
   kind: "library-playlist"
   trackCount?: number
   lastModifiedAt?: number  // Unix ms
+  catalogId?: string       // catalog counterpart (subscribed playlists only) — enables editorial fetch
 }
 
 export interface LibraryAlbumResult extends BrowsableResult {

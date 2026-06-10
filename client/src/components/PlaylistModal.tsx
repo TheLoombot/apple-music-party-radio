@@ -202,7 +202,13 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = E
             onClose={closeArtwork}
             catalog={catalog}
             albumId={displayPlaylist.kind === "album" ? displayPlaylist.id : undefined}
-            playlistId={displayPlaylist.kind === "playlist" ? displayPlaylist.id : undefined}
+            playlistId={
+              displayPlaylist.kind === "playlist" ? displayPlaylist.id
+              // Subscribed library playlists have a catalog counterpart with full editorial
+              : displayPlaylist.kind === "library-playlist" ? displayPlaylist.catalogId
+              : undefined
+            }
+            fallbackNotes={displayPlaylist.kind === "library-playlist" ? displayPlaylist.description : undefined}
             albumName={displayPlaylist.name}
             releaseYear={displayPlaylist.kind === "album" ? displayPlaylist.releaseYear : undefined}
             djNotes={djNotes}

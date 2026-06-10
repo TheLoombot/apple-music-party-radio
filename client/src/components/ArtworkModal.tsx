@@ -16,11 +16,13 @@ interface Props {
   // Shown on the back as fallback when there are no editorial notes
   albumName?: string
   releaseYear?: number
+  /** Back-side text when there's no editorial id (see ArtworkFlip). */
+  fallbackNotes?: string
   djNotes?: Record<string, string>
   onSaveDjNote?: (itemId: string, note: string) => void
 }
 
-export function ArtworkModal({ src, alt, onClose, catalog, albumId, playlistId, songId, albumName, releaseYear, djNotes, onSaveDjNote }: Props) {
+export function ArtworkModal({ src, alt, onClose, catalog, albumId, playlistId, songId, albumName, releaseYear, fallbackNotes, djNotes, onSaveDjNote }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     document.addEventListener("keydown", handler)
@@ -53,6 +55,7 @@ export function ArtworkModal({ src, alt, onClose, catalog, albumId, playlistId, 
           songId={songId}
           albumName={albumName}
           releaseYear={releaseYear}
+          fallbackNotes={fallbackNotes}
           outerStyle={{ width: "min(90vw, 90vh)", height: "min(90vw, 90vh)" }}
           cardClassName="rounded-xl shadow-2xl"
           djNotes={djNotes}

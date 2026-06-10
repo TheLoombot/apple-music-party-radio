@@ -15,6 +15,10 @@ interface Props {
   // Fallback header text on the back side
   albumName?: string
   releaseYear?: number
+  /** Shown on the back when there's no id to fetch editorial for (or the fetch
+   *  comes back empty) — e.g. a library playlist's own description. Presence
+   *  enables the flip on its own. */
+  fallbackNotes?: string
   /** Override the default click-to-flip. Use this to keep external behavior
    *  (e.g. open a modal on desktop) — when provided, internal flip is disabled. */
   onClick?: () => void
@@ -35,7 +39,7 @@ interface Props {
  *  NowPlaying on mobile and inside the enlarged ArtworkModal on desktop. */
 export function ArtworkFlip({
   src, alt, catalog, albumId, playlistId, songId, albumName, releaseYear,
-  onClick, cardClassName, outerStyle, djNotes, onSaveDjNote,
+  fallbackNotes, onClick, cardClassName, outerStyle, djNotes, onSaveDjNote,
 }: Props) {
   const [flipped, setFlipped] = useState(false)
   const [bgColor, setBgColor] = useState("#111111")
@@ -90,7 +94,7 @@ export function ArtworkFlip({
   // Sync draftNote from server value; don't override if user is actively editing
   useEffect(() => { setDraftNote(savedNote) }, [savedNote])
 
-  const canFlip = !onClick && !!catalog && !!(albumId || playlistId || songId)
+  const canFlip = !onClick && ((!!catalog && !!(albumId || playlistId || songId)) || !!fallbackNotes)
   const displayAlbumName = fetchedAlbumName ?? albumName
   const displayReleaseYear = fetchedReleaseYear ?? releaseYear
   const header = [displayAlbumName, displayReleaseYear].filter(Boolean).join("  ·  ")
@@ -140,8 +144,8 @@ export function ArtworkFlip({
             {header && (
               <p className="text-base font-bold uppercase tracking-widest opacity-70 mb-4">{header}</p>
             )}
-            {notes && (
-              <p className="text-2xl font-semibold leading-snug whitespace-pre-line">{notes}</p>
+            {(notes ?? fallbackNotes) && (
+              <p className="text-2xl font-semibold leading-snug whitespace-pre-line">{notes ?? fallbackNotes}</p>
             )}
 
             {showDJSection && (
