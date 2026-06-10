@@ -247,6 +247,24 @@ export class IndexSocket {
     this.socket?.send(JSON.stringify({ type: "remove_station", id, ownerUid }))
   }
 
+  /** Publish the roaming display name for a uid (DJ profile portability). */
+  setProfile(uid: string, displayName: string) {
+    this.socket?.send(JSON.stringify({ type: "set_profile", uid, displayName }))
+  }
+
+  /** Look up the roaming display name for a uid. Plain HTTP — usable before
+   *  the index socket is connected (i.e. during completeAuth). */
+  async getProfile(uid: string): Promise<string | null> {
+    try {
+      const res = await fetch(partyUrl("index", `/profile?uid=${encodeURIComponent(uid)}`))
+      if (!res.ok) return null
+      const data = await res.json() as { displayName: string | null }
+      return data.displayName ?? null
+    } catch {
+      return null
+    }
+  }
+
   /** Asks the server to assign an available frequency and create the station.
    *  The server requires the `preferredFreq` (the preview the user saw) and
    *  returns "slot-taken" if it got claimed in the meantime, or "band-full"

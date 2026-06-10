@@ -187,6 +187,98 @@ export async function getLibraryPlaylists(): Promise<LibraryPlaylistResult[]> {
   return results
 }
 
+// ─── Identity playlist (DJ profile portability) ──────────────────────────────
+//
+// The user's iCloud Music Library doubles as cross-device storage for their
+// hat.fm uid: a private library playlist carries the uid in its description,
+// and iCloud sync makes it appear on every device they use. Write-once by
+// necessity — the public Apple Music API cannot edit or delete library
+// playlists — which is fine because the uid is immutable.
+
+const IDENTITY_PLAYLIST_NAME = "hat.fm"
+const IDENTITY_MARKER = "ampr:v1:"
+/** Signature track added to the identity playlist — the title explains the
+ *  playlist's job to anyone who finds it in their library. Resolved via
+ *  catalog search in the user's storefront, never a hardcoded id. */
+const IDENTITY_TRACK_SEARCH = "Don't You (Forget About Me) Simple Minds"
+
+function parseIdentityMarker(description: string | undefined): string | null {
+  const m = (description ?? "").match(/ampr:v1:([0-9a-fA-F-]{16,})/)
+  return m ? m[1] : null
+}
+
+/** Recover the uid from the user's identity playlist, or null if none exists.
+ *  Cheap library search by name first; if that misses (e.g. the user renamed
+ *  the playlist in the Music app), fall back to scanning all library playlists
+ *  for the description marker before giving up. Multiple matches (two fresh
+ *  devices racing) tie-break on earliest dateAdded so every device converges
+ *  on the same uid. */
+export async function findIdentityUid(): Promise<string | null> {
+  const candidates: { uid: string; dateAdded: string }[] = []
+
+  try {
+    const params = new URLSearchParams({ term: IDENTITY_PLAYLIST_NAME, types: "library-playlists", limit: "25" })
+    const res = await fetch(`https://api.music.apple.com/v1/me/library/search?${params}`, { headers: headers() })
+    if (res.ok) {
+      const data = await res.json()
+      for (const item of data.results?.["library-playlists"]?.data ?? []) {
+        // Search results may omit the description — fetch the full record when needed.
+        let attrs = item.attributes
+        if (!attrs?.description) {
+          const detail = await fetch(`https://api.music.apple.com/v1/me/library/playlists/${item.id}`, { headers: headers() })
+          if (detail.ok) attrs = (await detail.json()).data?.[0]?.attributes
+        }
+        const uid = parseIdentityMarker(attrs?.description?.standard)
+        if (uid) candidates.push({ uid, dateAdded: attrs?.dateAdded ?? "" })
+      }
+    }
+  } catch (e) {
+    log.net.warn("identity playlist search failed:", e)
+  }
+
+  if (candidates.length === 0) {
+    // Renamed-playlist fallback: the marker survives renames, the name doesn't.
+    try {
+      for (const pl of await getLibraryPlaylists()) {
+        const uid = parseIdentityMarker(pl.description)
+        if (uid) candidates.push({ uid, dateAdded: "" })
+      }
+    } catch (e) {
+      log.net.warn("identity playlist scan failed:", e)
+    }
+  }
+
+  if (candidates.length === 0) return null
+  candidates.sort((a, b) => (a.dateAdded || "9999").localeCompare(b.dateAdded || "9999"))
+  return candidates[0].uid
+}
+
+/** Create the identity playlist carrying `uid`, seeded with the signature
+ *  track. Best-effort — the track (and the whole call) failing is tolerable;
+ *  the next boot retries creation. */
+export async function createIdentityPlaylist(uid: string): Promise<void> {
+  let trackId: string | undefined
+  try {
+    const storefront = await getUserStorefront()
+    const params = new URLSearchParams({ term: IDENTITY_TRACK_SEARCH, types: "songs", limit: "1" })
+    const res = await fetch(`https://api.music.apple.com/v1/catalog/${storefront}/search?${params}`, { headers: headers() })
+    if (res.ok) trackId = (await res.json()).results?.songs?.data?.[0]?.id
+  } catch { /* the track is a wink, not a requirement */ }
+
+  const res = await fetch("https://api.music.apple.com/v1/me/library/playlists", {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      attributes: {
+        name: IDENTITY_PLAYLIST_NAME,
+        description: `This playlist remembers who you are on hat.fm — don't delete it. ${IDENTITY_MARKER}${uid}`,
+      },
+      ...(trackId ? { relationships: { tracks: { data: [{ id: trackId, type: "songs" }] } } } : {}),
+    }),
+  })
+  if (!res.ok) log.net.warn(`identity playlist create failed: ${res.status}`)
+}
+
 export async function getLibraryPlaylistTracks(playlistId: string): Promise<Track[]> {
   const res = await fetch(
     `https://api.music.apple.com/v1/me/library/playlists/${playlistId}/tracks?limit=100&include=catalog&fields[songs]=isrc,name,artistName,albumName,artwork,durationInMillis,playParams,offers`,

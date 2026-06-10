@@ -12,8 +12,8 @@ import { CommentsPanel } from "./components/CommentsPanel"
 import { DiscoveryModal } from "./components/DiscoveryModal"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized, getMusicKit } from "./services/musickit"
-import { getUserStorefront } from "./services/appleMusic"
-import { getUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId, removeOwnedStationId, getStationName, setStationName } from "./services/identity"
+import { getUserStorefront, findIdentityUid, createIdentityPlaylist } from "./services/appleMusic"
+import { getUserId, adoptUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId, removeOwnedStationId, getStationName, setStationName } from "./services/identity"
 import { stationSocket, indexSocket } from "./services/partykit"
 import { isValidFreqId, pickAvailableFreqId } from "./services/frequency"
 import { PlaybackLoop } from "./services/playbackLoop"
@@ -95,6 +95,9 @@ export default function App() {
     })
   }, [])
   const renameRef = useRef<HTMLInputElement>(null)
+  // Auth completed but no display name found locally or in the roaming
+  // profile — holds the auth result while the naming screen collects one.
+  const pendingAuthRef = useRef<{ uid: string; storefront: string } | null>(null)
   const albumModalOpRef = useRef(0)
   const playbackLoop = useRef(new PlaybackLoop(new AppleMusicPlayer()))
   const catalog = useRef(new AppleMusicCatalog("us"))
@@ -142,10 +145,10 @@ export default function App() {
 
     initMusicKit()
       .then(async () => {
-        if (!getDisplayName()) {
-          setAppState("naming")
-          return
-        }
+        // Auth comes BEFORE naming: a returning user's display name roams via
+        // their server-side profile, which we can only look up after MusicKit
+        // auth recovers their uid. completeAuth routes to "naming" only when
+        // no name exists locally or remotely.
         if (isAuthorized()) {
           log.auth.info("session restored, completing auth silently")
           await completeAuth()
@@ -174,6 +177,9 @@ export default function App() {
       }
     }
     indexSocket.connect()
+    // Publish the roaming profile (uid → display name). Re-runs on rename
+    // since handleCommitRename replaces the user object, re-running this effect.
+    indexSocket.setProfile(user.uid, user.displayName)
     // Sweep legacy slug-shaped ids out of localStorage (pre-frequency-id model).
     // Anything that isn't a valid FM frequency is dropped silently.
     const owned = getOwnedStationIds()
@@ -268,15 +274,53 @@ export default function App() {
   const handleSaveName = () => {
     const name = nameInput.trim() || `DJ ${getUserId().slice(0, 6)}`
     setDisplayName(name)
-    setAppState("auth")
+    const pending = pendingAuthRef.current
+    if (pending) {
+      // Naming happened post-auth (fresh identity) — finish entering the app.
+      pendingAuthRef.current = null
+      setUser({ uid: pending.uid, storefront: pending.storefront, displayName: name })
+      setAppState("ready")
+    } else {
+      setAppState("auth")
+    }
   }
 
   const completeAuth = async () => {
     await authorize()
     const storefront = await getUserStorefront()
-    const uid = getUserId()
-    const displayName = getDisplayName() ?? `DJ ${uid.slice(0, 6)}`
+    let uid = getUserId()
+    let adopted = false
+    // DJ profile portability: the library identity playlist is the durable
+    // copy of the uid, synced across the user's devices by iCloud Music
+    // Library. It wins over the local uid; if absent, publish ours.
+    try {
+      const libraryUid = await findIdentityUid()
+      if (libraryUid && libraryUid !== uid) {
+        log.auth.info("adopting identity from library playlist", { from: uid, to: libraryUid })
+        adoptUserId(libraryUid)
+        uid = libraryUid
+        adopted = true
+      } else if (!libraryUid) {
+        // Fire-and-forget — also self-heals if the user deleted the playlist.
+        void createIdentityPlaylist(uid)
+      }
+    } catch (e) {
+      log.auth.warn("identity roaming failed (continuing with local uid):", e)
+    }
+    // Roam the display name too: on adoption the profile name wins (it's the
+    // established identity); otherwise it only fills in a missing local name.
+    if (adopted || !getDisplayName()) {
+      const remote = await indexSocket.getProfile(uid)
+      if (remote) setDisplayName(remote)
+    }
     catalog.current = new AppleMusicCatalog(storefront)
+    const displayName = getDisplayName()
+    if (!displayName) {
+      // Genuinely new identity — collect a name, then handleSaveName finishes.
+      pendingAuthRef.current = { uid, storefront }
+      setAppState("naming")
+      return
+    }
     setUser({ uid, storefront, displayName })
     setAppState("ready")
   }

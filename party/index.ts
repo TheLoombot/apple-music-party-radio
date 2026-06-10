@@ -153,6 +153,10 @@ const MAX_LOG_ENTRIES = 200
  *  25 most-recent from the union of visits and comments for the recent list. */
 const MAX_VISIT_HISTORY = 100
 
+/** Max roaming DJ profiles retained in the index room (uid → display name).
+ *  Oldest-updated entries are evicted beyond this. */
+const MAX_PROFILES = 5000
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 export default class RadioParty implements Party.Server {
@@ -418,6 +422,18 @@ export default class RadioParty implements Party.Server {
         })
       }
 
+      // GET /parties/main/index/profile?uid=<uid> — roaming display name for a
+      // uid. Used by clients after recovering their uid from the library
+      // identity playlist, so the name follows the profile across devices.
+      if (req.method === "GET" && url.pathname.endsWith("/profile")) {
+        const uid = url.searchParams.get("uid") ?? ""
+        const profiles = await this.storage<Record<string, { displayName: string; updatedAt: number }>>("profiles", {})
+        const displayName = profiles[uid]?.displayName ?? null
+        return new Response(JSON.stringify({ displayName }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        })
+      }
+
       // POST /parties/main/index/create-station — creates a new station and
       // returns its assigned frequency. The frequency string is the station id
       // and PartyKit room name going forward.
@@ -640,6 +656,21 @@ export default class RadioParty implements Party.Server {
   // ─── Index room ─────────────────────────────────────────────────────────
 
   private async handleIndex(msg: any) {
+    if (msg.type === "set_profile") {
+      const uid = String(msg.uid ?? "").slice(0, 64)
+      const displayName = String(msg.displayName ?? "").trim().slice(0, 64)
+      if (!uid || !displayName) return
+      const profiles = await this.storage<Record<string, { displayName: string; updatedAt: number }>>("profiles", {})
+      profiles[uid] = { displayName, updatedAt: Date.now() }
+      const entries = Object.entries(profiles)
+      if (entries.length > MAX_PROFILES) {
+        entries.sort((a, b) => b[1].updatedAt - a[1].updatedAt)
+        await this.room.storage.put("profiles", Object.fromEntries(entries.slice(0, MAX_PROFILES)))
+      } else {
+        await this.room.storage.put("profiles", profiles)
+      }
+      return
+    }
     if (msg.type === "remove_station") {
       let stations = await this.storage<Station[]>("stations", [])
       const target = stations.find(s => s.id === msg.id)

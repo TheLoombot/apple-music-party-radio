@@ -16,6 +16,15 @@ export function getUserId(): string {
   return id
 }
 
+/** Adopt a uid recovered from the library identity playlist (cross-device
+ *  portability). Clears the owned-stations cache — ownership is keyed by uid
+ *  server-side and the UI falls back to stations[].ownerUid, so the cache
+ *  rebuilds naturally as the adopted uid's stations are recognized. */
+export function adoptUserId(uid: string) {
+  localStorage.setItem("ampr_uid", uid)
+  localStorage.setItem("ampr_owned_stations", "[]")
+}
+
 export function getDisplayName(): string | null {
   return localStorage.getItem("ampr_display_name")
 }
