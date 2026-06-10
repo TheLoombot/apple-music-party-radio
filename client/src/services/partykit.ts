@@ -9,12 +9,22 @@ import PartySocket from "partysocket"
 import { log } from "./log"
 import type { QueueItem, Track, PoolTrack, Station, LogEntry, Visit, SuggestedTrack } from "../types"
 
-// Ensure every track from the server has a platformIds object.
-// Mirrors the server-side migrateTrack — runs on every received queue/pool item.
+// Normalize received tracks to the current shape — accepts three historical
+// forms and produces { isrc, appleId, ... }:
+//   1. Current: { appleId }
+//   2. Mid: { platformIds: { apple } }
+//   3. Original: { catalogId }
+// Always strips the legacy `addedViaPlatform` field (it was always "apple").
 function migrateTrack<T extends object>(item: T): T {
   const t = item as any
-  if (t?.platformIds) return item
-  return { ...item, platformIds: { apple: t?.catalogId }, addedViaPlatform: t?.addedViaPlatform ?? "apple" }
+  if (t?.appleId !== undefined) {
+    if (t.addedViaPlatform === undefined) return item
+    const { addedViaPlatform: _x, ...rest } = t
+    return rest as T
+  }
+  const appleId = t?.platformIds?.apple ?? t?.catalogId
+  const { platformIds: _p, catalogId: _c, addedViaPlatform: _a, ...rest } = t
+  return { ...rest, ...(appleId ? { appleId } : {}) } as T
 }
 
 // In dev, partykit runs locally on port 1999.

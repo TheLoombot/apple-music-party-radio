@@ -160,7 +160,7 @@ Soft update (same track[0], tail changed):
 
 Native auto-advance:
   MusicKit fires nowPlayingItemDidChange
-  → PlaybackLoop checks if new ID === queue[1].platformIds.apple
+  → PlaybackLoop checks if new ID === queue[1].appleId
   → Yes → expireTrack(key, addToPool=true) to server
   → Server broadcasts new queue
 ```
@@ -184,7 +184,7 @@ Native auto-advance:
 |---|---|
 | Catalog search / albums / playlists | `item.id` → use `normalizeTrack()` |
 | Library playlists | `relationships.catalog.data[0]` (preferred) → falls back to `item.attributes.playParams.catalogId` |
-| Library tracks with no catalog equivalent | No playable ID — returned with empty `platformIds`, shown as unavailable in UI |
+| Library tracks with no catalog equivalent | No playable ID — returned with no `appleId`, shown as unavailable in UI |
 
 **`getLibraryPlaylistTracks` fetches with `?include=catalog`** to get the storefront-specific catalog relationship. Using `playParams.catalogId` alone can return an ID from a different storefront.
 
@@ -198,11 +198,12 @@ Pool tracks are deduplicated with `sameTrack()` in `party/index.ts`:
 ```typescript
 function sameTrack(a, b):
   if both have ISRC (non-empty): match on ISRC
-  else if both have platformIds.apple: match on Apple ID
-  else if both have platformIds.spotify: match on Spotify ID
+  else if both have appleId: match on Apple ID
   else: no match
 ```
 **Never match on empty ISRC** — that was a bug that collapsed the pool to 1 track.
+
+For maps keyed by track (e.g. `track_hearts`), use `trackKey(t)` from `client/src/types.ts` (mirrored server-side) — returns `"isrc:<x>"` or `"apple:<x>"`, never collides between namespaces.
 
 Pool is capped at 100 entries (LRU). Robot DJ picks randomly from the pool.
 

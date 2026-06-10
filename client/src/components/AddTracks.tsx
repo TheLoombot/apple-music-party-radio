@@ -57,11 +57,11 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
   }
 
   async function handleAlbumClick(track: Track) {
-    if (!track.platformIds?.apple) return
+    if (!track.appleId) return
     const op = ++modalOpRef.current
     const placeholder: AlbumResult = { kind: "album", id: "_loading", name: track.albumName, subtitle: track.artistName, artworkUrl: track.artworkUrl }
     setModal({ ...placeholder, tracks: null })
-    const album = await catalog.getAlbumForTrack(track.platformIds.apple)
+    const album = await catalog.getAlbumForTrack(track.appleId)
     if (modalOpRef.current !== op) return
     if (!album) { setModal(null); return }
     setModal({ ...album, tracks: null })
@@ -122,15 +122,15 @@ export function SearchTracks({ currentUser, catalog, onAddTrack, queuedIsrcs }: 
                   <ul>
                     {searchResults.filter((item, i, arr) => {
                       if (item.kind !== "song") return true
-                      return arr.findIndex(x => x.kind === "song" && (x.track.isrc || x.track.platformIds?.apple) === (item.track.isrc || item.track.platformIds?.apple)) === i
+                      return arr.findIndex(x => x.kind === "song" && (x.track.isrc || x.track.appleId) === (item.track.isrc || item.track.appleId)) === i
                     }).map((item) =>
                       item.kind === "song" ? (
                         <TrackRow
-                          key={item.track.platformIds?.apple || item.track.isrc || item.track.name}
+                          key={item.track.appleId || item.track.isrc || item.track.name}
                           track={item.track}
-                          added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.platformIds?.apple ?? "")}
+                          added={queuedIsrcs.has(item.track.isrc) || queuedIsrcs.has(item.track.appleId ?? "")}
                           onAdd={() => onAddTrack(item.track)}
-                          onAlbumClick={item.track.platformIds?.apple ? () => handleAlbumClick(item.track) : undefined}
+                          onAlbumClick={item.track.appleId ? () => handleAlbumClick(item.track) : undefined}
                         />
                       ) : (
                         <BrowsableRow
@@ -208,11 +208,11 @@ export function StationPool({ currentUser, stationOwner, pool, onAddTrack, onRem
             <ul>
               <AnimatePresence initial={false}>
                 {pool.filter((t, i, arr) => {
-                  const k = t.isrc || t.platformIds?.apple || t.name
-                  return arr.findIndex(x => (x.isrc || x.platformIds.apple || x.name) === k) === i
+                  const k = t.isrc || t.appleId || t.name
+                  return arr.findIndex(x => (x.isrc || x.appleId || x.name) === k) === i
                 }).map(track => (
                   <motion.li
-                    key={track.isrc || track.platformIds?.apple || track.name}
+                    key={track.isrc || track.appleId || track.name}
                     layout
                     initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -221,10 +221,10 @@ export function StationPool({ currentUser, stationOwner, pool, onAddTrack, onRem
                   >
                     <TrackRow
                       track={track}
-                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
+                      added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.appleId ?? "")}
                       onAdd={() => onAddTrack(track)}
                       onRemove={isOwner ? () => onRemoveFromPool(track.isrc) : undefined}
-                      unavailable={!track.platformIds?.apple}
+                      unavailable={!track.appleId}
                     />
                   </motion.li>
                 ))}

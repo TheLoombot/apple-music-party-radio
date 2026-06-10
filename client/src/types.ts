@@ -1,19 +1,20 @@
-export type Platform = "apple" | "spotify"
-
-export interface PlatformIds {
-  apple?: string    // Apple Music catalog ID (numeric string)
-  spotify?: string  // Spotify track ID
-}
-
 export interface Track {
   isrc: string
-  platformIds: PlatformIds
-  addedViaPlatform: Platform
+  appleId?: string  // Apple Music catalog ID (numeric string)
   name: string
   artistName: string
   albumName: string
-  artworkUrl: string   // Apple Music: {w}x{h} template; Spotify: direct URL
+  artworkUrl: string   // Apple Music {w}x{h} template
   durationMs: number
+}
+
+/** Stable string key for a track, prefixed so isrc/apple namespaces don't
+ *  collide. Returns null only if the track has neither identifier, in which
+ *  case the track is effectively un-tracked (un-heartable, un-poolable, etc.). */
+export function trackKey(t: { isrc?: string; appleId?: string }): string | null {
+  if (t.isrc) return `isrc:${t.isrc}`
+  if (t.appleId) return `apple:${t.appleId}`
+  return null
 }
 
 export interface QueueItem extends Track {

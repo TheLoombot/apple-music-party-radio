@@ -21,22 +21,21 @@ import type * as Party from "partykit/server"
 
 // ─── Shared types (mirrored from client/src/types.ts) ────────────────────────
 
-type Platform = "apple" | "spotify"
-
-interface PlatformIds {
-  apple?: string
-  spotify?: string
-}
-
 interface Track {
   isrc: string
-  platformIds: PlatformIds
-  addedViaPlatform: Platform
+  appleId?: string
   name: string
   artistName: string
   albumName: string
   artworkUrl: string
   durationMs: number
+}
+
+/** Stable string key for a track. Mirrors client/src/types.ts trackKey. */
+function trackKey(t: { isrc?: string; appleId?: string }): string | null {
+  if (t.isrc) return `isrc:${t.isrc}`
+  if (t.appleId) return `apple:${t.appleId}`
+  return null
 }
 
 interface QueueItem extends Track {
@@ -1169,15 +1168,16 @@ export default class RadioParty implements Party.Server {
   }
 
   /** Fold a finished play's hearts into the persistent station-scoped maps:
-   *  one increment per uid for the track (keyed by isrc), and parallel credit
-   *  to the DJ who queued it (skipped for robot). Broadcasts the updated maps
-   *  so all clients render the new totals immediately. */
+   *  one increment per uid for the track (keyed by trackKey — isrc first, then
+   *  appleId), and parallel credit to the DJ who queued it (skipped for robot).
+   *  Broadcasts the updated maps so all clients render the new totals immediately. */
   private async foldHearts(item: QueueItem) {
     const count = item.heartedBy?.length ?? 0
     if (count === 0) return
     const trackHearts = await this.storage<Record<string, number>>("track_hearts", {})
     const djHearts = await this.storage<Record<string, number>>("dj_hearts", {})
-    if (item.isrc) trackHearts[item.isrc] = (trackHearts[item.isrc] ?? 0) + count
+    const tKey = trackKey(item)
+    if (tKey) trackHearts[tKey] = (trackHearts[tKey] ?? 0) + count
     if (item.addedBy && item.addedBy !== "robot") {
       djHearts[item.addedBy] = (djHearts[item.addedBy] ?? 0) + count
     }
@@ -1303,7 +1303,7 @@ export default class RadioParty implements Party.Server {
     this.connListeners.set(sender.id, { ...listener, lastSuggestionAt: now })
 
     const track: Track = msg.track
-    if (!track?.platformIds?.apple) return
+    if (!track?.appleId) return
 
     const queue = await this.storage<QueueItem[]>("queue", [])
     if (queue.some(q => sameTrack(q, track))) {
@@ -1407,9 +1407,9 @@ export default class RadioParty implements Party.Server {
     try {
       const queue = await this.storage<QueueItem[]>("queue", [])
       const rawPool = await this.storage<PoolTrack[]>("pool", [])
-      const pool = rawPool.filter(t => !!t.platformIds?.apple)
+      const pool = rawPool.filter(t => !!t.appleId)
       if (pool.length < rawPool.length) {
-        const removed = rawPool.filter(t => !t.platformIds?.apple)
+        const removed = rawPool.filter(t => !t.appleId)
         console.warn(`[fillRobotQueue] removing ${removed.length} pool track(s) with no Apple ID:`, removed.map(t => `"${t.name}" (isrc=${t.isrc || "none"})`).join(", "))
         await this.room.storage.put("pool", pool)
         this.room.broadcast(json({ type: "pool_update", pool }))
@@ -1429,7 +1429,7 @@ export default class RadioParty implements Party.Server {
       // duplicated. The next track expiry will trigger another fill which
       // can then reuse the just-expired track without violating uniqueness.
       const alreadyQueued = new Set<string>(
-        queue.flatMap(q => [q.isrc, q.platformIds?.apple].filter((v): v is string => !!v))
+        queue.flatMap(q => [q.isrc, q.appleId].filter((v): v is string => !!v))
       )
 
       let changed = false
@@ -1439,14 +1439,14 @@ export default class RadioParty implements Party.Server {
         attempts++
         const candidates = pool.filter(t => {
           if (t.isrc && alreadyQueued.has(t.isrc)) return false
-          if (t.platformIds?.apple && alreadyQueued.has(t.platformIds.apple)) return false
+          if (t.appleId && alreadyQueued.has(t.appleId)) return false
           return true
         })
         if (candidates.length === 0) break  // pool exhausted — leave queue short
 
         const pick = candidates[Math.floor(Math.random() * candidates.length)]
         if (pick.isrc) alreadyQueued.add(pick.isrc)
-        if (pick.platformIds?.apple) alreadyQueued.add(pick.platformIds.apple)
+        if (pick.appleId) alreadyQueued.add(pick.appleId)
 
         const { lastPlayedAt: _, addedByUsers: _2, playCount: _3, ...track } = pick
         const last = queue[queue.length - 1]
@@ -1714,8 +1714,7 @@ function sortSuggestions(s: SuggestedTrack[]): SuggestedTrack[] {
 
 function sameTrack(a: Track, b: Track): boolean {
   if (a.isrc && b.isrc) return a.isrc === b.isrc
-  if (a.platformIds?.apple && b.platformIds?.apple) return a.platformIds.apple === b.platformIds.apple
-  if (a.platformIds?.spotify && b.platformIds?.spotify) return a.platformIds.spotify === b.platformIds.spotify
+  if (a.appleId && b.appleId) return a.appleId === b.appleId
   return false
 }
 
@@ -1760,29 +1759,25 @@ function json(data: object): string {
   return JSON.stringify(data)
 }
 
-function hasAnyPlatformId(t: { platformIds: PlatformIds }): boolean {
-  return !!(t.platformIds?.apple || t.platformIds?.spotify)
-}
-
-// Migrate old catalogId-based track shape to the new platformIds shape.
-// Runs transparently on every queue/pool read until all stored data is updated.
+// Normalize stored track items to the current shape — accepts three forms:
+//   1. Current: { appleId }
+//   2. Mid: { platformIds: { apple } } (also strips dead spotify field if any)
+//   3. Original: { catalogId }
+// Strips the legacy `addedViaPlatform` field too. Also backfills pool fields.
 function migrateTrack(item: any): any {
-  if (item.platformIds) {
-    // Backfill fields for pool tracks that predate them
-    if ('lastPlayedAt' in item) {
-      return {
-        ...item,
-        addedByUsers: item.addedByUsers ?? [],
-        playCount: item.playCount ?? 1,
-      }
-    }
-    return item
+  const isPool = 'lastPlayedAt' in item
+  const poolDefaults = isPool ? { addedByUsers: item.addedByUsers ?? [], playCount: item.playCount ?? 1 } : {}
+  if (item.appleId !== undefined) {
+    if (item.addedViaPlatform === undefined && !isPool) return item
+    const { addedViaPlatform: _x, ...rest } = item
+    return { ...rest, ...poolDefaults }
   }
-  const { catalogId, isrc, ...rest } = item
+  const appleId = item.appleId ?? item.catalogId
+  const { platformIds: _p, catalogId: _c, addedViaPlatform: _a, isrc, ...rest } = item
   return {
     ...rest,
     isrc: isrc ?? "",
-    platformIds: { apple: catalogId },
-    addedViaPlatform: "apple",
+    ...(appleId ? { appleId } : {}),
+    ...poolDefaults,
   }
 }

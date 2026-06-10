@@ -341,7 +341,7 @@ export default function App() {
 
   const handleAddTrack = useCallback((track: Track) => {
     if (!user) return
-    if (!track.platformIds?.apple) return
+    if (!track.appleId) return
     const fullQueue = [...(nowPlaying ? [nowPlaying] : []), ...upNext]
     // Only treat user-spun queue entries as "already added" — clicking + on
     // a robot-queued track should promote it via addTrack (server moves it
@@ -349,7 +349,7 @@ export default function App() {
     const existing = fullQueue.find(i =>
       i.addedBy !== "robot" &&
       ((track.isrc && i.isrc === track.isrc) ||
-       (track.platformIds?.apple && i.platformIds?.apple === track.platformIds.apple))
+       (track.appleId && i.appleId === track.appleId))
     )
     if (existing) {
       stationSocket.removeTrack(existing.key)
@@ -384,7 +384,7 @@ export default function App() {
   }, [user, nowPlaying])
 
   const handleSuggestTrack = useCallback((track: Track) => {
-    if (!user || !track.platformIds?.apple) return
+    if (!user || !track.appleId) return
     stationSocket.suggestTrack(track)
   }, [user])
 
@@ -524,7 +524,7 @@ export default function App() {
   // Derived state — must be before any early returns to satisfy Rules of Hooks
   const queuedIsrcs = useMemo(() => new Set(
     [...(nowPlaying ? [nowPlaying] : []), ...upNext]
-      .flatMap(i => [i.isrc, i.platformIds?.apple])
+      .flatMap(i => [i.isrc, i.appleId])
       .filter(Boolean) as string[]
   ), [nowPlaying, upNext])
   /** Subset of queuedIsrcs for tracks added by a human (not the robot DJ).
@@ -533,17 +533,17 @@ export default function App() {
   const userQueuedIds = useMemo(() => new Set(
     [...(nowPlaying && nowPlaying.addedBy !== "robot" ? [nowPlaying] : []),
      ...upNext.filter(i => i.addedBy !== "robot")]
-      .flatMap(i => [i.isrc, i.platformIds?.apple])
+      .flatMap(i => [i.isrc, i.appleId])
       .filter(Boolean) as string[]
   ), [nowPlaying, upNext])
   /** Identifiers of the currently-playing track. Components rendering pickers
    *  (Discovery/Pool/Playlist) use this to mark a row as "now playing" and
    *  disable add/remove operations on it. */
   const nowPlayingIds = useMemo(() => new Set(
-    nowPlaying ? [nowPlaying.isrc, nowPlaying.platformIds?.apple].filter(Boolean) as string[] : []
+    nowPlaying ? [nowPlaying.isrc, nowPlaying.appleId].filter(Boolean) as string[] : []
   ), [nowPlaying])
   const suggestedIsrcs = useMemo(() => new Set(
-    suggestions.flatMap(s => [s.isrc, s.platformIds?.apple].filter(Boolean) as string[])
+    suggestions.flatMap(s => [s.isrc, s.appleId].filter(Boolean) as string[])
   ), [suggestions])
   const userQueue = useMemo(() => upNext.filter(item => item.addedBy !== "robot"), [upNext])
   const robotQueue = useMemo(() => upNext.filter(item => item.addedBy === "robot"), [upNext])
@@ -573,8 +573,7 @@ export default function App() {
     if (!nowPlaying) return false
     return pool.some(p => {
       if (nowPlaying.isrc && p.isrc) return nowPlaying.isrc === p.isrc
-      if (nowPlaying.platformIds?.apple && p.platformIds?.apple) return nowPlaying.platformIds.apple === p.platformIds.apple
-      if (nowPlaying.platformIds?.spotify && p.platformIds?.spotify) return nowPlaying.platformIds.spotify === p.platformIds.spotify
+      if (nowPlaying.appleId && p.appleId) return nowPlaying.appleId === p.appleId
       return false
     })
   }, [nowPlaying, pool])
@@ -908,7 +907,7 @@ export default function App() {
           onMuteToggle={handleMuteToggle}
           isBlocked={playbackBlocked}
           onResume={handleResume}
-          onAlbumClick={isPrivileged && nowPlaying?.platformIds?.apple ? () => handleAlbumClick(nowPlaying.platformIds!.apple!) : undefined}
+          onAlbumClick={isPrivileged && nowPlaying?.appleId ? () => handleAlbumClick(nowPlaying.appleId!) : undefined}
           onOpenPool={isPrivileged ? () => setPoolModalOpen(true) : undefined}
           catalog={catalog.current}
           stationName={stations.find(s => s.id === currentStationId)?.displayName || currentStationId}
@@ -946,14 +945,14 @@ export default function App() {
           stationOwner={currentStationId}
           onRemove={handleRemoveTrack}
           onReorder={isPrivileged ? (keys) => stationSocket.reorderQueue(keys) : undefined}
-          onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
+          onAlbumClick={isPrivileged ? (item) => { if (item.appleId) handleAlbumClick(item.appleId) } : undefined}
         />
 
         {debugSettings.robotQueue && (
           <RobotQueue
             queue={robotQueue}
             onRemove={isPrivileged ? handleRemoveTrack : undefined}
-            onAlbumClick={isPrivileged ? (item) => { if (item.platformIds?.apple) handleAlbumClick(item.platformIds.apple) } : undefined}
+            onAlbumClick={isPrivileged ? (item) => { if (item.appleId) handleAlbumClick(item.appleId) } : undefined}
           />
         )}
 

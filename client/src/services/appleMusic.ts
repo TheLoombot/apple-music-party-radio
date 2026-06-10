@@ -22,8 +22,7 @@ function normalizeTrack(item: any): Track | null {
   }
   return {
     isrc: a.isrc ?? "",
-    platformIds: streamable ? { apple: item.id } : {},
-    addedViaPlatform: "apple",
+    ...(streamable ? { appleId: item.id } : {}),
     name: a.name ?? "",
     artistName: a.artistName ?? "",
     albumName: a.albumName ?? "",
@@ -65,7 +64,7 @@ export async function searchCatalog(term: string, storefront = "us", offset = 0)
   type SongItem = { kind: "song"; track: Track }
   const songs: SongItem[] = (data.results?.songs?.data ?? [])
     .map((item: any): SongItem | null => { const t = normalizeTrack(item); return t ? { kind: "song", track: t } : null })
-    .filter((x: SongItem | null): x is SongItem => x !== null && !!x.track.platformIds?.apple)
+    .filter((x: SongItem | null): x is SongItem => x !== null && !!x.track.appleId)
 
   const albums: SearchItem[] = (data.results?.albums?.data ?? []).map((item: any) => {
     const rd: string | undefined = item.attributes?.releaseDate
@@ -143,8 +142,7 @@ function normalizeLibraryTrack(item: any): Track | null {
   if (!catalogId) return null
   return {
     isrc: a.isrc ?? "",
-    platformIds: { apple: catalogId },
-    addedViaPlatform: "apple",
+    appleId: catalogId,
     name: a.name,
     artistName: a.artistName ?? "",
     albumName: a.albumName ?? "",
@@ -308,18 +306,16 @@ function normalizeLibraryTrackWithCatalog(item: any): Track {
   const catalogItem = item.relationships?.catalog?.data?.[0]
   if (catalogItem) {
     const normalized = normalizeTrack(catalogItem)
-    if (normalized?.platformIds?.apple) return normalized
+    if (normalized?.appleId) return normalized
   }
   // Fall back to playParams.catalogId for purchased tracks not in the catalog.
   const available = normalizeLibraryTrack(item)
   if (available) return available
-  // No playable ID at all (local file, DRM-only) — return with empty platformIds
+  // No playable ID at all (local file, DRM-only) — return without an appleId
   // so the UI can display it as unavailable rather than hiding it entirely.
   const a = item.attributes ?? {}
   return {
     isrc: a.isrc ?? "",
-    platformIds: {},
-    addedViaPlatform: "apple",
     name: a.name ?? "",
     artistName: a.artistName ?? "",
     albumName: a.albumName ?? "",
@@ -345,7 +341,7 @@ export async function getCharts(storefront = "us"): Promise<ChartResult[]> {
   return (data.results?.songs ?? []).map((chart: any) => ({
     id: chart.chart as string,
     name: chart.name as string,
-    tracks: (chart.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null && !!t.platformIds?.apple)
+    tracks: (chart.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null && !!t.appleId)
   }))
 }
 
