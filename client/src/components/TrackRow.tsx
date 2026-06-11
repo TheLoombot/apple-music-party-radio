@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react"
 import { Trash2, ArrowUp, Plus, Check, Music } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
@@ -21,6 +22,26 @@ interface Props {
 }
 
 export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, onAdd, onRemove, unavailable, isNowPlaying, onAlbumClick, requestMode }: Props) {
+  // The real `added` state only flips once the server echoes the queue update
+  // back over the socket. That lag makes the button look dead on the first press
+  // — and invites a reflexive second press that, if the echo lands in between,
+  // toggles the track right back out of the queue. Reflect the user's intent
+  // instantly, then reconcile: clear the override when truth arrives, or revert
+  // it on a timeout if the echo never comes (e.g. a dropped send while offline).
+  const [optimistic, setOptimistic] = useState<boolean | null>(null)
+  const revertTimer = useRef<ReturnType<typeof setTimeout>>()
+  useEffect(() => {
+    setOptimistic(null)
+    if (revertTimer.current) clearTimeout(revertTimer.current)
+  }, [added])
+  useEffect(() => () => { if (revertTimer.current) clearTimeout(revertTimer.current) }, [])
+  const effectiveAdded = optimistic ?? added
+  const handleAdd = () => {
+    setOptimistic(!effectiveAdded)
+    if (revertTimer.current) clearTimeout(revertTimer.current)
+    revertTimer.current = setTimeout(() => setOptimistic(null), 4000)
+    onAdd()
+  }
   return (
     <div className={`flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0 hover:bg-surface/50 group ${unavailable ? "opacity-50" : ""}`}>
       {rankNumber != null && (
@@ -80,24 +101,24 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
             {(() => {
               const addLabel = unavailable
                 ? "Not available in Apple Music"
-                : added
+                : effectiveAdded
                   ? (requestMode ? "Already requested" : "Remove from queue")
                   : (requestMode ? "Request track" : "Add to queue")
               return (
                 <Tooltip label={addLabel} align="end">
                   <button
-                    onClick={onAdd}
+                    onClick={handleAdd}
                     disabled={unavailable}
                     aria-label={addLabel}
                     className={`btn-3d w-14 h-12 rounded-lg flex items-center justify-center ${
-                      added
+                      effectiveAdded
                         ? "btn-3d-pressed text-white/35 hover:text-red-400"
                         : unavailable
                           ? "text-muted opacity-50 cursor-not-allowed"
                           : "text-white"
                     }`}
                   >
-                    {added
+                    {effectiveAdded
                       ? <Check size={24} strokeWidth={3} style={{ filter: "none" }} />
                       : requestMode
                         ? <ArrowUp size={24} strokeWidth={3} />
