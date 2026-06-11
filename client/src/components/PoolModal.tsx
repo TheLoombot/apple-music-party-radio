@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Trash2, ChevronLeft, Disc3, Plus, Check, Music, Download, Upload } from "lucide-react"
+import { X, Trash2, ChevronLeft, Disc3, Plus, Check, Music, Download, Upload, Heart } from "lucide-react"
 import { Tooltip } from "./Tooltip"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration, relativeTime } from "../utils"
@@ -8,7 +8,7 @@ import { TrackRow } from "./TrackRow"
 import { LoadingDots } from "./LoadingDots"
 import { ArtworkModal } from "./ArtworkModal"
 import { poolToCsv, parsePoolCsv } from "../services/poolCsv"
-import { sameTrack } from "../../../shared/track"
+import { sameTrack, trackKey } from "../../../shared/track"
 import type { PoolTrack, AppUser, Track, AlbumResult } from "../types"
 import type { MusicCatalog } from "../services/catalog"
 
@@ -19,6 +19,8 @@ interface Props {
   canClearPool: boolean    // owner only: can clear all
   queuedIsrcs: Set<string>
   nowPlayingIds: Set<string>
+  /** Persistent station-wide heart totals, keyed by trackKey(). */
+  trackHearts: Record<string, number>
   onAddTrack: (track: Track) => void
   onRemoveFromPool: (isrc: string) => void
   onClearPool: () => void
@@ -37,7 +39,7 @@ type ImportState =
   | { phase: "error"; message: string }
 
 
-export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queuedIsrcs, nowPlayingIds, onAddTrack, onRemoveFromPool, onClearPool, onImportPool, onClose, catalog, stationId }: Props) {
+export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queuedIsrcs, nowPlayingIds, trackHearts, onAddTrack, onRemoveFromPool, onClearPool, onImportPool, onClose, catalog, stationId }: Props) {
   const sorted = useMemo(() => pool.slice().reverse(), [pool])
 
   // ─── CSV export / import ───────────────────────────────────────────────────
@@ -357,6 +359,8 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
                     const added = queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.appleId ?? "")
                     const unavailable = !track.appleId
                     const isNowPlaying = nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")
+                    const tKey = trackKey(track)
+                    const heartCount = tKey ? trackHearts[tKey] ?? 0 : 0
                     return (
                       <motion.li
                         key={track.isrc || track.appleId || track.name}
@@ -382,6 +386,13 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
                           )}
                           <p className="text-muted text-xs mt-2">
                             played {track.playCount}× · last {relativeTime(track.lastPlayedAt)}
+                            {heartCount > 0 && (
+                              <>
+                                <span className="mx-1">·</span>
+                                <Heart size={11} className="inline -mt-0.5 text-red-400 fill-current" />
+                                {" "}{heartCount}
+                              </>
+                            )}
                             {track.addedByUsers.length > 0 && (
                               <>
                                 <span className="mx-1">·</span>

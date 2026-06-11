@@ -730,6 +730,7 @@ export default function App() {
             canClearPool={isOwnStation}
             queuedIsrcs={userQueuedIds}
             nowPlayingIds={nowPlayingIds}
+            trackHearts={trackHearts}
             onAddTrack={handleAddTrack}
             onRemoveFromPool={handleRemoveFromPool}
             onClearPool={handleClearPool}
