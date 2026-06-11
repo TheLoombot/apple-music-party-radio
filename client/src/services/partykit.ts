@@ -147,6 +147,11 @@ export class StationSocket {
     this.send({ type: "clear_pool" })
   }
 
+  /** Merge CSV-imported tracks into the pool (privileged; existing entries win). */
+  importPool(tracks: object[]) {
+    this.send({ type: "import_pool", tracks })
+  }
+
   triggerRobotDJ() {
     this.send({ type: "robot_dj" })
   }

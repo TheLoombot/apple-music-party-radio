@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Trash2, ChevronLeft, Disc3, Plus, Check, Music } from "lucide-react"
+import { X, Trash2, ChevronLeft, Disc3, Plus, Check, Music, Download, Upload } from "lucide-react"
 import { Tooltip } from "./Tooltip"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration, relativeTime } from "../utils"
 import { TrackRow } from "./TrackRow"
 import { LoadingDots } from "./LoadingDots"
 import { ArtworkModal } from "./ArtworkModal"
+import { poolToCsv, parsePoolCsv } from "../services/poolCsv"
+import { sameTrack } from "../../../shared/track"
 import type { PoolTrack, AppUser, Track, AlbumResult } from "../types"
 import type { MusicCatalog } from "../services/catalog"
 
@@ -20,13 +22,92 @@ interface Props {
   onAddTrack: (track: Track) => void
   onRemoveFromPool: (isrc: string) => void
   onClearPool: () => void
+  onImportPool?: (tracks: object[]) => void
   onClose: () => void
   catalog?: MusicCatalog
+  stationId?: string  // for the export filename
 }
 
+/** A CSV row resolved against the catalog, ready to send to the server. */
+type ImportEntry = Track & { playCount?: number; lastPlayedAt?: number }
 
-export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queuedIsrcs, nowPlayingIds, onAddTrack, onRemoveFromPool, onClearPool, onClose, catalog }: Props) {
+type ImportState =
+  | { phase: "resolving" }
+  | { phase: "confirm"; tracks: ImportEntry[]; unresolved: number; dupes: number; overflow: number }
+  | { phase: "error"; message: string }
+
+
+export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queuedIsrcs, nowPlayingIds, onAddTrack, onRemoveFromPool, onClearPool, onImportPool, onClose, catalog, stationId }: Props) {
   const sorted = useMemo(() => pool.slice().reverse(), [pool])
+
+  // ─── CSV export / import ───────────────────────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importState, setImportState] = useState<ImportState | null>(null)
+
+  const handleExport = () => {
+    // Empty pool → headers-only file, which doubles as the import template.
+    const blob = new Blob([poolToCsv(pool)], { type: "text/csv;charset=utf-8" })
+    const a = document.createElement("a")
+    a.href = URL.createObjectURL(blob)
+    a.download = pool.length === 0
+      ? "hat.fm-pool-template.csv"
+      : `hat.fm-${stationId || "station"}-pool-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  async function handleImportFile(file: File) {
+    if (!catalog) return
+    setImportState({ phase: "resolving" })
+    try {
+      const rows = parsePoolCsv(await file.text())
+      const usable = rows.filter(r => r.isrc || r.appleId)
+      let unresolved = rows.length - usable.length
+
+      // Resolve by Apple ID first, then heal the remainder via ISRC. Every
+      // entry comes back canonical for the importer's storefront: fresh
+      // artwork, real duration, current playability.
+      const ids = [...new Set(usable.map(r => r.appleId).filter(Boolean))]
+      const byIdTracks = ids.length ? await catalog.getSongsByIds(ids) : []
+      const byId = new Map(byIdTracks.map(t => [t.platformIds?.apple ?? "", t]))
+      const needIsrc = usable.filter(r => !(r.appleId && byId.has(r.appleId)) && r.isrc)
+      const isrcs = [...new Set(needIsrc.map(r => r.isrc))]
+      const byIsrcTracks = isrcs.length ? await catalog.getSongsByIsrcs(isrcs) : []
+      const byIsrc = new Map(
+        [...byIdTracks, ...byIsrcTracks].filter(t => t.isrc).map(t => [t.isrc, t])
+      )
+
+      const entries: ImportEntry[] = []
+      const seen = new Set<string>()
+      for (const r of usable) {
+        const t = (r.appleId ? byId.get(r.appleId) : undefined) ?? (r.isrc ? byIsrc.get(r.isrc) : undefined)
+        if (!t?.platformIds?.apple) { unresolved++; continue }
+        const k = t.isrc || t.platformIds.apple
+        if (seen.has(k)) continue // duplicate row within the file
+        seen.add(k)
+        entries.push({ ...t, playCount: r.playCount, lastPlayedAt: r.lastPlayedAt })
+      }
+
+      const fresh = entries.filter(e => !pool.some(p => sameTrack(p, e)))
+      const dupes = entries.length - fresh.length
+      const capacity = Math.max(0, 100 - pool.length)
+      const overflow = Math.max(0, fresh.length - capacity)
+      const tracks = fresh.slice(0, capacity)
+
+      if (tracks.length === 0) {
+        setImportState({
+          phase: "error",
+          message: unresolved + dupes === 0
+            ? "No importable rows found in that file."
+            : `Nothing to add — ${dupes} already in the pool, ${unresolved} unresolvable.`,
+        })
+      } else {
+        setImportState({ phase: "confirm", tracks, unresolved, dupes, overflow })
+      }
+    } catch (e: any) {
+      setImportState({ phase: "error", message: e?.message ?? "Couldn't read that file." })
+    }
+  }
 
   const [filterQuery, setFilterQuery] = useState("")
   const filtered = useMemo(() => {
@@ -132,10 +213,84 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
                   <p className="text-muted text-xs mt-0.5">{pool.length} track{pool.length !== 1 ? "s" : ""} — robot DJ picks from here</p>
                 )}
               </div>
-              <button onClick={onClose} className="text-muted hover:text-white transition-colors p-1">
-                <X size={18} />
-              </button>
+              {/* Tooltips here use position=bottom — the modal card is
+               *  overflow-hidden, so a top-anchored tooltip in the header
+               *  clips at the modal edge. */}
+              <div className="flex items-center gap-1">
+                <Tooltip label={pool.length > 0 ? "Export pool as CSV" : "Download CSV template"} align="end" position="bottom">
+                  <button
+                    onClick={handleExport}
+                    aria-label={pool.length > 0 ? "Export pool as CSV" : "Download CSV template"}
+                    className="text-muted hover:text-white transition-colors w-9 h-9 flex items-center justify-center"
+                  >
+                    <Download size={16} />
+                  </button>
+                </Tooltip>
+                {canManagePool && catalog && onImportPool && (
+                  <Tooltip label="Import pool CSV" align="end" position="bottom">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      aria-label="Import pool CSV"
+                      className="text-muted hover:text-white transition-colors w-9 h-9 flex items-center justify-center"
+                    >
+                      <Upload size={16} />
+                    </button>
+                  </Tooltip>
+                )}
+                <button onClick={onClose} className="text-muted hover:text-white transition-colors p-1 ml-1">
+                  <X size={18} />
+                </button>
+              </div>
+              {/* Hidden file input for CSV import; value reset so the same
+               *  file can be re-selected after a cancel. */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  e.target.value = ""
+                  if (f) void handleImportFile(f)
+                }}
+              />
             </div>
+            {importState && (
+              <div className="px-4 py-3 border-b border-border bg-surface/40 flex-shrink-0 text-sm">
+                {importState.phase === "resolving" ? (
+                  <span className="text-muted">Resolving tracks against Apple Music… <LoadingDots /></span>
+                ) : importState.phase === "error" ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-red-400 text-xs">{importState.message}</span>
+                    <button onClick={() => setImportState(null)} className="text-muted hover:text-white text-xs flex-shrink-0">Dismiss</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-white">Add {importState.tracks.length} track{importState.tracks.length !== 1 ? "s" : ""} to the pool?</p>
+                      {(importState.unresolved > 0 || importState.dupes > 0 || importState.overflow > 0) && (
+                        <p className="text-muted text-xs mt-0.5">
+                          {[
+                            importState.unresolved > 0 && `${importState.unresolved} unresolvable, skipped`,
+                            importState.dupes > 0 && `${importState.dupes} already in pool`,
+                            importState.overflow > 0 && `${importState.overflow} over the 100-track cap`,
+                          ].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button onClick={() => setImportState(null)} className="text-muted hover:text-white text-xs py-1.5 px-2">Cancel</button>
+                      <button
+                        onClick={() => { onImportPool?.(importState.tracks); setImportState(null) }}
+                        className="btn-3d rounded-lg text-white text-xs font-semibold py-1.5 px-3"
+                      >
+                        Import
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             {pool.length > 0 && (
               <div className="px-4 py-2 border-b border-border flex-shrink-0">
                 <div className="relative">
@@ -185,7 +340,12 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
           ) : pool.length === 0 ? (
             <div className="p-8 text-center text-muted text-sm">
               <p>Nothing in the pool yet.</p>
-              <p className="text-xs mt-1 opacity-60">Tracks land here after they finish playing.</p>
+              <p className="text-xs mt-1 opacity-60">
+                Tracks land here after they finish playing.
+                {canManagePool && catalog && onImportPool && (
+                  <> Or import a pool CSV with the <Upload size={11} className="inline -mt-0.5" /> button above.</>
+                )}
+              </p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="p-8 text-center text-muted text-sm">No matches</div>

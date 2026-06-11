@@ -39,6 +39,43 @@ export async function getUserStorefront(): Promise<string> {
   return data.data?.[0]?.id ?? "us"
 }
 
+/** Batch-fetch catalog songs by ID (pool import resolution). Chunked under
+ *  Apple's per-request fetch limit; unknown/dead IDs are silently absent from
+ *  the result. */
+export async function getSongsByIds(ids: string[], storefront = "us"): Promise<Track[]> {
+  const out: Track[] = []
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100)
+    const params = new URLSearchParams({ ids: chunk.join(","), extend: "offers" })
+    const res = await fetch(`https://api.music.apple.com/v1/catalog/${storefront}/songs?${params}`, { headers: headers() })
+    if (!res.ok) continue
+    const data = await res.json()
+    for (const item of data.data ?? []) {
+      const t = normalizeTrack(item)
+      if (t) out.push(t)
+    }
+  }
+  return out
+}
+
+/** Batch-fetch catalog songs by ISRC (pool import healing — re-resolves tracks
+ *  whose Apple ID is missing or dead). Apple caps filter[isrc] at 25 values. */
+export async function getSongsByIsrcs(isrcs: string[], storefront = "us"): Promise<Track[]> {
+  const out: Track[] = []
+  for (let i = 0; i < isrcs.length; i += 25) {
+    const chunk = isrcs.slice(i, i + 25)
+    const params = new URLSearchParams({ "filter[isrc]": chunk.join(","), extend: "offers" })
+    const res = await fetch(`https://api.music.apple.com/v1/catalog/${storefront}/songs?${params}`, { headers: headers() })
+    if (!res.ok) continue
+    const data = await res.json()
+    for (const item of data.data ?? []) {
+      const t = normalizeTrack(item)
+      if (t) out.push(t)
+    }
+  }
+  return out
+}
+
 export const SEARCH_PAGE_SIZE = 10
 
 export interface SearchPage {

@@ -8,7 +8,7 @@
     "build": "npm run build --prefix client",
     "deploy": "npx partykit deploy && npm run build",
     "generate-token": "node scripts/generate-token.mjs",
-    "test": "vitest run shared",
+    "test": "vitest run",
     "install:all": "npm install && npm install --prefix client"
   },
   "devDependencies": {

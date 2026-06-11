@@ -12,6 +12,8 @@ import {
   getAlbumForSong,
   getAlbumEditorial,
   getPlaylistEditorial,
+  getSongsByIds,
+  getSongsByIsrcs,
 } from "./appleMusic"
 import type { Track, SearchItem, LibraryPlaylistResult, PlaylistResult, AlbumResult } from "../types"
 export type { ChartResult, AlbumEditorialInfo, SearchPage } from "./appleMusic"
@@ -31,6 +33,8 @@ export interface MusicCatalog {
   getAlbumForTrack(songId: string): Promise<AlbumResult | null>
   getAlbumEditorial(albumId: string): Promise<import("./appleMusic").AlbumEditorialInfo>
   getPlaylistEditorial(playlistId: string): Promise<import("./appleMusic").AlbumEditorialInfo>
+  getSongsByIds(ids: string[]): Promise<Track[]>
+  getSongsByIsrcs(isrcs: string[]): Promise<Track[]>
 }
 
 export class AppleMusicCatalog implements MusicCatalog {
@@ -55,4 +59,6 @@ export class AppleMusicCatalog implements MusicCatalog {
   getAlbumForTrack(songId: string) { return this.cached(`albumFor:${songId}`, () => getAlbumForSong(songId, this.storefront)) }
   getAlbumEditorial(albumId: string) { return getAlbumEditorial(albumId, this.storefront) }
   getPlaylistEditorial(playlistId: string) { return getPlaylistEditorial(playlistId, this.storefront) }
+  getSongsByIds(ids: string[]) { return getSongsByIds(ids, this.storefront) }
+  getSongsByIsrcs(isrcs: string[]) { return getSongsByIsrcs(isrcs, this.storefront) }
 }

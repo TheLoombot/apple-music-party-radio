@@ -737,8 +737,10 @@ export default function App() {
             onAddTrack={handleAddTrack}
             onRemoveFromPool={handleRemoveFromPool}
             onClearPool={handleClearPool}
+            onImportPool={isPrivileged ? (tracks) => stationSocket.importPool(tracks) : undefined}
             onClose={() => setPoolModalOpen(false)}
             catalog={catalog.current}
+            stationId={currentStationId}
           />
         )}
       </AnimatePresence>

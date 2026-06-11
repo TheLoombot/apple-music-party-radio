@@ -846,6 +846,7 @@ export default class RadioParty implements Party.Server {
       case "expire_track":     return this.expireTrack(msg.key, msg.addToPool)  // clients self-report their own track advance
       case "remove_from_pool": if (!this.isPrivilegedConn(sender)) return; return this.removeFromPool(msg.isrc)
       case "clear_pool":       if (!this.isPrivilegedConn(sender)) return; return this.clearPool()
+      case "import_pool":      if (!this.isPrivilegedConn(sender)) return; return this.handleImportPool(msg)
       case "robot_dj":         if (!this.isPrivilegedConn(sender)) return; return this.fillRobotQueue()
       case "reorder_queue":    if (!this.isPrivilegedConn(sender)) return; return this.reorderQueue(msg.keys)
       case "suggest_track":    return this.handleSuggestTrack(msg, sender)
@@ -1218,6 +1219,48 @@ export default class RadioParty implements Party.Server {
   private async clearPool() {
     await this.room.storage.put("pool", [])
     this.room.broadcast(json({ type: "pool_update", pool: [] }))
+  }
+
+  /** Merge CSV-imported tracks into the pool. Existing entries always win
+   *  (an import never evicts current station history); entries beyond the
+   *  100-track cap are dropped. The client resolves rows against the Apple
+   *  catalog before sending, but every field is re-validated here. */
+  private async handleImportPool(msg: any) {
+    const incoming: any[] = Array.isArray(msg.tracks) ? msg.tracks.slice(0, 200) : []
+    let pool = await this.storage<PoolTrack[]>("pool", [])
+    let added = 0
+    const str = (v: any, max: number) => String(v ?? "").slice(0, max)
+    for (const raw of incoming) {
+      if (pool.length >= 100) break
+      const isrc = str(raw?.isrc, 32)
+      const apple = str(raw?.platformIds?.apple, 32)
+      if (!isrc && !apple) continue
+      const durationMs = Math.floor(Number(raw?.durationMs))
+      // A zero/garbage duration would make the robot enqueue an instantly-
+      // expiring track and spin the alarm chain — require a sane value.
+      if (!Number.isFinite(durationMs) || durationMs < 1000) continue
+      const entry: PoolTrack = {
+        isrc,
+        platformIds: apple ? { apple } : {},
+        addedViaPlatform: "apple",
+        name: str(raw?.name, 256),
+        artistName: str(raw?.artistName, 256),
+        albumName: str(raw?.albumName, 256),
+        artworkUrl: str(raw?.artworkUrl, 512),
+        durationMs,
+        lastPlayedAt: Number.isFinite(Number(raw?.lastPlayedAt)) && Number(raw.lastPlayedAt) > 0 ? Number(raw.lastPlayedAt) : Date.now(),
+        addedByUsers: [],
+        playCount: Math.max(1, Math.floor(Number(raw?.playCount)) || 1),
+      }
+      if (pool.some(p => sameTrack(p, entry))) continue
+      // Append at the tail (oldest LRU position) so imports are the first to
+      // age out rather than displacing the station's recent history.
+      pool = [...pool, entry]
+      added++
+    }
+    if (added === 0) return
+    await this.room.storage.put("pool", pool)
+    this.room.broadcast(json({ type: "pool_update", pool }))
   }
 
   private async handleSetDjNote(msg: any) {

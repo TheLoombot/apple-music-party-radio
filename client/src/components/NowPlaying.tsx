@@ -824,17 +824,24 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 </Tooltip>
               )}
               <div className="grid grid-cols-3 gap-2">
-                <Tooltip label="DJs only" align="start">
-                  <button disabled aria-label="Open pool" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
+                {/* Pool stays accessible on a quiet station — DJs need it to
+                 *  import a pool CSV into a fresh station. */}
+                <Tooltip label={onOpenPool ? "Open pool" : "DJs only"} align="start">
+                  <button
+                    onClick={onOpenPool}
+                    disabled={!onOpenPool}
+                    aria-label="Open pool"
+                    className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white"
+                  >
                     <Library size={20} />
                   </button>
                 </Tooltip>
-                <Tooltip label="DJs only">
+                <Tooltip label={canSkip ? "Nothing playing" : "DJs only"}>
                   <button disabled aria-label="Skip" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
                     <SkipForward size={20} />
                   </button>
                 </Tooltip>
-                <Tooltip label="DJs only" align="end">
+                <Tooltip label={canSkip ? "Nothing playing" : "DJs only"} align="end">
                   <button disabled aria-label="Skip and remove from pool" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
                     <Ban size={20} />
                   </button>
