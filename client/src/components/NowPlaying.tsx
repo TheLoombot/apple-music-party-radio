@@ -621,7 +621,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           >
             {/* Full-width album art */}
             <motion.div
-              key={track.isrc || track.platformIds?.apple}
+              key={track.isrc || track.appleId}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
@@ -634,7 +634,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   src={artworkUrl(track.artworkUrl, 750)}
                   alt={track.albumName}
                   catalog={catalog}
-                  songId={track.platformIds?.apple}
+                  songId={track.appleId}
                   albumName={track.albumName}
                   onClick={isMobile ? undefined : () => setArtworkOpen(true)}
                   outerStyle={{ width: "100%", height: "100%" }}
@@ -860,7 +860,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             alt={track.albumName}
             onClose={closeArtwork}
             catalog={catalog}
-            songId={track.platformIds?.apple}
+            songId={track.appleId}
             albumName={track.albumName}
             djNotes={djNotes}
             onSaveDjNote={onSaveDjNote}

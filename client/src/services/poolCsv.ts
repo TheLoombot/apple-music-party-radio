@@ -43,7 +43,7 @@ export function poolToCsv(pool: PoolTrack[]): string {
       csvField(t.artistName),
       csvField(t.albumName),
       csvField(t.isrc ?? ""),
-      csvField(t.platformIds?.apple ?? ""),
+      csvField(t.appleId ?? ""),
       String(t.durationMs || ""),
       String(t.playCount || ""),
       isoDate(t.lastPlayedAt),

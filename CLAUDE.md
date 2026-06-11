@@ -164,7 +164,7 @@ Soft update (same track[0], tail changed):
 
 Native auto-advance:
   MusicKit fires nowPlayingItemDidChange
-  → PlaybackLoop checks if new ID === queue[1].platformIds.apple
+  → PlaybackLoop checks if new ID === queue[1].appleId
   → Yes → expireTrack(key, addToPool=true) to server
   → Server broadcasts new queue
 ```
@@ -188,7 +188,7 @@ Native auto-advance:
 |---|---|
 | Catalog search / albums / playlists | `item.id` → use `normalizeTrack()` |
 | Library playlists | `relationships.catalog.data[0]` (preferred) → falls back to `item.attributes.playParams.catalogId` |
-| Library tracks with no catalog equivalent | No playable ID — returned with empty `platformIds`, shown as unavailable in UI |
+| Library tracks with no catalog equivalent | No playable ID — returned without `appleId`, shown as unavailable in UI |
 
 **`getLibraryPlaylistTracks` fetches with `?include=catalog`** to get the storefront-specific catalog relationship. Using `playParams.catalogId` alone can return an ID from a different storefront.
 
@@ -198,15 +198,20 @@ Native auto-advance:
 
 ## Pool & deduplication
 
-Pool tracks are deduplicated with `sameTrack()` in `party/index.ts`:
+Pool tracks are deduplicated with `sameTrack()` from `shared/track.ts`:
 ```typescript
 function sameTrack(a, b):
   if both have ISRC (non-empty): match on ISRC
-  else if both have platformIds.apple: match on Apple ID
-  else if both have platformIds.spotify: match on Spotify ID
+  else if both have appleId: match on Apple ID
   else: no match
 ```
 **Never match on empty ISRC** — that was a bug that collapsed the pool to 1 track.
+
+Track identity is `{ isrc, appleId? }` — Apple Music only, no other services.
+`migrateTrack` (also `shared/track.ts`) normalizes the three historical stored
+shapes (`catalogId` / `platformIds.apple` / `appleId`) on every read; records
+matching no shape pass through unstripped. Never delete pool entries for
+missing IDs — quarantine (exclude from robot candidates) and let them heal.
 
 Pool is capped at 100 entries (LRU). Robot DJ picks randomly from the pool.
 

@@ -18,21 +18,13 @@
  *   on first join — ownership is bootstrapped lazily.
  */
 import type * as Party from "partykit/server"
-import { migrateTrack, sameTrack } from "../shared/track"
+import { migrateTrack, sameTrack, trackKey } from "../shared/track"
 
 // ─── Shared types (mirrored from client/src/types.ts) ────────────────────────
 
-type Platform = "apple" | "spotify"
-
-interface PlatformIds {
-  apple?: string
-  spotify?: string
-}
-
 interface Track {
   isrc: string
-  platformIds: PlatformIds
-  addedViaPlatform: Platform
+  appleId?: string  // Apple Music catalog ID (numeric string); absent = not playable
   name: string
   artistName: string
   albumName: string
@@ -273,7 +265,7 @@ export default class RadioParty implements Party.Server {
         const djs = await this.getDJs()
         const suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
         const djNotes = await this.storage<Record<string, string>>("dj_notes", {})
-        const trackHearts = await this.storage<Record<string, number>>("track_hearts", {})
+        const trackHearts = await this.getTrackHearts()
         const djHearts = await this.storage<Record<string, number>>("dj_hearts", {})
         conn.send(json({ type: "state", queue, pool, log, visits, djs, suggestions, djNotes, trackHearts, djHearts }))
         // Sync live status to index on every connect so stale flags get corrected
@@ -1171,21 +1163,39 @@ export default class RadioParty implements Party.Server {
   }
 
   /** Fold a finished play's hearts into the persistent station-scoped maps:
-   *  one increment per uid for the track (keyed by isrc), and parallel credit
-   *  to the DJ who queued it (skipped for robot). Broadcasts the updated maps
-   *  so all clients render the new totals immediately. */
+   *  one increment per uid for the track (keyed by trackKey — isrc first, then
+   *  appleId), and parallel credit to the DJ who queued it (skipped for
+   *  robot). Broadcasts the updated maps so all clients render the new totals
+   *  immediately. */
   private async foldHearts(item: QueueItem) {
     const count = item.heartedBy?.length ?? 0
     if (count === 0) return
-    const trackHearts = await this.storage<Record<string, number>>("track_hearts", {})
+    const trackHearts = await this.getTrackHearts()
     const djHearts = await this.storage<Record<string, number>>("dj_hearts", {})
-    if (item.isrc) trackHearts[item.isrc] = (trackHearts[item.isrc] ?? 0) + count
+    const tKey = trackKey(item)
+    if (tKey) trackHearts[tKey] = (trackHearts[tKey] ?? 0) + count
     if (item.addedBy && item.addedBy !== "robot") {
       djHearts[item.addedBy] = (djHearts[item.addedBy] ?? 0) + count
     }
     await this.room.storage.put("track_hearts", trackHearts)
     await this.room.storage.put("dj_hearts", djHearts)
     this.room.broadcast(json({ type: "hearts_update", trackHearts, djHearts }))
+  }
+
+  /** Read track_hearts, lazily migrating bare-ISRC keys (pre-trackKey era) to
+   *  the "isrc:<x>" format. ISRCs are 12 alphanumerics — never contain ":" —
+   *  so the prefix check is unambiguous and the rewrite is one-time. */
+  private async getTrackHearts(): Promise<Record<string, number>> {
+    const hearts = await this.storage<Record<string, number>>("track_hearts", {})
+    const entries = Object.entries(hearts)
+    if (entries.every(([k]) => k.includes(":"))) return hearts
+    const migrated: Record<string, number> = {}
+    for (const [k, v] of entries) {
+      const nk = k.includes(":") ? k : `isrc:${k}`
+      migrated[nk] = (migrated[nk] ?? 0) + v
+    }
+    await this.room.storage.put("track_hearts", migrated)
+    return migrated
   }
 
   /** Merge a uid→displayName entry into a pool track's names map. Falls back
@@ -1233,7 +1243,7 @@ export default class RadioParty implements Party.Server {
     for (const raw of incoming) {
       if (pool.length >= 100) break
       const isrc = str(raw?.isrc, 32)
-      const apple = str(raw?.platformIds?.apple, 32)
+      const apple = str(raw?.appleId, 32)
       if (!isrc && !apple) continue
       const durationMs = Math.floor(Number(raw?.durationMs))
       // A zero/garbage duration would make the robot enqueue an instantly-
@@ -1241,8 +1251,7 @@ export default class RadioParty implements Party.Server {
       if (!Number.isFinite(durationMs) || durationMs < 1000) continue
       const entry: PoolTrack = {
         isrc,
-        platformIds: apple ? { apple } : {},
-        addedViaPlatform: "apple",
+        ...(apple ? { appleId: apple } : {}),
         name: str(raw?.name, 256),
         artistName: str(raw?.artistName, 256),
         albumName: str(raw?.albumName, 256),
@@ -1347,7 +1356,7 @@ export default class RadioParty implements Party.Server {
     this.connListeners.set(sender.id, { ...listener, lastSuggestionAt: now })
 
     const track: Track = msg.track
-    if (!track?.platformIds?.apple) return
+    if (!track?.appleId) return
 
     const queue = await this.storage<QueueItem[]>("queue", [])
     if (queue.some(q => sameTrack(q, track))) {
@@ -1457,9 +1466,9 @@ export default class RadioParty implements Party.Server {
       // when a migration bug left every record ID-less (June 2026). Quarantine,
       // never delete: removal is owner-explicit (remove_from_pool, clear_pool,
       // skip-and-ban) only.
-      const pool = rawPool.filter(t => !!t.platformIds?.apple)
+      const pool = rawPool.filter(t => !!t.appleId)
       if (pool.length < rawPool.length) {
-        const stranded = rawPool.filter(t => !t.platformIds?.apple)
+        const stranded = rawPool.filter(t => !t.appleId)
         console.warn(`[fillRobotQueue] skipping ${stranded.length} pool track(s) with no Apple ID (kept in pool):`, stranded.map(t => `"${t.name}" (isrc=${t.isrc || "none"})`).join(", "))
       }
       if (pool.length === 0) return
@@ -1477,7 +1486,7 @@ export default class RadioParty implements Party.Server {
       // duplicated. The next track expiry will trigger another fill which
       // can then reuse the just-expired track without violating uniqueness.
       const alreadyQueued = new Set<string>(
-        queue.flatMap(q => [q.isrc, q.platformIds?.apple].filter((v): v is string => !!v))
+        queue.flatMap(q => [q.isrc, q.appleId].filter((v): v is string => !!v))
       )
 
       let changed = false
@@ -1487,14 +1496,14 @@ export default class RadioParty implements Party.Server {
         attempts++
         const candidates = pool.filter(t => {
           if (t.isrc && alreadyQueued.has(t.isrc)) return false
-          if (t.platformIds?.apple && alreadyQueued.has(t.platformIds.apple)) return false
+          if (t.appleId && alreadyQueued.has(t.appleId)) return false
           return true
         })
         if (candidates.length === 0) break  // pool exhausted — leave queue short
 
         const pick = candidates[Math.floor(Math.random() * candidates.length)]
         if (pick.isrc) alreadyQueued.add(pick.isrc)
-        if (pick.platformIds?.apple) alreadyQueued.add(pick.platformIds.apple)
+        if (pick.appleId) alreadyQueued.add(pick.appleId)
 
         const { lastPlayedAt: _, addedByUsers: _2, playCount: _3, ...track } = pick
         const last = queue[queue.length - 1]

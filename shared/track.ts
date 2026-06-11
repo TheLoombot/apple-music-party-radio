@@ -10,41 +10,35 @@
  * (`npm test` at the repo root).
  */
 
-export interface PlatformIds {
-  apple?: string
-  spotify?: string
-}
-
 /** Minimal structural shape for matching — both sides' Track types satisfy it. */
 export interface TrackLike {
   isrc?: string
-  platformIds?: PlatformIds
+  appleId?: string
 }
 
 /**
  * Normalize a stored/received track record to the current canonical shape
- * ({ isrc, platformIds, addedViaPlatform, ... }). Accepts every shape that has
- * ever been written to storage:
- *   1. Original:  { catalogId: "123" }
- *   2. Current:   { platformIds: { apple: "123" } }
- *   3. Flattened: { appleId: "123" }   — written briefly by ef1336d (June 2026)
+ * ({ isrc, appleId?, ... }). Accepts every shape that has ever been written
+ * to storage:
+ *   1. Original: { catalogId: "123" }
+ *   2. Mid:      { platformIds: { apple: "123" } }  (spotify slot always empty — dropped)
+ *   3. Current:  { appleId: "123" }
  *
- * A record matching none of these passes through with `platformIds` defaulted
- * to an empty object — identifying fields it might carry (e.g. isrc) are never
- * stripped, so an unrecognized shape degrades to "temporarily unplayable",
- * never to data loss. Pool records (`lastPlayedAt` present) additionally get
+ * A record matching none of these passes through flattened but unstripped —
+ * identifying fields it might carry (e.g. isrc) are never lost, so an
+ * unrecognized shape degrades to "temporarily unplayable", never to data
+ * loss. Pool records (`lastPlayedAt` present) additionally get
  * addedByUsers/playCount backfilled.
  */
 export function migrateTrack<T extends object>(item: T): T {
   const t = item as any
-  const apple = t.platformIds?.apple ?? t.appleId ?? t.catalogId
-  const { appleId: _a, catalogId: _c, ...rest } = t
+  const appleId = t.appleId ?? t.platformIds?.apple ?? t.catalogId
+  const { appleId: _f, platformIds: _p, catalogId: _c, addedViaPlatform: _a, ...rest } = t
   const isPool = "lastPlayedAt" in t
   return {
     ...rest,
     isrc: t.isrc ?? "",
-    platformIds: { ...(t.platformIds ?? {}), ...(apple ? { apple } : {}) },
-    addedViaPlatform: t.addedViaPlatform ?? "apple",
+    ...(appleId ? { appleId } : {}),
     ...(isPool ? { addedByUsers: t.addedByUsers ?? [], playCount: t.playCount ?? 1 } : {}),
   } as T
 }
@@ -56,7 +50,17 @@ export function migrateTrack<T extends object>(item: T): T {
  */
 export function sameTrack(a: TrackLike, b: TrackLike): boolean {
   if (a.isrc && b.isrc) return a.isrc === b.isrc
-  if (a.platformIds?.apple && b.platformIds?.apple) return a.platformIds.apple === b.platformIds.apple
-  if (a.platformIds?.spotify && b.platformIds?.spotify) return a.platformIds.spotify === b.platformIds.spotify
+  if (a.appleId && b.appleId) return a.appleId === b.appleId
   return false
+}
+
+/**
+ * Stable string key for track-keyed persistence (e.g. the heart-accumulation
+ * maps). ISRC preferred — it survives catalog-ID churn and storefront
+ * differences. Null when the track has no identity at all.
+ */
+export function trackKey(t: TrackLike): string | null {
+  if (t.isrc) return `isrc:${t.isrc}`
+  if (t.appleId) return `apple:${t.appleId}`
+  return null
 }

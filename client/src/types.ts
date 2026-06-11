@@ -1,14 +1,6 @@
-export type Platform = "apple" | "spotify"
-
-export interface PlatformIds {
-  apple?: string    // Apple Music catalog ID (numeric string)
-  spotify?: string  // Spotify track ID
-}
-
 export interface Track {
   isrc: string
-  platformIds: PlatformIds
-  addedViaPlatform: Platform
+  appleId?: string  // Apple Music catalog ID (numeric string); absent = not playable
   name: string
   artistName: string
   albumName: string

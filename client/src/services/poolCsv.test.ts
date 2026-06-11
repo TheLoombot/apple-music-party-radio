@@ -5,8 +5,7 @@ import type { PoolTrack } from "../types"
 function poolTrack(over: Partial<PoolTrack>): PoolTrack {
   return {
     isrc: "USX1",
-    platformIds: { apple: "111" },
-    addedViaPlatform: "apple",
+    appleId: "111",
     name: "Song",
     artistName: "Artist",
     albumName: "Album",
@@ -23,7 +22,7 @@ describe("poolToCsv → parsePoolCsv round-trip", () => {
   it("round-trips identity, stats, and names with commas/quotes", () => {
     const csv = poolToCsv([
       poolTrack({ name: 'Don\'t Stop, "Believing"', artistName: "Journey, Jr." }),
-      poolTrack({ isrc: "USX2", platformIds: { apple: "222" }, name: "Plain" }),
+      poolTrack({ isrc: "USX2", appleId: "222", name: "Plain" }),
     ])
     const rows = parsePoolCsv(csv)
     expect(rows).toHaveLength(2)
@@ -37,7 +36,7 @@ describe("poolToCsv → parsePoolCsv round-trip", () => {
   })
 
   it("exports stranded tracks (no apple id) with their ISRC intact", () => {
-    const rows = parsePoolCsv(poolToCsv([poolTrack({ platformIds: {} })]))
+    const rows = parsePoolCsv(poolToCsv([poolTrack({ appleId: undefined })]))
     expect(rows[0].appleId).toBe("")
     expect(rows[0].isrc).toBe("USX1")
   })

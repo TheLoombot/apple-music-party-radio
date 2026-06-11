@@ -69,7 +69,7 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
       // artwork, real duration, current playability.
       const ids = [...new Set(usable.map(r => r.appleId).filter(Boolean))]
       const byIdTracks = ids.length ? await catalog.getSongsByIds(ids) : []
-      const byId = new Map(byIdTracks.map(t => [t.platformIds?.apple ?? "", t]))
+      const byId = new Map(byIdTracks.map(t => [t.appleId ?? "", t]))
       const needIsrc = usable.filter(r => !(r.appleId && byId.has(r.appleId)) && r.isrc)
       const isrcs = [...new Set(needIsrc.map(r => r.isrc))]
       const byIsrcTracks = isrcs.length ? await catalog.getSongsByIsrcs(isrcs) : []
@@ -81,8 +81,8 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
       const seen = new Set<string>()
       for (const r of usable) {
         const t = (r.appleId ? byId.get(r.appleId) : undefined) ?? (r.isrc ? byIsrc.get(r.isrc) : undefined)
-        if (!t?.platformIds?.apple) { unresolved++; continue }
-        const k = t.isrc || t.platformIds.apple
+        if (!t?.appleId) { unresolved++; continue }
+        const k = t.isrc || t.appleId
         if (seen.has(k)) continue // duplicate row within the file
         seen.add(k)
         entries.push({ ...t, playCount: r.playCount, lastPlayedAt: r.lastPlayedAt })
@@ -326,12 +326,12 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
               <ul>
                 {albumTracks.map((track, i) => (
                   <TrackRow
-                    key={track.platformIds?.apple ?? track.isrc ?? track.name}
+                    key={track.appleId ?? track.isrc ?? track.name}
                     track={track}
                     trackNumber={i + 1}
                     hideArtist={track.artistName === album!.subtitle}
-                    added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")}
-                    isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.platformIds?.apple ?? "")}
+                    added={queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.appleId ?? "")}
+                    isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")}
                     onAdd={() => onAddTrack(track)}
                   />
                 ))}
@@ -354,12 +354,12 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
               <ul>
                 <AnimatePresence initial={false}>
                   {filtered.map(track => {
-                    const added = queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.platformIds?.apple ?? "")
-                    const unavailable = !track.platformIds?.apple
-                    const isNowPlaying = nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.platformIds?.apple ?? "")
+                    const added = queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.appleId ?? "")
+                    const unavailable = !track.appleId
+                    const isNowPlaying = nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")
                     return (
                       <motion.li
-                        key={track.isrc || track.platformIds?.apple || track.name}
+                        key={track.isrc || track.appleId || track.name}
                         layout
                         initial={{ opacity: 0, y: -6 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -376,8 +376,8 @@ export function PoolModal({ pool, currentUser, canManagePool, canClearPool, queu
                           <p className="text-muted/70 text-xs">{track.artistName}</p>
                           <p className="text-white text-base font-semibold">{track.name}</p>
                           {track.albumName && (
-                            catalog && track.platformIds?.apple
-                              ? <button onClick={() => handleAlbumClick(track.platformIds.apple!)} className="text-muted/50 text-xs hover:text-red-400 transition-colors text-left">{track.albumName}</button>
+                            catalog && track.appleId
+                              ? <button onClick={() => handleAlbumClick(track.appleId!)} className="text-muted/50 text-xs hover:text-red-400 transition-colors text-left">{track.albumName}</button>
                               : <p className="text-muted/50 text-xs">{track.albumName}</p>
                           )}
                           <p className="text-muted text-xs mt-2">

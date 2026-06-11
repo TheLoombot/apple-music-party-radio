@@ -73,10 +73,10 @@ export class AppleMusicPlayer implements MusicPlayer {
   }
 
   async playAtOffset(track: QueueItem, offsetSeconds: number, tail?: QueueItem[], isCancelled?: () => boolean): Promise<void> {
-    const appleId = track.platformIds.apple
-    if (!appleId) throw new UnavailableError("apple", track)
+    const appleId = track.appleId
+    if (!appleId) throw new UnavailableError(track)
     if (isCancelled?.()) return
-    const tailIds = tail?.map(t => t.platformIds.apple).filter((id): id is string => !!id)
+    const tailIds = tail?.map(t => t.appleId).filter((id): id is string => !!id)
     try {
       await playTrackAtOffset(appleId, offsetSeconds, tailIds, isCancelled)
     } catch (err: any) {
@@ -93,13 +93,13 @@ export class AppleMusicPlayer implements MusicPlayer {
           if (!isNotFound(retryErr)) throw retryErr
         }
       }
-      throw new UnavailableError("apple", track)
+      throw new UnavailableError(track)
     }
   }
 
   async syncQueueTail(tailTracks: QueueItem[], isCancelled?: () => boolean): Promise<void> {
     if (isCancelled?.()) return
-    const tailIds = tailTracks.map(t => t.platformIds.apple).filter((id): id is string => !!id)
+    const tailIds = tailTracks.map(t => t.appleId).filter((id): id is string => !!id)
     try {
       await syncQueueTail(tailIds, isCancelled)
     } catch (err: any) {
