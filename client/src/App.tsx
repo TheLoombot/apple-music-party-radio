@@ -16,7 +16,7 @@ import { getUserStorefront, findIdentityUid, createIdentityPlaylist } from "./se
 import { getUserId, adoptUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId, removeOwnedStationId, getStationName, setStationName } from "./services/identity"
 import { stationSocket, indexSocket } from "./services/partykit"
 import { isValidFreqId, pickAvailableFreqId } from "./services/frequency"
-import { sameTrack } from "../../shared/track"
+import { sameTrack, trackKey } from "../../shared/track"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
 import { AppleMusicCatalog } from "./services/catalog"
@@ -934,7 +934,16 @@ export default function App() {
           addBadgeCount={isPrivileged ? suggestions.length : 0}
           djNotes={djNotes}
           onSaveDjNote={isPrivileged ? handleSaveDjNote : undefined}
-          liveHeartCount={nowPlaying?.heartedBy?.length ?? 0}
+          heartCount={(() => {
+            // Running total: persistent station-wide hearts for this track plus
+            // the hearts it's earned on the current spin. The current spin isn't
+            // folded into trackHearts until the track expires (foldHearts), so the
+            // two are disjoint and add without double-counting.
+            const spin = nowPlaying?.heartedBy?.length ?? 0
+            const tKey = nowPlaying ? trackKey(nowPlaying) : null
+            const persisted = tKey ? trackHearts[tKey] ?? 0 : 0
+            return spin + persisted
+          })()}
           hasHearted={!!nowPlaying?.heartedBy?.includes(user.uid)}
           onHeartToggle={nowPlaying ? handleHeartToggle : undefined}
         />

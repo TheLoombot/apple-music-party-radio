@@ -72,8 +72,9 @@ interface Props {
   addBadgeCount?: number
   djNotes?: Record<string, string>
   onSaveDjNote?: (itemId: string, note: string) => void
-  /** Hearts tallied for the current play. Updates live as listeners toggle. */
-  liveHeartCount?: number
+  /** Running total of hearts for this track: the persistent station-wide total
+   *  plus hearts earned on the current play. Updates live as listeners toggle. */
+  heartCount?: number
   /** Whether the current user has hearted the currently-playing track. */
   hasHearted?: boolean
   /** Toggle the heart for the current track. Undefined when no track is playing. */
@@ -440,7 +441,7 @@ function useFrequencyScan(frequency: number | undefined) {
   return displayFreq
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, chatPanelOpen, listenerCount, unreadChat, onOpenAddTracks, addTracksPanelOpen, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote, liveHeartCount = 0, hasHearted = false, onHeartToggle }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, chatPanelOpen, listenerCount, unreadChat, onOpenAddTracks, addTracksPanelOpen, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote, heartCount = 0, hasHearted = false, onHeartToggle }: Props) {
   const isMobile = useIsMobile()
   const { progress, elapsed } = useProgress(track)
   // Both `isPlaying` (MediaSession OS controls) and `quiet` (mute icon/label)
@@ -717,7 +718,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                       className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-2 text-white ${hasHearted ? "btn-3d-pressed text-red-400" : ""}`}
                     >
                       <Heart size={20} strokeWidth={2.5} className={hasHearted ? "fill-current" : ""} />
-                      <span className="text-base font-semibold tabular-nums">{liveHeartCount}</span>
+                      <span className="text-base font-semibold tabular-nums">{heartCount}</span>
                     </button>
                   </Tooltip>
                 )}
