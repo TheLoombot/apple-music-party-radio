@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react"
 import { AnimatePresence, motion } from "framer-motion"
-import { Volume2, VolumeX, SkipForward, Library, Info, Rewind, FastForward, Ban, MessageCircle, Plus, Heart } from "lucide-react"
+import { Volume2, VolumeX, SkipForward, Library, Info, Rewind, FastForward, Ban, MessageCircle, Plus, Heart, BookmarkPlus, BookmarkCheck, BookmarkX } from "lucide-react"
 import { Tooltip } from "./Tooltip"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
@@ -79,6 +79,12 @@ interface Props {
   hasHearted?: boolean
   /** Toggle the heart for the current track. Undefined when no track is playing. */
   onHeartToggle?: () => void
+  /** Save the current track to the listener's own Apple Music library (their
+   *  hat.fm playlist). Undefined when the track has no playable catalog id. */
+  onSaveToLibrary?: () => void
+  /** Lifecycle of the current track's library save — drives the busy /
+   *  latched / retry looks of the save button. Undefined = not saved yet. */
+  librarySaveState?: "saving" | "saved" | "error"
 }
 
 function useProgress(track: QueueItem | null) {
@@ -441,7 +447,7 @@ function useFrequencyScan(frequency: number | undefined) {
   return displayFreq
 }
 
-export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, chatPanelOpen, listenerCount, unreadChat, onOpenAddTracks, addTracksPanelOpen, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote, heartCount = 0, hasHearted = false, onHeartToggle }: Props) {
+export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, onSkipAndBan, isMuted, onMuteToggle, isBlocked, onResume, onAlbumClick, onOpenPool, catalog, stationName, isOwner, ownerName, onRenameStation, onOpenStationModal, activeStationCount, frequency, onPrevStation, onNextStation, loading, onOpenChat, chatPanelOpen, listenerCount, unreadChat, onOpenAddTracks, addTracksPanelOpen, addButtonLabel, addBadgeCount, djNotes, onSaveDjNote, heartCount = 0, hasHearted = false, onHeartToggle, onSaveToLibrary, librarySaveState }: Props) {
   const isMobile = useIsMobile()
   const { progress, elapsed } = useProgress(track)
   // Both `isPlaying` (MediaSession OS controls) and `quiet` (mute icon/label)
@@ -690,39 +696,65 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               )}
             </motion.div>
 
-            {/* Controls — Add + Heart share the top row, Pool/Skip/Ban below */}
+            {/* Controls — Add + Save + Heart share the top row, Pool/Skip/Ban below */}
             <div className="px-4 pb-5 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                {onOpenAddTracks && (
-                  <Tooltip label={addButtonLabel ?? "Add tracks"} align="start">
-                    <button
-                      onClick={onOpenAddTracks}
-                      aria-label={addButtonLabel ?? "Add tracks"}
-                      className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white ${addTracksPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
-                    >
-                      <Plus size={24} strokeWidth={3} />
-                      {(addBadgeCount ?? 0) > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-accent rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 leading-none pointer-events-none">
-                          {addBadgeCount! > 9 ? "9+" : addBadgeCount}
-                        </span>
-                      )}
-                    </button>
-                  </Tooltip>
-                )}
-                {onHeartToggle && (
-                  <Tooltip label={hasHearted ? "Take back your heart" : "Heart this track"} align="end">
-                    <button
-                      onClick={onHeartToggle}
-                      aria-label={hasHearted ? "Unheart" : "Heart this track"}
-                      aria-pressed={hasHearted}
-                      className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-2 text-white ${hasHearted ? "btn-3d-pressed text-red-400" : ""}`}
-                    >
-                      <Heart size={20} strokeWidth={2.5} className={hasHearted ? "fill-current" : ""} />
-                      <span className="text-base font-semibold tabular-nums">{heartCount}</span>
-                    </button>
-                  </Tooltip>
-                )}
-              </div>
+              {(() => {
+                const cols = [onOpenAddTracks, onSaveToLibrary, onHeartToggle].filter(Boolean).length
+                const saveLabel = librarySaveState === "saved" ? "Saved to your hat.fm playlist"
+                  : librarySaveState === "saving" ? "Saving…"
+                  : librarySaveState === "error" ? "Couldn't save — tap to retry"
+                  : "Save to your Apple Music library"
+                return (
+                  <div className={`grid gap-2 ${cols === 3 ? "grid-cols-3" : cols === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
+                    {onOpenAddTracks && (
+                      <Tooltip label={addButtonLabel ?? "Add tracks"} align="start">
+                        <button
+                          onClick={onOpenAddTracks}
+                          aria-label={addButtonLabel ?? "Add tracks"}
+                          className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white ${addTracksPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
+                        >
+                          <Plus size={24} strokeWidth={3} />
+                          {(addBadgeCount ?? 0) > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] bg-accent rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 leading-none pointer-events-none">
+                              {addBadgeCount! > 9 ? "9+" : addBadgeCount}
+                            </span>
+                          )}
+                        </button>
+                      </Tooltip>
+                    )}
+                    {onSaveToLibrary && (
+                      <Tooltip label={saveLabel}>
+                        <button
+                          onClick={onSaveToLibrary}
+                          disabled={librarySaveState === "saving"}
+                          aria-disabled={librarySaveState === "saving" || librarySaveState === "saved"}
+                          aria-label={saveLabel}
+                          className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white
+                            ${librarySaveState === "saved" ? "btn-3d-pressed text-green-400"
+                              : librarySaveState === "error" ? "text-red-400" : ""}`}
+                        >
+                          {librarySaveState === "saved" ? <BookmarkCheck size={20} strokeWidth={2.5} />
+                            : librarySaveState === "error" ? <BookmarkX size={20} strokeWidth={2.5} />
+                            : <BookmarkPlus size={20} strokeWidth={2.5} className={librarySaveState === "saving" ? "animate-pulse" : ""} />}
+                        </button>
+                      </Tooltip>
+                    )}
+                    {onHeartToggle && (
+                      <Tooltip label={hasHearted ? "Take back your heart" : "Heart this track"} align="end">
+                        <button
+                          onClick={onHeartToggle}
+                          aria-label={hasHearted ? "Unheart" : "Heart this track"}
+                          aria-pressed={hasHearted}
+                          className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-2 text-white ${hasHearted ? "btn-3d-pressed text-red-400" : ""}`}
+                        >
+                          <Heart size={20} strokeWidth={2.5} className={hasHearted ? "fill-current" : ""} />
+                          <span className="text-base font-semibold tabular-nums">{heartCount}</span>
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
+                )
+              })()}
               <div className="grid grid-cols-3 gap-2">
                 <Tooltip label={onOpenPool ? "Open pool" : "DJs only"} align="start">
                   <button

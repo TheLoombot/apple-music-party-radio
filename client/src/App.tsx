@@ -12,7 +12,7 @@ import { CommentsPanel } from "./components/CommentsPanel"
 import { DiscoveryModal } from "./components/DiscoveryModal"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized, getMusicKit } from "./services/musickit"
-import { getUserStorefront, findIdentityUid, createIdentityPlaylist } from "./services/appleMusic"
+import { getUserStorefront, findIdentityUid, createIdentityPlaylist, saveTrackToIdentityPlaylist, isTrackSavedToLibrary } from "./services/appleMusic"
 import { getUserId, adoptUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId, removeOwnedStationId, getStationName, setStationName } from "./services/identity"
 import { stationSocket, indexSocket } from "./services/partykit"
 import { isValidFreqId, pickAvailableFreqId } from "./services/frequency"
@@ -83,6 +83,10 @@ export default function App() {
   const [djNotes, setDjNotes] = useState<Record<string, string>>({})
   const [trackHearts, setTrackHearts] = useState<Record<string, number>>({})
   const [djHearts, setDjHearts] = useState<Record<string, number>>({})
+  // Save-to-library lifecycle per Apple catalog id. "saved" persists for the
+  // session (and is pre-seeded from the hat.fm playlist contents when a track
+  // starts playing); "error" auto-clears so the button invites a retry.
+  const [librarySaves, setLibrarySaves] = useState<Record<string, "saving" | "saved" | "error">>({})
   const [albumModal, setAlbumModal] = useState<{ playlist: AlbumResult; tracks: Track[] | null } | null>(null)
   // True between entering a station and receiving its first queue snapshot from the server.
   // Lets NowPlaying distinguish "tuning in" from "confirmed empty queue".
@@ -383,6 +387,35 @@ export default function App() {
     if (!user || !nowPlaying) return
     stationSocket.heart(nowPlaying.key, user.uid)
   }, [user, nowPlaying])
+
+  // Pre-mark the library-save button when the playing track is already in the
+  // user's hat.fm playlist (saved in an earlier session). The playlist
+  // snapshot loads once per session; afterwards this check is memory-only.
+  useEffect(() => {
+    const track = nowPlaying
+    const id = track?.appleId
+    if (!track || !id || librarySaves[id]) return
+    void isTrackSavedToLibrary(track).then(saved => {
+      if (saved) setLibrarySaves(s => (s[id] ? s : { ...s, [id]: "saved" }))
+    })
+  }, [nowPlaying?.appleId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSaveToLibrary = useCallback(async () => {
+    const track = nowPlaying
+    const id = track?.appleId
+    if (!track || !id || !user) return
+    if (librarySaves[id] === "saving" || librarySaves[id] === "saved") return
+    setLibrarySaves(s => ({ ...s, [id]: "saving" }))
+    const result = await saveTrackToIdentityPlaylist(track, user.uid)
+    setLibrarySaves(s => ({ ...s, [id]: result === "failed" ? "error" : "saved" }))
+    if (result === "failed") {
+      setTimeout(() => setLibrarySaves(s => {
+        if (s[id] !== "error") return s
+        const { [id]: _, ...rest } = s
+        return rest
+      }), 2500)
+    }
+  }, [user, nowPlaying, librarySaves])
 
   const handleSuggestTrack = useCallback((track: Track) => {
     if (!user || !track.appleId) return
@@ -946,6 +979,8 @@ export default function App() {
           })()}
           hasHearted={!!nowPlaying?.heartedBy?.includes(user.uid)}
           onHeartToggle={nowPlaying ? handleHeartToggle : undefined}
+          onSaveToLibrary={nowPlaying?.appleId ? handleSaveToLibrary : undefined}
+          librarySaveState={nowPlaying?.appleId ? librarySaves[nowPlaying.appleId] : undefined}
         />
 
         <UpNext

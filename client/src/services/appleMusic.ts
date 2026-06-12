@@ -1,5 +1,6 @@
 import { getMusicUserToken, artworkUrl } from "./musickit"
 import { log } from "./log"
+import { sameTrack } from "../../../shared/track"
 import type { Track, SearchItem, LibraryPlaylistResult, LibraryAlbumResult, PlaylistResult, AlbumResult } from "../types"
 
 function headers(): HeadersInit {
@@ -222,20 +223,28 @@ export async function getLibraryPlaylists(): Promise<LibraryPlaylistResult[]> {
   return results
 }
 
-// ─── Identity playlist (DJ profile portability) ──────────────────────────────
+// ─── Identity playlist (DJ profile portability + saved tracks) ───────────────
 //
 // The user's iCloud Music Library doubles as cross-device storage for their
 // hat.fm uid: a private library playlist carries the uid in its description,
-// and iCloud sync makes it appear on every device they use. Write-once by
-// necessity — the public Apple Music API cannot edit or delete library
-// playlists — which is fine because the uid is immutable.
+// and iCloud sync makes it appear on every device they use. Attributes are
+// write-once by necessity — the public Apple Music API cannot edit or delete
+// library playlists — which is fine because the uid is immutable. Tracks CAN
+// be appended though, and the same playlist collects everything the user
+// saves from stations (the save-to-library button), so it earns its place in
+// their library instead of sitting there as a mystery artifact.
 
 const IDENTITY_PLAYLIST_NAME = "hat.fm"
 const IDENTITY_MARKER = "ampr:v1:"
-/** Signature track added to the identity playlist — the title explains the
- *  playlist's job to anyone who finds it in their library. Resolved via
- *  catalog search in the user's storefront, never a hardcoded id. */
-const IDENTITY_TRACK_SEARCH = "Don't You (Forget About Me) Simple Minds"
+
+// Session caches for the save-to-library feature. The playlist's library id
+// is discovered as a side effect of the boot-time findIdentityUid() call (or
+// of creating the playlist); the contents snapshot loads lazily, once, the
+// first time a saved-state check or a save needs it.
+let identityPlaylistId: string | null = null
+let identityCreateOp: Promise<string | null> | null = null
+let identitySavedTracks: Track[] | null = null
+let identitySavedTracksOp: Promise<Track[] | null> | null = null
 
 function parseIdentityMarker(description: string | undefined): string | null {
   const m = (description ?? "").match(/ampr:v1:([0-9a-fA-F-]{16,})/)
@@ -247,9 +256,10 @@ function parseIdentityMarker(description: string | undefined): string | null {
  *  the playlist in the Music app), fall back to scanning all library playlists
  *  for the description marker before giving up. Multiple matches (two fresh
  *  devices racing) tie-break on earliest dateAdded so every device converges
- *  on the same uid. */
+ *  on the same uid. Side effect: caches the winning playlist's library id for
+ *  the save-to-library feature. */
 export async function findIdentityUid(): Promise<string | null> {
-  const candidates: { uid: string; dateAdded: string }[] = []
+  const candidates: { uid: string; playlistId: string; dateAdded: string }[] = []
 
   try {
     const params = new URLSearchParams({ term: IDENTITY_PLAYLIST_NAME, types: "library-playlists", limit: "25" })
@@ -264,7 +274,7 @@ export async function findIdentityUid(): Promise<string | null> {
           if (detail.ok) attrs = (await detail.json()).data?.[0]?.attributes
         }
         const uid = parseIdentityMarker(attrs?.description?.standard)
-        if (uid) candidates.push({ uid, dateAdded: attrs?.dateAdded ?? "" })
+        if (uid) candidates.push({ uid, playlistId: item.id, dateAdded: attrs?.dateAdded ?? "" })
       }
     }
   } catch (e) {
@@ -276,7 +286,7 @@ export async function findIdentityUid(): Promise<string | null> {
     try {
       for (const pl of await getLibraryPlaylists()) {
         const uid = parseIdentityMarker(pl.description)
-        if (uid) candidates.push({ uid, dateAdded: "" })
+        if (uid) candidates.push({ uid, playlistId: pl.id, dateAdded: "" })
       }
     } catch (e) {
       log.net.warn("identity playlist scan failed:", e)
@@ -285,33 +295,123 @@ export async function findIdentityUid(): Promise<string | null> {
 
   if (candidates.length === 0) return null
   candidates.sort((a, b) => (a.dateAdded || "9999").localeCompare(b.dateAdded || "9999"))
+  identityPlaylistId = candidates[0].playlistId
   return candidates[0].uid
 }
 
-/** Create the identity playlist carrying `uid`, seeded with the signature
- *  track. Best-effort — the track (and the whole call) failing is tolerable;
- *  the next boot retries creation. */
-export async function createIdentityPlaylist(uid: string): Promise<void> {
-  let trackId: string | undefined
-  try {
-    const storefront = await getUserStorefront()
-    const params = new URLSearchParams({ term: IDENTITY_TRACK_SEARCH, types: "songs", limit: "1" })
-    const res = await fetch(`https://api.music.apple.com/v1/catalog/${storefront}/search?${params}`, { headers: headers() })
-    if (res.ok) trackId = (await res.json()).results?.songs?.data?.[0]?.id
-  } catch { /* the track is a wink, not a requirement */ }
+/** Create the identity playlist carrying `uid`. Created empty — it fills up
+ *  with the tracks the user saves. Best-effort and single-flight (the boot-
+ *  time fire-and-forget call and a fast first save share one POST); a failed
+ *  create clears the latch so the next save attempt retries. Resolves to the
+ *  new playlist's library id, or null on failure. */
+export function createIdentityPlaylist(uid: string): Promise<string | null> {
+  identityCreateOp ??= (async () => {
+    let id: string | null = null
+    try {
+      const res = await fetch("https://api.music.apple.com/v1/me/library/playlists", {
+        method: "POST",
+        headers: { ...headers(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attributes: {
+            name: IDENTITY_PLAYLIST_NAME,
+            description: `Tracks you save on hat.fm land here. The playlist also remembers who you are — don't delete it. ${IDENTITY_MARKER}${uid}`,
+          },
+        }),
+      })
+      if (res.ok) id = (await res.json()).data?.[0]?.id ?? null
+      else log.net.warn(`identity playlist create failed: ${res.status}`)
+    } catch (e) {
+      log.net.warn("identity playlist create failed:", e)
+    }
+    if (id) {
+      identityPlaylistId = id
+      identitySavedTracks = []  // brand-new playlist — nothing saved yet
+    } else {
+      identityCreateOp = null   // let a later save attempt retry
+    }
+    return id
+  })()
+  return identityCreateOp
+}
 
-  const res = await fetch("https://api.music.apple.com/v1/me/library/playlists", {
-    method: "POST",
-    headers: { ...headers(), "Content-Type": "application/json" },
-    body: JSON.stringify({
-      attributes: {
-        name: IDENTITY_PLAYLIST_NAME,
-        description: `This playlist remembers who you are on hat.fm — don't delete it. ${IDENTITY_MARKER}${uid}`,
-      },
-      ...(trackId ? { relationships: { tracks: { data: [{ id: trackId, type: "songs" }] } } } : {}),
-    }),
+/** All tracks currently in the identity playlist, paginated. Returns null on
+ *  failure ("unknown" — callers must not treat that as empty). Apple returns
+ *  404 for a playlist that has no tracks yet; that one IS empty. */
+async function fetchIdentityPlaylistTracks(playlistId: string): Promise<Track[] | null> {
+  const out: Track[] = []
+  let url = `https://api.music.apple.com/v1/me/library/playlists/${playlistId}/tracks?limit=100&include=catalog&fields[songs]=isrc,name,artistName,albumName,artwork,durationInMillis,playParams,offers`
+  try {
+    while (url) {
+      const res = await fetch(url, { headers: headers() })
+      if (res.status === 404) break  // tracks relationship absent = empty playlist
+      if (!res.ok) return null
+      const data = await res.json()
+      for (const item of data.data ?? []) out.push(normalizeLibraryTrackWithCatalog(item))
+      url = data.next ? `https://api.music.apple.com${data.next}` : ""
+    }
+  } catch (e) {
+    log.net.warn("identity playlist tracks fetch failed:", e)
+    return null
+  }
+  return out
+}
+
+/** Single-flight loader for the saved-tracks snapshot. A failed load clears
+ *  the latch so the next check/save retries instead of caching the failure. */
+function loadIdentitySavedTracks(playlistId: string): Promise<Track[] | null> {
+  identitySavedTracksOp ??= fetchIdentityPlaylistTracks(playlistId).then(tracks => {
+    if (tracks) identitySavedTracks = tracks
+    else identitySavedTracksOp = null
+    return tracks
   })
-  if (!res.ok) log.net.warn(`identity playlist create failed: ${res.status}`)
+  return identitySavedTracksOp
+}
+
+/** Passive "is this track already saved?" check for pre-marking the save
+ *  button. Never creates the playlist and never re-searches the library — if
+ *  the id isn't already cached (boot-time lookup missed), the answer is
+ *  simply false. */
+export async function isTrackSavedToLibrary(track: Track): Promise<boolean> {
+  if (!identityPlaylistId) return false
+  const tracks = identitySavedTracks ?? await loadIdentitySavedTracks(identityPlaylistId)
+  return !!tracks?.some(t => sameTrack(t, track))
+}
+
+export type LibrarySaveResult = "saved" | "already" | "failed"
+
+/** Append a track to the identity playlist — the "save to your Apple Music
+ *  library" button. iCloud sync carries the playlist into the Music app on
+ *  all the user's devices. Re-resolves (or creates) the playlist when the id
+ *  isn't cached, so it self-heals if the boot-time lookup failed; dedupes
+ *  against the playlist contents (ISRC first, via sameTrack) so saves across
+ *  sessions and storefronts don't pile up copies. */
+export async function saveTrackToIdentityPlaylist(track: Track, uid: string): Promise<LibrarySaveResult> {
+  if (!track.appleId) return "failed"
+  if (!identityPlaylistId && identityCreateOp) await identityCreateOp  // boot-time create still in flight
+  if (!identityPlaylistId) await findIdentityUid()                     // caches the id when it hits
+  if (!identityPlaylistId) await createIdentityPlaylist(uid)
+  const playlistId = identityPlaylistId
+  if (!playlistId) return "failed"
+
+  const existing = identitySavedTracks ?? await loadIdentitySavedTracks(playlistId)
+  if (existing?.some(t => sameTrack(t, track))) return "already"
+
+  try {
+    const res = await fetch(`https://api.music.apple.com/v1/me/library/playlists/${playlistId}/tracks`, {
+      method: "POST",
+      headers: { ...headers(), "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [{ id: track.appleId, type: "songs" }] }),
+    })
+    if (!res.ok) {
+      log.net.warn(`library save failed: ${res.status}`)
+      return "failed"
+    }
+  } catch (e) {
+    log.net.warn("library save failed:", e)
+    return "failed"
+  }
+  identitySavedTracks?.push(track)
+  return "saved"
 }
 
 export async function getLibraryPlaylistTracks(playlistId: string): Promise<Track[]> {
