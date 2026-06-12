@@ -9,6 +9,10 @@ import PartySocket from "partysocket"
 import { log } from "./log"
 import { migrateTrack } from "../../../shared/track"
 import type { QueueItem, Track, PoolTrack, Station, LogEntry, Visit, SuggestedTrack } from "../types"
+import type { FaceConfig } from "../components/FaceGenerator"
+
+/** Roaming identity for a uid: display name + optional customized avatar. */
+export type Profile = { displayName: string | null; faceConfig: FaceConfig | null }
 
 // In dev, partykit runs locally on port 1999.
 // In production, set VITE_PARTYKIT_HOST to your deployed host, e.g.:
@@ -215,6 +219,9 @@ export class IndexSocket {
   private disconnectTimer: ReturnType<typeof setTimeout> | null = null
   onStationsUpdate?: (stations: Station[]) => void
   onConnectionChange?: (connected: boolean) => void
+  /** Fired when any user's roaming profile (name/avatar) changes, so clients
+   *  rendering that uid can update live. */
+  onProfileUpdate?: (uid: string, profile: Profile) => void
 
   connect() {
     this.disconnect()
@@ -242,6 +249,8 @@ export class IndexSocket {
       }
       if (msg.type === "stations_update") {
         this.onStationsUpdate?.(msg.stations ?? [])
+      } else if (msg.type === "profile_update") {
+        this.onProfileUpdate?.(msg.uid, { displayName: msg.displayName ?? null, faceConfig: msg.faceConfig ?? null })
       }
     }
   }
@@ -261,19 +270,21 @@ export class IndexSocket {
     this.socket?.send(JSON.stringify({ type: "remove_station", id, ownerUid }))
   }
 
-  /** Publish the roaming display name for a uid (DJ profile portability). */
-  setProfile(uid: string, displayName: string) {
-    this.socket?.send(JSON.stringify({ type: "set_profile", uid, displayName }))
+  /** Publish the roaming profile (display name + optional avatar) for a uid.
+   *  The server persists it and broadcasts a profile_update to all clients. */
+  setProfile(uid: string, displayName: string, faceConfig?: FaceConfig) {
+    this.socket?.send(JSON.stringify({ type: "set_profile", uid, displayName, faceConfig }))
   }
 
-  /** Look up the roaming display name for a uid. Plain HTTP — usable before
-   *  the index socket is connected (i.e. during completeAuth). */
-  async getProfile(uid: string): Promise<string | null> {
+  /** Look up the roaming profile for a uid. Plain HTTP — usable before the
+   *  index socket is connected (i.e. during completeAuth) and for lazy
+   *  hydration of avatars in the profile cache. */
+  async getProfile(uid: string): Promise<Profile | null> {
     try {
       const res = await fetch(partyUrl("index", `/profile?uid=${encodeURIComponent(uid)}`))
       if (!res.ok) return null
-      const data = await res.json() as { displayName: string | null }
-      return data.displayName ?? null
+      const data = await res.json() as Profile
+      return { displayName: data.displayName ?? null, faceConfig: data.faceConfig ?? null }
     } catch {
       return null
     }

@@ -3,6 +3,8 @@
  * Replaces Firebase Anonymous Auth.
  */
 
+import type { FaceConfig } from "../components/FaceGenerator"
+
 export function getUserId(): string {
   let id = localStorage.getItem("ampr_uid")
   if (!id) {
@@ -31,6 +33,22 @@ export function getDisplayName(): string | null {
 
 export function setDisplayName(name: string) {
   localStorage.setItem("ampr_display_name", name)
+}
+
+/** The user's chosen avatar, or null if they've never customized it (in which
+ *  case the avatar is derived deterministically from the uid). Durable local
+ *  copy; also roamed server-side via the index profile rail. */
+export function getFaceConfig(): FaceConfig | null {
+  try {
+    const raw = localStorage.getItem("ampr_face_config")
+    return raw ? JSON.parse(raw) as FaceConfig : null
+  } catch {
+    return null
+  }
+}
+
+export function setFaceConfig(config: FaceConfig) {
+  localStorage.setItem("ampr_face_config", JSON.stringify(config))
 }
 
 export function getOwnedStationIds(): string[] {

@@ -131,6 +131,20 @@ interface StationOwnership {
   createdAt: number
 }
 
+/** Avatar parameters (mirrors client FaceConfig). Stored on the roaming profile
+ *  so a customized avatar follows the user across devices and reaches everyone. */
+interface FaceConfig {
+  hair: number; eyes: number; brows: number; nose: number; mouth: number
+  glasses: number; bgColor: number; skinTone: number
+  hairColor: number; eyeColor: number; shirtColor: number
+}
+
+interface Profile {
+  displayName: string
+  faceConfig?: FaceConfig
+  updatedAt: number
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /** How many robot-queued tracks to maintain in the tail of the queue at all times. */
@@ -429,9 +443,12 @@ export default class RadioParty implements Party.Server {
       // identity playlist, so the name follows the profile across devices.
       if (req.method === "GET" && url.pathname.endsWith("/profile")) {
         const uid = url.searchParams.get("uid") ?? ""
-        const profiles = await this.storage<Record<string, { displayName: string; updatedAt: number }>>("profiles", {})
-        const displayName = profiles[uid]?.displayName ?? null
-        return new Response(JSON.stringify({ displayName }), {
+        const profiles = await this.storage<Record<string, Profile>>("profiles", {})
+        const profile = profiles[uid]
+        return new Response(JSON.stringify({
+          displayName: profile?.displayName ?? null,
+          faceConfig: profile?.faceConfig ?? null,
+        }), {
           headers: { "Content-Type": "application/json", ...corsHeaders },
         })
       }
@@ -677,8 +694,9 @@ export default class RadioParty implements Party.Server {
       const uid = String(msg.uid ?? "").slice(0, 64)
       const displayName = String(msg.displayName ?? "").trim().slice(0, 64)
       if (!uid || !displayName) return
-      const profiles = await this.storage<Record<string, { displayName: string; updatedAt: number }>>("profiles", {})
-      profiles[uid] = { displayName, updatedAt: Date.now() }
+      const faceConfig = sanitizeFaceConfig(msg.faceConfig) ?? undefined
+      const profiles = await this.storage<Record<string, Profile>>("profiles", {})
+      profiles[uid] = { displayName, faceConfig, updatedAt: Date.now() }
       const entries = Object.entries(profiles)
       if (entries.length > MAX_PROFILES) {
         entries.sort((a, b) => b[1].updatedAt - a[1].updatedAt)
@@ -686,6 +704,9 @@ export default class RadioParty implements Party.Server {
       } else {
         await this.room.storage.put("profiles", profiles)
       }
+      // Push to all connected clients so customized name/avatar update live in
+      // every list rendering this uid (NowPlaying, UpNext, chat, station list).
+      this.room.broadcast(json({ type: "profile_update", uid, displayName, faceConfig }))
       return
     }
     if (msg.type === "remove_station") {
@@ -1810,5 +1831,24 @@ function randomFrequency(): number {
 
 function json(data: object): string {
   return JSON.stringify(data)
+}
+
+/** Sanitize an untrusted faceConfig from the wire into a valid FaceConfig, or
+ *  null if it isn't a usable object. Each field must be a finite integer >= 0;
+ *  out-of-range values are clamped to 0 rather than rejecting the whole config.
+ *  Upper bounds aren't enforced (the client tolerates unknown indices by
+ *  wrapping), but the floor + finiteness guard keeps the SVG renderer safe. */
+function sanitizeFaceConfig(raw: any): FaceConfig | null {
+  if (!raw || typeof raw !== "object") return null
+  const keys: (keyof FaceConfig)[] = [
+    "hair", "eyes", "brows", "nose", "mouth", "glasses",
+    "bgColor", "skinTone", "hairColor", "eyeColor", "shirtColor",
+  ]
+  const out = {} as FaceConfig
+  for (const k of keys) {
+    const v = raw[k]
+    out[k] = Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0
+  }
+  return out
 }
 

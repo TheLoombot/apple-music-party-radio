@@ -4,7 +4,7 @@ import { SetupScreen } from "./components/SetupScreen"
 import { NowPlaying } from "./components/NowPlaying"
 import { UpNext } from "./components/UpNext"
 import { RobotQueue } from "./components/RobotQueue"
-import { FaceGenerator } from "./components/FaceGenerator"
+import { FaceGenerator, DJFace } from "./components/FaceGenerator"
 import { PoolModal } from "./components/PoolModal"
 import { StationModal } from "./components/StationModal"
 import { StationList } from "./components/StationList"
@@ -13,8 +13,11 @@ import { DiscoveryModal } from "./components/DiscoveryModal"
 import { PlaylistModal } from "./components/PlaylistModal"
 import { initMusicKit, authorize, isAuthorized, getMusicKit } from "./services/musickit"
 import { getUserStorefront, findIdentityUid, createIdentityPlaylist, saveTrackToIdentityPlaylist, isTrackSavedToLibrary } from "./services/appleMusic"
-import { getUserId, adoptUserId, getDisplayName, setDisplayName, getOwnedStationIds, addOwnedStationId, removeOwnedStationId, getStationName, setStationName } from "./services/identity"
+import { getUserId, adoptUserId, getDisplayName, setDisplayName, getFaceConfig, setFaceConfig, getOwnedStationIds, addOwnedStationId, removeOwnedStationId, getStationName, setStationName } from "./services/identity"
 import { stationSocket, indexSocket } from "./services/partykit"
+import { initProfileCache, setCachedFace } from "./services/profiles"
+import type { FaceConfig } from "./components/FaceGenerator"
+import { ProfileModal } from "./components/ProfileModal"
 import { isValidFreqId, pickAvailableFreqId } from "./services/frequency"
 import { sameTrack, trackKey } from "../../shared/track"
 import { PlaybackLoop } from "./services/playbackLoop"
@@ -75,8 +78,7 @@ export default function App() {
   const [createError, setCreateError] = useState<"" | "band-full" | "slot-taken" | "error">("")
   const [isCreatingStation, setIsCreatingStation] = useState(false)
   const [previewFrequency, setPreviewFrequency] = useState<string | null>(null)
-  const [renamingDJ, setRenamingDJ] = useState(false)
-  const [renameInput, setRenameInput] = useState("")
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [queueFullAlert, setQueueFullAlert] = useState<number | null>(null)
   const [suggestions, setSuggestions] = useState<SuggestedTrack[]>([])
   const [suggestionsFullAlert, setSuggestionsFullAlert] = useState<number | null>(null)
@@ -101,7 +103,6 @@ export default function App() {
       return next
     })
   }, [])
-  const renameRef = useRef<HTMLInputElement>(null)
   // Auth completed but no display name found locally or in the roaming
   // profile — holds the auth result while the naming screen collects one.
   const pendingAuthRef = useRef<{ uid: string; storefront: string } | null>(null)
@@ -184,9 +185,16 @@ export default function App() {
       }
     }
     indexSocket.connect()
-    // Publish the roaming profile (uid → display name). Re-runs on rename
-    // since handleCommitRename replaces the user object, re-running this effect.
-    indexSocket.setProfile(user.uid, user.displayName)
+    // Receive live name/avatar changes from other users into the avatar cache.
+    initProfileCache()
+    // Seed the cache with our own customized face so it renders immediately
+    // (and offline), before any server round-trip.
+    setCachedFace(user.uid, getFaceConfig())
+    // Publish the roaming profile (uid → display name + avatar). Re-runs on
+    // rename since the Save handler replaces the user object, re-running this
+    // effect. Always send the face too — set_profile replaces the stored record,
+    // so omitting it would wipe a previously-saved avatar.
+    indexSocket.setProfile(user.uid, user.displayName, getFaceConfig() ?? undefined)
     // Sweep legacy slug-shaped ids out of localStorage (pre-frequency-id model).
     // Anything that isn't a valid FM frequency is dropped silently.
     const owned = getOwnedStationIds()
@@ -321,7 +329,9 @@ export default function App() {
     // established identity); otherwise it only fills in a missing local name.
     if (adopted || !getDisplayName()) {
       const remote = await indexSocket.getProfile(uid)
-      if (remote) setDisplayName(remote)
+      if (remote?.displayName) setDisplayName(remote.displayName)
+      // Recover a customized avatar too (roams with the identity playlist uid).
+      if (remote?.faceConfig) setFaceConfig(remote.faceConfig)
     }
     catalog.current = new AppleMusicCatalog(storefront)
     const displayName = getDisplayName()
@@ -454,24 +464,26 @@ export default function App() {
     await playbackLoop.current.resume()
   }, [])
 
-  const handleStartRename = useCallback(() => {
+  const handleSaveProfile = useCallback((displayName: string, faceConfig: FaceConfig) => {
     if (!user) return
-    setRenameInput(user.displayName)
-    setRenamingDJ(true)
-    setTimeout(() => renameRef.current?.select(), 0)
-  }, [user])
-
-  const handleCommitRename = useCallback(() => {
-    if (!user) return
-    const name = renameInput.trim() || user.displayName
-    setDisplayName(name)
-    setUser(prev => prev ? { ...prev, displayName: name } : prev)
-    // Re-register owned stations using their own stored names (not the DJ name)
+    // Avatar: persist locally + seed the cache so our own face updates instantly
+    // everywhere. The [user.displayName] effect re-publishes the roaming profile
+    // (name + face) to the server, which broadcasts it to other clients.
+    setFaceConfig(faceConfig)
+    setCachedFace(user.uid, faceConfig)
+    // Publish name + avatar to the roaming rail now. The [displayName] effect
+    // also publishes, but only fires on a name change — a face-only edit must
+    // push here, or it'd never reach the server / other clients.
+    indexSocket.setProfile(user.uid, displayName, faceConfig)
+    // Name: same propagation as the old inline rename — persist, replace the
+    // user object (re-runs the publish effect), and re-register owned stations
+    // with their own stored names (not the DJ name).
+    setDisplayName(displayName)
+    setUser(prev => prev ? { ...prev, displayName } : prev)
     for (const stationId of getOwnedStationIds()) {
-      indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid, undefined, name)
+      indexSocket.register(stationId, getStationName(stationId), user.storefront, user.uid, undefined, displayName)
     }
-    setRenamingDJ(false)
-  }, [user, renameInput])
+  }, [user])
 
   const handleRenameStation = useCallback((newName: string, newFreq: number) => {
     if (!user || !currentStationId) return
@@ -776,6 +788,16 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {profileModalOpen && (
+          <ProfileModal
+            user={user}
+            onSave={handleSaveProfile}
+            onClose={() => setProfileModalOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {stationModalOpen && (
           <StationModal
             onClose={() => setStationModalOpen(false)}
@@ -1066,24 +1088,14 @@ export default function App() {
           </a>
         </div>
         <div className="text-xs">
-          {renamingDJ ? (
-            <input
-              ref={renameRef}
-              value={renameInput}
-              onChange={e => setRenameInput(e.target.value)}
-              onBlur={handleCommitRename}
-              onKeyDown={e => { if (e.key === "Enter") handleCommitRename(); if (e.key === "Escape") setRenamingDJ(false) }}
-              className="bg-surface text-white rounded px-2 py-0.5 text-xs outline-none focus:ring-1 focus:ring-accent w-36"
-            />
-          ) : (
-            <button
-              onClick={handleStartRename}
-              className="text-muted/60 hover:text-white transition-colors"
-              title="Click to rename"
-            >
-              DJ <span className="text-white/60 hover:text-white">{user.displayName}</span>
-            </button>
-          )}
+          <button
+            onClick={() => setProfileModalOpen(true)}
+            className="group/profile flex items-center gap-2 text-muted/60 hover:text-white transition-colors"
+            title="Edit your profile"
+          >
+            <DJFace uid={user.uid} size={20} />
+            DJ <span className="text-white/60 group-hover/profile:text-white transition-colors">{user.displayName}</span>
+          </button>
         </div>
       </footer>
 

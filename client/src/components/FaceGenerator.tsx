@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react"
+import { useFaceConfig } from "../services/profiles"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -451,7 +452,10 @@ export function faceConfigFromUID(uid: string): FaceConfig {
 }
 
 export function DJFace({ uid, size = 32 }: { uid: string; size?: number }) {
-  const config = useMemo(() => faceConfigFromUID(uid), [uid])
+  // A customized avatar (roamed via the profile cache) wins; otherwise the face
+  // is derived deterministically from the uid.
+  const custom = useFaceConfig(uid)
+  const config = useMemo(() => custom ?? faceConfigFromUID(uid), [custom, uid])
   return (
     <div style={{ width: size, height: size }} className="rounded-lg overflow-hidden flex-shrink-0">
       <FaceSVG config={config} />
@@ -517,9 +521,17 @@ export function RobotFace({ size = 32 }: { size?: number }) {
   )
 }
 
-export function FaceGenerator() {
-  const [config, setConfig] = useState<FaceConfig>(randomFace)
-  const set = useCallback((k: keyof FaceConfig, v: number) => setConfig(p => ({ ...p, [k]: v })), [])
+/** Interactive face editor. Controlled when `value`/`onChange` are passed (the
+ *  profile editor); otherwise self-contained with random internal state (the
+ *  debug-menu studio). */
+export function FaceGenerator({ value, onChange }: { value?: FaceConfig; onChange?: (c: FaceConfig) => void } = {}) {
+  const [internal, setInternal] = useState<FaceConfig>(randomFace)
+  const config = value ?? internal
+  const apply = useCallback((next: FaceConfig) => {
+    if (onChange) onChange(next)
+    else setInternal(next)
+  }, [onChange])
+  const set = useCallback((k: keyof FaceConfig, v: number) => apply({ ...config, [k]: v }), [apply, config])
 
   const btnClass = (active: boolean) =>
     `text-xs py-1 rounded-lg transition-colors truncate ${
@@ -537,6 +549,15 @@ export function FaceGenerator() {
         <div className="w-40 h-40 rounded-2xl overflow-hidden shadow-xl flex-shrink-0">
           <FaceSVG config={config} />
         </div>
+
+        {/* Randomize — sits above the manual controls so it reads as the
+            quick-start, with the parameters below for fine-tuning */}
+        <button
+          onClick={() => apply(randomFace())}
+          className="w-full bg-accent hover:bg-accent-hover text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
+        >
+          Randomize
+        </button>
 
         {/* Hair style — 6 options in a 3×2 sub-grid */}
         <div className="w-full">
@@ -580,13 +601,6 @@ export function FaceGenerator() {
           ))}
         </div>
 
-        {/* Randomize */}
-        <button
-          onClick={() => setConfig(randomFace())}
-          className="w-full bg-accent hover:bg-accent-hover text-white font-semibold py-2.5 rounded-xl transition-colors text-sm"
-        >
-          Randomize
-        </button>
       </div>
     </div>
   )
