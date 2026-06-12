@@ -287,7 +287,7 @@ export function CommentsPanel({
                       className="flex items-center gap-3 px-4 py-2.5"
                     >
                       <div className="flex-1 h-px bg-border/60" aria-hidden />
-                      <span className="text-xs text-muted truncate max-w-[70%] flex-shrink-0">
+                      <span className="text-xs text-muted truncate max-w-[85%] flex-shrink-0">
                         ♪ {row.entry.title} — {row.entry.artist}
                       </span>
                       <div className="flex-1 h-px bg-border/60" aria-hidden />
