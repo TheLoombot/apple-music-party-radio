@@ -129,7 +129,7 @@ svg.attention-pulse {
   transition: filter 150ms;
 }
 
-.btn-3d:not(:disabled):hover {
+.btn-3d:not(:disabled):not(.btn-3d-pressed):hover {
   background: linear-gradient(160deg, #2e2e2e 0%, #202020 100%);
   box-shadow:
     inset  0  1px 0 rgba(255, 255, 255, 0.22),
@@ -142,10 +142,22 @@ svg.attention-pulse {
     0 0 6px rgba(255, 152, 0, 0.95),
     0 0 16px rgba(255, 152, 0, 0.7);
 }
-.btn-3d:not(:disabled):hover svg {
+.btn-3d:not(:disabled):not(.btn-3d-pressed):hover svg {
   filter:
     drop-shadow(0 0 5px rgba(255, 152, 0, 0.95))
     drop-shadow(0 0 12px rgba(255, 152, 0, 0.65));
+}
+
+/* Hovering a locked-pressed button: stay fully sunk, just nudge the glow */
+.btn-3d-pressed:not(:disabled):hover {
+  text-shadow:
+    0 0 7px rgba(255, 152, 0, 0.9),
+    0 0 14px rgba(255, 152, 0, 0.5);
+}
+.btn-3d-pressed:not(:disabled):hover svg {
+  filter:
+    drop-shadow(0 0 5px rgba(255, 152, 0, 0.9))
+    drop-shadow(0 0 11px rgba(255, 152, 0, 0.55));
 }
 
 /* Quiet: content is dimly backlit at rest — like an unselected indicator on
