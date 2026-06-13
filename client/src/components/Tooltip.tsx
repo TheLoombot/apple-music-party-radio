@@ -81,7 +81,14 @@ export function Tooltip({ children, label, className, position = "top", align = 
   }
 
   return (
-    <div ref={refs.setReference} {...getReferenceProps(longPress)} className={className}>
+    <div
+      ref={refs.setReference}
+      {...getReferenceProps(longPress)}
+      className={`select-none ${className ?? ""}`}
+      // Stop the long-press (touch) from triggering iOS text selection / the
+      // image-save callout on the held button.
+      style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none", WebkitTapHighlightColor: "transparent" }}
+    >
       {children}
       {isMounted && (
         <FloatingPortal>
