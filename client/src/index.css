@@ -212,6 +212,25 @@ svg.attention-pulse {
   text-shadow: none;
 }
 .btn-3d:disabled svg { filter: none; }
+
+/* Green "confirmed" backlight — recolors the amber content glow to green for
+ * success states (e.g. a track saved to your library), so the lit-up icon
+ * reads as success rather than just another amber button. Declared after the
+ * amber rules above so equal-specificity state selectors lose on source order;
+ * the :hover selector matches the pressed-hover specificity to win there too. */
+.btn-3d-glow-green {
+  text-shadow:
+    0 0 5px rgba(34, 197, 94, 1),
+    0 0 12px rgba(34, 197, 94, 0.8),
+    0 0 20px rgba(34, 197, 94, 0.5);
+}
+.btn-3d-glow-green svg,
+.btn-3d-glow-green:not(:disabled):hover svg {
+  filter:
+    drop-shadow(0 0 4px rgba(34, 197, 94, 1))
+    drop-shadow(0 0 10px rgba(34, 197, 94, 0.8))
+    drop-shadow(0 0 18px rgba(34, 197, 94, 0.5));
+}
 /* Suppress per-component hover colorings (e.g. hover:text-red-400) on disabled */
 .btn-3d:disabled:hover {
   color: rgb(255 255 255 / 0.2);

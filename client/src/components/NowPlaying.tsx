@@ -730,7 +730,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                           aria-disabled={librarySaveState === "saving" || librarySaveState === "saved"}
                           aria-label={saveLabel}
                           className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white
-                            ${librarySaveState === "saved" ? "btn-3d-pressed text-green-400"
+                            ${librarySaveState === "saved" ? "btn-3d-pressed text-green-500 btn-3d-glow-green"
                               : librarySaveState === "error" ? "text-red-400" : ""}`}
                         >
                           {librarySaveState === "saved" ? <BookmarkCheck size={20} strokeWidth={2.5} />
