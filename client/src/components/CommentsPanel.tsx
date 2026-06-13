@@ -186,8 +186,8 @@ export function CommentsPanel({
       <button
         onClick={() => setSelected(s => s?.userId === userId ? null : { userId, displayName })}
         aria-label={displayName}
-        className={`flex-shrink-0 rounded-lg transition-opacity ${present ? "" : "opacity-40 hover:opacity-70"} ${
-          selected?.userId === userId ? "ring-2 ring-accent" : ""
+        className={`flex-shrink-0 rounded-lg transition ${present ? "" : "opacity-40 hover:opacity-70"} ${
+          selected?.userId === userId ? "ring-2 ring-accent ring-offset-2 ring-offset-panel" : ""
         }`}
       >
         <DJFace uid={userId} size={44} />
@@ -197,7 +197,7 @@ export function CommentsPanel({
 
   const header = (
     <div className="px-3 py-2.5 border-b border-border flex items-center gap-2 flex-shrink-0">
-      <div className="flex-1 flex items-center gap-1.5 overflow-x-auto min-w-0">
+      <div className="flex-1 flex items-center gap-1.5 overflow-x-auto min-w-0 p-1.5 -m-1.5">
         {presentSorted.map(l => avatarButton(l.userId, l.displayName, true))}
         {recentVisitors.length > 0 && (
           <div className="w-px h-8 bg-border mx-1 flex-shrink-0" aria-hidden />
