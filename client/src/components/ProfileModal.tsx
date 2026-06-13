@@ -65,7 +65,6 @@ export function ProfileModal({ user, onSave, onClose }: Props) {
               onChange={e => setName(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter") save() }}
               maxLength={64}
-              autoFocus
               placeholder="What's your DJ name?"
               className="w-full bg-surface border border-border rounded-lg px-3 py-2.5 text-white placeholder:text-muted/50 focus:outline-none focus:border-accent"
             />

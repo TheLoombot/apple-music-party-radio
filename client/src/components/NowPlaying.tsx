@@ -926,7 +926,6 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 <p className="text-muted/60 text-xs uppercase tracking-widest">Station Name</p>
                 {isOwner && onRenameStation ? (
                   <input
-                    autoFocus
                     value={nameInput}
                     onChange={e => setNameInput(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setInfoOpen(false) }}
