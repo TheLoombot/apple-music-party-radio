@@ -983,8 +983,8 @@ export default function App() {
           addTracksPanelOpen={discoveryModalOpen}
           addButtonLabel={isPrivileged
             ? suggestions.length > 0
-              ? `Add tracks (${suggestions.length} ${suggestions.length === 1 ? "request" : "requests"})`
-              : "Add tracks"
+              ? `Add tracks to the queue (${suggestions.length} ${suggestions.length === 1 ? "request" : "requests"})`
+              : "Add tracks to the queue"
             : "Request a track"}
           addBadgeCount={isPrivileged ? suggestions.length : 0}
           djNotes={djNotes}

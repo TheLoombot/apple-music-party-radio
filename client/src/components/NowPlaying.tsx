@@ -538,12 +538,12 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
          * prev/next buttons split the remaining row width equally on either
          * side. Strict thirds would clip the LED on narrow mobile widths. */}
         <div className="grid grid-cols-[1fr_auto_1fr] gap-2 px-4 pt-2 pb-2">
-          <Tooltip label="Previous station" position="bottom" align="start">
+          <Tooltip label="Seek down" position="bottom" align="start">
             <button
               onClick={handlePrevNav}
               disabled={!onPrevStation}
               aria-disabled={navBusy != null}
-              aria-label="Previous station"
+              aria-label="Seek down"
               className={`btn-3d w-full h-12 flex items-center justify-center rounded-lg
                 ${!onPrevStation ? "invisible"
                   : navBusy === "prev" ? "btn-3d-pressed text-white/25 cursor-not-allowed"
@@ -556,12 +556,12 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
           <div className="h-12 rounded-lg border border-white/10 bg-black/40 flex items-center justify-center px-2">
             <SevenSegDisplay value={displayFreq != null ? displayFreq.toFixed(1) : ""} />
           </div>
-          <Tooltip label="Next station" position="bottom" align="end">
+          <Tooltip label="Seek up" position="bottom" align="end">
             <button
               onClick={handleNextNav}
               disabled={!onNextStation}
               aria-disabled={navBusy != null}
-              aria-label="Next station"
+              aria-label="Seek up"
               className={`btn-3d w-full h-12 flex items-center justify-center rounded-lg
                 ${!onNextStation ? "invisible"
                   : navBusy === "next" ? "btn-3d-pressed text-white/25 cursor-not-allowed"
@@ -701,17 +701,17 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             <div className="px-4 pb-5 space-y-2">
               {(() => {
                 const cols = [onOpenAddTracks, onSaveToLibrary, onHeartToggle].filter(Boolean).length
-                const saveLabel = librarySaveState === "saved" ? "Saved to your hat.fm playlist"
+                const saveLabel = librarySaveState === "saved" ? "Saved to Apple Music"
                   : librarySaveState === "saving" ? "Saving…"
                   : librarySaveState === "error" ? "Couldn't save — tap to retry"
-                  : "Save to your Apple Music library"
+                  : "Save to Apple Music"
                 return (
                   <div className={`grid gap-2 ${cols === 3 ? "grid-cols-3" : cols === 2 ? "grid-cols-2" : "grid-cols-1"}`}>
                     {onOpenAddTracks && (
-                      <Tooltip label={addButtonLabel ?? "Add tracks"} align="start">
+                      <Tooltip label={addButtonLabel ?? "Add tracks to the queue"} align="start">
                         <button
                           onClick={onOpenAddTracks}
-                          aria-label={addButtonLabel ?? "Add tracks"}
+                          aria-label={addButtonLabel ?? "Add tracks to the queue"}
                           className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white ${addTracksPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
                         >
                           <Plus size={24} strokeWidth={3} />
@@ -741,10 +741,10 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                       </Tooltip>
                     )}
                     {onHeartToggle && (
-                      <Tooltip label={hasHearted ? "Take back your heart" : "Heart this track"} align="end">
+                      <Tooltip label={hasHearted ? "Revoke heart" : "Heart"} align="end">
                         <button
                           onClick={onHeartToggle}
-                          aria-label={hasHearted ? "Unheart" : "Heart this track"}
+                          aria-label={hasHearted ? "Revoke heart" : "Heart"}
                           aria-pressed={hasHearted}
                           className={`btn-3d w-full h-12 rounded-lg flex items-center justify-center gap-2 text-white ${hasHearted ? "btn-3d-pressed text-red-400" : ""}`}
                         >
@@ -757,11 +757,11 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 )
               })()}
               <div className="grid grid-cols-3 gap-2">
-                <Tooltip label={onOpenPool ? "Open pool" : "DJs only"} align="start">
+                <Tooltip label={onOpenPool ? "Station pool" : "DJs only"} align="start">
                   <button
                     onClick={onOpenPool}
                     disabled={!onOpenPool}
-                    aria-label="Open pool"
+                    aria-label="Station pool"
                     className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white"
                   >
                     <Library size={20} />
@@ -777,11 +777,11 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                     <SkipForward size={20} />
                   </button>
                 </Tooltip>
-                <Tooltip label={!canSkip ? "DJs only" : "Skip & remove from pool"} align="end">
+                <Tooltip label={!canSkip ? "DJs only" : "Ban"} align="end">
                   <button
                     onClick={onSkipAndBan}
                     disabled={!canSkip || !onSkipAndBan}
-                    aria-label="Skip and remove from pool"
+                    aria-label="Ban"
                     className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white hover:text-red-400"
                   >
                     <Ban size={20} />
@@ -841,10 +841,10 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
             {/* Controls — full-width Add on top, Pool/Skip/Ban disabled below */}
             <div className="px-4 pb-5 space-y-2">
               {onOpenAddTracks && (
-                <Tooltip label={addButtonLabel ?? "Add tracks"}>
+                <Tooltip label={addButtonLabel ?? "Add tracks to the queue"}>
                   <button
                     onClick={onOpenAddTracks}
-                    aria-label={addButtonLabel ?? "Add tracks"}
+                    aria-label={addButtonLabel ?? "Add tracks to the queue"}
                     className={`btn-3d relative w-full h-12 rounded-lg flex items-center justify-center text-white ${addTracksPanelOpen ? "btn-3d-pressed btn-3d-pressed-quiet" : ""}`}
                   >
                     {/* Queue is confirmed empty — pulse the icon to draw attention. */}
@@ -860,11 +860,11 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
               <div className="grid grid-cols-3 gap-2">
                 {/* Pool stays accessible on a quiet station — DJs need it to
                  *  import a pool CSV into a fresh station. */}
-                <Tooltip label={onOpenPool ? "Open pool" : "DJs only"} align="start">
+                <Tooltip label={onOpenPool ? "Station pool" : "DJs only"} align="start">
                   <button
                     onClick={onOpenPool}
                     disabled={!onOpenPool}
-                    aria-label="Open pool"
+                    aria-label="Station pool"
                     className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white"
                   >
                     <Library size={20} />
@@ -876,7 +876,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                   </button>
                 </Tooltip>
                 <Tooltip label={canSkip ? "Nothing playing" : "DJs only"} align="end">
-                  <button disabled aria-label="Skip and remove from pool" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
+                  <button disabled aria-label="Ban" className="btn-3d w-full h-12 rounded-lg flex items-center justify-center text-white">
                     <Ban size={20} />
                   </button>
                 </Tooltip>

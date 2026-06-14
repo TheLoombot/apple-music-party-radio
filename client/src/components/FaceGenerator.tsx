@@ -540,10 +540,6 @@ export function FaceGenerator({ value, onChange }: { value?: FaceConfig; onChang
 
   return (
     <div className="bg-panel rounded-2xl p-6">
-      <h2 className="text-white font-semibold mb-5 text-sm tracking-wide uppercase opacity-70">
-        Face Generator
-      </h2>
-
       <div className="flex flex-col items-center gap-5">
         {/* Preview — portrait aspect ratio to match 200×220 viewBox */}
         <div className="w-40 h-40 rounded-2xl overflow-hidden shadow-xl flex-shrink-0">
