@@ -107,7 +107,8 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                     {onAlbumClick
                       ? <button onClick={() => onAlbumClick(item)} className="text-muted/50 text-xs truncate hover:text-red-400 transition-colors text-left w-full">{item.albumName}</button>
                       : <p className="text-muted/50 text-xs truncate">{item.albumName}</p>}
-                    <p className="text-muted text-xs mt-1 flex items-center gap-1 flex-wrap">
+                    {/* div, not p: DJFace/RobotFace render a <div>, invalid inside <p> */}
+                    <div className="text-muted text-xs mt-1 flex items-center gap-1 flex-wrap">
                       <span className="whitespace-nowrap">queued by</span>
                       {item.addedBy === "robot"
                         ? <RobotFace size={16} />
@@ -118,7 +119,7 @@ export function UpNext({ queue, currentUser, stationOwner, onRemove, onReorder, 
                           : item.addedBy === currentUser.uid ? currentUser.displayName
                           : item.addedByName ?? item.addedBy}
                       </span>
-                    </p>
+                    </div>
                   </div>
 
                   {/* Duration + remove: stacked on mobile, inline on desktop */}

@@ -681,7 +681,8 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                 ? <button onClick={onAlbumClick} className="text-muted/50 text-sm mt-0.5 hover:text-red-400 transition-colors text-left">{track.albumName}</button>
                 : <p className="text-muted/50 text-sm mt-0.5">{track.albumName}</p>}
               {SHOW_SPUN_BY && (
-                <p className="text-muted text-sm mt-2 flex items-center gap-1.5">
+                /* div, not p: DJFace/RobotFace render a <div>, invalid inside <p> */
+                <div className="text-muted text-sm mt-2 flex items-center gap-1.5">
                   spun by{" "}
                   {track.addedBy === "robot"
                     ? <RobotFace size={20} />
@@ -692,7 +693,7 @@ export function NowPlaying({ track, stationOwner, currentUser, canSkip, onSkip, 
                       : track.addedBy === currentUser.uid ? currentUser.displayName
                       : track.addedByName ?? track.addedBy}
                   </span>
-                </p>
+                </div>
               )}
             </motion.div>
 
