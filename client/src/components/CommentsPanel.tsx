@@ -167,7 +167,11 @@ export function CommentsPanel({
         )}
         {recentVisitors.map(v => avatarButton(v.userId, v.displayName, false))}
       </div>
-      <button onClick={onClose} className="text-muted hover:text-white transition-colors w-10 h-10 flex items-center justify-center flex-shrink-0">
+      <button
+        onClick={onClose}
+        aria-label="Close"
+        className="text-muted hover:text-white transition-colors w-10 h-10 flex items-center justify-center flex-shrink-0"
+      >
         <X size={18} />
       </button>
     </div>

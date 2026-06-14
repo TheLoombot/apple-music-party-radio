@@ -716,6 +716,55 @@ export default function App() {
       ?? "Unknown"
   })()
 
+  // Footer content, shared between the desktop placement (pinned at the bottom
+  // of the center column, so the page itself doesn't scroll) and the mobile /
+  // station-list placement (a strip below the whole layout).
+  const footerInner = (
+    <>
+      <div className="flex items-center gap-2 text-xs text-muted/40">
+        <button
+          onClick={() => setEasterEggOpen(true)}
+          className="hover:scale-125 transition-transform"
+          aria-label="🎵"
+        >🎵</button>
+        <button
+          onClick={() => {
+            window.history.pushState(null, "", import.meta.env.BASE_URL || "/")
+            window.dispatchEvent(new PopStateEvent("popstate"))
+          }}
+          className="hover:text-white transition-colors"
+        >Party Radio</button>
+        <span className="font-mono text-muted/25">{__COMMIT__}</span>
+        <button
+          onClick={() => setDebugMenuOpen(v => !v)}
+          className="font-mono text-muted/25 hover:text-white/70 transition-colors"
+          title="Debug panels"
+        >debug</button>
+        <a
+          href="https://github.com/theloombot/apple-music-party-radio"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-white/70 transition-colors"
+          aria-label="GitHub repository"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+            <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+          </svg>
+        </a>
+      </div>
+      <div className="text-xs">
+        <button
+          onClick={() => setProfileModalOpen(true)}
+          className="group/profile flex items-center gap-2 text-muted/60 hover:text-white transition-colors"
+          title="Edit your profile"
+        >
+          <DJFace uid={user.uid} size={20} />
+          DJ <span className="text-white/60 group-hover/profile:text-white transition-colors">{user.displayName}</span>
+        </button>
+      </div>
+    </>
+  )
+
   return (
     <div className="min-h-screen bg-surface flex flex-col">
 
@@ -949,7 +998,11 @@ export default function App() {
           </div>
         )}
 
-        <div className="w-full max-w-[480px] px-4 space-y-4 flex-shrink-0 min-w-0">
+        {/* Center column. On desktop it's a fixed-viewport-height, internally
+            scrolling region (like the side panels) so the page itself doesn't
+            scroll; the footer pins to its bottom. Mobile keeps natural height
+            and page scroll, with the footer below the layout. */}
+        <div className={`w-full max-w-[480px] px-4 flex-shrink-0 min-w-0 ${isDesktop ? "h-[calc(100vh-2rem)] overflow-y-auto flex flex-col gap-4" : "space-y-4"}`}>
 
         <NowPlaying
           track={nowPlaying}
@@ -1022,6 +1075,14 @@ export default function App() {
           />
         )}
 
+        {/* Desktop: footer lives at the bottom of the center column (pinned via
+            mt-auto) so it never adds page-level scroll. */}
+        {isDesktop && (
+          <div className="mt-auto flex-shrink-0 border-t border-border/50 py-3 flex items-center justify-between">
+            {footerInner}
+          </div>
+        )}
+
         </div>{/* end main content column */}
 
         {/* Comments side panel slot — desktop right. Slot is always
@@ -1054,50 +1115,14 @@ export default function App() {
       </div>
       )}
 
-      {/* Footer */}
-      <footer className="border-t border-border/50 max-w-[480px] w-full mx-auto px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs text-muted/40">
-          <button
-            onClick={() => setEasterEggOpen(true)}
-            className="hover:scale-125 transition-transform"
-            aria-label="🎵"
-          >🎵</button>
-          <button
-            onClick={() => {
-              window.history.pushState(null, "", import.meta.env.BASE_URL || "/")
-              window.dispatchEvent(new PopStateEvent("popstate"))
-            }}
-            className="hover:text-white transition-colors"
-          >Party Radio</button>
-          <span className="font-mono text-muted/25">{__COMMIT__}</span>
-          <button
-            onClick={() => setDebugMenuOpen(v => !v)}
-            className="font-mono text-muted/25 hover:text-white/70 transition-colors"
-            title="Debug panels"
-          >debug</button>
-          <a
-            href="https://github.com/theloombot/apple-music-party-radio"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-white/70 transition-colors"
-            aria-label="GitHub repository"
-          >
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
-              <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-            </svg>
-          </a>
-        </div>
-        <div className="text-xs">
-          <button
-            onClick={() => setProfileModalOpen(true)}
-            className="group/profile flex items-center gap-2 text-muted/60 hover:text-white transition-colors"
-            title="Edit your profile"
-          >
-            <DJFace uid={user.uid} size={20} />
-            DJ <span className="text-white/60 group-hover/profile:text-white transition-colors">{user.displayName}</span>
-          </button>
-        </div>
-      </footer>
+      {/* Footer — below the layout for mobile and the station-list view. On
+          desktop with a station selected it's pinned inside the center column
+          instead (above), so the page doesn't scroll. */}
+      {!(isDesktop && stationSelected) && (
+        <footer className="border-t border-border/50 max-w-[480px] w-full mx-auto px-4 py-3 flex items-center justify-between">
+          {footerInner}
+        </footer>
+      )}
 
       {/* Debug menu — small popover anchored at the footer "debug" link.
        *  Click outside (the backdrop) to dismiss. Each toggle persists. */}
