@@ -111,7 +111,12 @@ This was added because of the `/create` server-to-server fetch silently failing 
 
 ### Hibernation
 
-`connListeners: Map<connId, ConnectedListener>` is **in-memory only**. On DO hibernation, the map is lost but WebSocket connections survive. `handleChatMessage` and `handleSuggestTrack` have explicit fallbacks that re-register the listener from `msg.userId`. Privileged ops (`skip_track`, `reorder_queue`, etc.) DO NOT — they rely on the heal-on-join firing soon enough. If you add hibernation-sensitive code paths, follow the chat/suggest pattern.
+`connListeners: Map<connId, ConnectedListener>` is **in-memory only**. On DO hibernation, the map is lost but WebSocket connections survive — so the client never reconnects, never re-sends `join`, and the listener stays unregistered until something else repopulates it. To keep this from silently breaking handlers, **every client→server message carries `userId`/`displayName`** (attached in `StationSocket.send`), and handlers re-register the sender from that identity on demand:
+
+- Privileged ops (`reorder_queue`, `enqueue_suggestion`, `skip_track`, `remove_track`, …) gate on `ensurePrivileged(msg, sender)`; `grant_dj`/`revoke_dj` on `ensureOwner(msg, sender)`. Both call `rehydrateFromMessage` first, which re-registers the listener (DJ status from `getDJs()`) and warms `cachedOwnerUid` via `getOwnerUid()` (note: `isOwnerConn` reads the raw cached field, which is null after hibernation until reloaded).
+- `handleSuggestTrack` / `handlePostMessage` have their own equivalent fallback.
+
+Historically the privileged gates read only the cold in-memory state, so after the room idled, move-to-top and request-enqueue silently no-op'd until a reconnect or "take ownership" repopulated state (the original bug). If you add a new privileged path, gate it through `ensurePrivileged`/`ensureOwner`, never a bare `isOwnerConn`/`isDJConn`.
 
 ---
 

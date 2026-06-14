@@ -162,7 +162,7 @@ export class StationSocket {
 
   /** Post a chat message to the station log. */
   postMessage(text: string) {
-    this.send({ type: "post_message", text, ...this.lastJoinParams })
+    this.send({ type: "post_message", text })
   }
 
   grantDJ(userId: string) {
@@ -207,8 +207,17 @@ export class StationSocket {
 
   private send(data: object) {
     if (!this.socket) return
+    // Attach identity (userId/displayName) to every message. The server's
+    // connListeners map is in-memory and is wiped when the Durable Object
+    // hibernates — but the WebSocket survives, so no fresh `join` is sent to
+    // repopulate it. Carrying identity on every message lets the server
+    // re-register the sender on demand, so privileged ops (reorder, enqueue,
+    // skip…) and suggestions don't silently no-op after hibernation. Explicit
+    // fields in `data` (e.g. transfer_ownership's target userId) override the
+    // join identity since they're spread last.
+    const payload = { ...this.lastJoinParams, ...data }
     // PartySocket buffers messages if not yet connected
-    this.socket.send(JSON.stringify(data))
+    this.socket.send(JSON.stringify(payload))
   }
 }
 

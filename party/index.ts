@@ -808,7 +808,7 @@ export default class RadioParty implements Party.Server {
         return
       }
       case "grant_dj": {
-        if (!this.isOwnerConn(sender)) return
+        if (!await this.ensureOwner(msg, sender)) return
         const djs = await this.getDJs()
         if (!djs.includes(msg.userId)) {
           const updated = [...djs, msg.userId]
@@ -823,7 +823,7 @@ export default class RadioParty implements Party.Server {
         return
       }
       case "revoke_dj": {
-        if (!this.isOwnerConn(sender)) return
+        if (!await this.ensureOwner(msg, sender)) return
         const djs = await this.getDJs()
         const updated = djs.filter(id => id !== msg.userId)
         await this.room.storage.put("djs", updated)
@@ -853,20 +853,20 @@ export default class RadioParty implements Party.Server {
         await this.fillRobotQueue()
         return
       }
-      case "remove_track":     if (!this.isPrivilegedConn(sender)) return; return this.removeTrack(msg.key)
-      case "skip_track":                  if (!this.isPrivilegedConn(sender)) return; return this.skipTrack()
-      case "skip_and_remove_from_pool":   if (!this.isPrivilegedConn(sender)) return; return this.skipAndRemoveFromPool()
+      case "remove_track":     if (!await this.ensurePrivileged(msg, sender)) return; return this.removeTrack(msg.key)
+      case "skip_track":                  if (!await this.ensurePrivileged(msg, sender)) return; return this.skipTrack()
+      case "skip_and_remove_from_pool":   if (!await this.ensurePrivileged(msg, sender)) return; return this.skipAndRemoveFromPool()
       case "expire_track":     return this.expireTrack(msg.key, msg.addToPool)  // clients self-report their own track advance
-      case "remove_from_pool": if (!this.isPrivilegedConn(sender)) return; return this.removeFromPool(msg.isrc)
-      case "clear_pool":       if (!this.isPrivilegedConn(sender)) return; return this.clearPool()
-      case "import_pool":      if (!this.isPrivilegedConn(sender)) return; return this.handleImportPool(msg)
-      case "robot_dj":         if (!this.isPrivilegedConn(sender)) return; return this.fillRobotQueue()
-      case "reorder_queue":    if (!this.isPrivilegedConn(sender)) return; return this.reorderQueue(msg.keys)
+      case "remove_from_pool": if (!await this.ensurePrivileged(msg, sender)) return; return this.removeFromPool(msg.isrc)
+      case "clear_pool":       if (!await this.ensurePrivileged(msg, sender)) return; return this.clearPool()
+      case "import_pool":      if (!await this.ensurePrivileged(msg, sender)) return; return this.handleImportPool(msg)
+      case "robot_dj":         if (!await this.ensurePrivileged(msg, sender)) return; return this.fillRobotQueue()
+      case "reorder_queue":    if (!await this.ensurePrivileged(msg, sender)) return; return this.reorderQueue(msg.keys)
       case "suggest_track":    return this.handleSuggestTrack(msg, sender)
       case "vote_suggestion":  return this.handleVoteSuggestion(msg, sender)
-      case "enqueue_suggestion": if (!this.isPrivilegedConn(sender)) return; return this.handleEnqueueSuggestion(msg, sender)
-      case "remove_suggestion":  if (!this.isPrivilegedConn(sender)) return; return this.handleRemoveSuggestion(msg)
-      case "set_dj_note":      if (!this.isPrivilegedConn(sender)) return; return this.handleSetDjNote(msg)
+      case "enqueue_suggestion": if (!await this.ensurePrivileged(msg, sender)) return; return this.handleEnqueueSuggestion(msg, sender)
+      case "remove_suggestion":  if (!await this.ensurePrivileged(msg, sender)) return; return this.handleRemoveSuggestion(msg)
+      case "set_dj_note":      if (!await this.ensurePrivileged(msg, sender)) return; return this.handleSetDjNote(msg)
       case "post_comment":     // legacy wire name — old clients with open tabs still send this
       case "post_message":     return this.handlePostMessage(msg, sender)
       // Debug-only: any client can seize ownership of the current station. No
@@ -970,12 +970,38 @@ export default class RadioParty implements Party.Server {
     return this.connListeners.get(sender.id)?.isDJ === true
   }
 
-  /** Owner or any granted DJ — used to gate queue/pool mutations server-side. */
-  private isPrivilegedConn(sender: Party.Connection): boolean {
-    const result = this.isOwnerConn(sender) || this.isDJConn(sender)
-    const l = this.connListeners.get(sender.id)
-    console.log(`[priv] room=${this.cachedRoomId} listener=${l?.userId} cachedOwner=${this.cachedOwnerUid} djs=${this.cachedDJs?.join(",")} isPriv=${result}`)
-    return result
+  /** Hibernation-safe rehydration before a privilege check. The in-memory
+   *  connListeners map and the owner/DJ caches are lost when the DO hibernates,
+   *  but the WebSocket survives so no fresh `join` re-populates them. Re-register
+   *  the listener from the message's identity (every client message carries
+   *  userId/displayName — see StationSocket.send) and warm the owner/DJ caches
+   *  from storage. Without this, owner/DJ actions silently no-op after the room
+   *  idles. No spoofing guard by design — same trust model as `join`. */
+  private async rehydrateFromMessage(msg: any, sender: Party.Connection): Promise<void> {
+    if (!this.connListeners.get(sender.id) && msg?.userId) {
+      const djs = await this.getDJs()
+      this.connListeners.set(sender.id, {
+        userId: msg.userId,
+        displayName: msg.displayName ?? msg.userId,
+        isDJ: djs.includes(msg.userId),
+      })
+      this.schedulePresenceNotify()
+    }
+    // Warm cachedOwnerUid — isOwnerConn reads the raw field, which is null
+    // after hibernation until getOwnerUid() lazily reloads it from storage.
+    await this.getOwnerUid()
+  }
+
+  /** Owner or any granted DJ — gate for queue/pool mutations. */
+  private async ensurePrivileged(msg: any, sender: Party.Connection): Promise<boolean> {
+    await this.rehydrateFromMessage(msg, sender)
+    return this.isOwnerConn(sender) || this.isDJConn(sender)
+  }
+
+  /** Owner only — gate for grant/revoke DJ. */
+  private async ensureOwner(msg: any, sender: Party.Connection): Promise<boolean> {
+    await this.rehydrateFromMessage(msg, sender)
+    return this.isOwnerConn(sender)
   }
 
   // ─── Queue & pool ────────────────────────────────────────────────────────
