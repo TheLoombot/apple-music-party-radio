@@ -451,7 +451,10 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                   {libraryPlaylists
                     .filter(pl => {
                       const q = playlistFilter.toLowerCase()
-                      return pl.name.toLowerCase().includes(q) || (pl.description ?? "").toLowerCase().includes(q)
+                      // subtitle holds the curator name for library playlists.
+                      return pl.name.toLowerCase().includes(q)
+                        || (pl.subtitle ?? "").toLowerCase().includes(q)
+                        || (pl.description ?? "").toLowerCase().includes(q)
                     })
                     .map(pl => (
                       <PlaylistRow key={pl.id} playlist={pl} onSelect={() => handleSelectPlaylist(pl)} />
