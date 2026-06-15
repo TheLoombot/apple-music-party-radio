@@ -864,6 +864,7 @@ export default class RadioParty implements Party.Server {
       case "reorder_queue":    if (!await this.ensurePrivileged(msg, sender)) return; return this.reorderQueue(msg.keys)
       case "suggest_track":    return this.handleSuggestTrack(msg, sender)
       case "vote_suggestion":  return this.handleVoteSuggestion(msg, sender)
+      case "retract_suggestion": return this.handleRetractSuggestion(msg, sender)
       case "enqueue_suggestion": if (!await this.ensurePrivileged(msg, sender)) return; return this.handleEnqueueSuggestion(msg, sender)
       case "remove_suggestion":  if (!await this.ensurePrivileged(msg, sender)) return; return this.handleRemoveSuggestion(msg)
       case "set_dj_note":      if (!await this.ensurePrivileged(msg, sender)) return; return this.handleSetDjNote(msg)
@@ -1468,6 +1469,34 @@ export default class RadioParty implements Party.Server {
     suggestion.votes++
     suggestion.votedBy.push(listener.userId)
     suggestions = sortSuggestions(suggestions)
+    await this.room.storage.put("suggestions", suggestions)
+    this.broadcastSuggestions(suggestions)
+  }
+
+  // Retract the sender's own vote from a suggestion. The original requester's
+  // vote is just a vote like any other, so retracting it is the same operation
+  // as un-voting. When the last voter pulls out, the suggestion disappears.
+  // Not privilege-gated — anyone can withdraw their own vote.
+  private async handleRetractSuggestion(msg: any, sender: Party.Connection) {
+    let listener = this.connListeners.get(sender.id)
+    if (!listener) {
+      if (!msg.userId) return
+      const djs = await this.getDJs()
+      listener = { userId: msg.userId, displayName: msg.displayName ?? msg.userId, isDJ: djs.includes(msg.userId) }
+      this.connListeners.set(sender.id, listener)
+      this.schedulePresenceNotify()
+    }
+
+    let suggestions = await this.storage<SuggestedTrack[]>("suggestions", [])
+    const suggestion = suggestions.find(s => s.key === msg.key)
+    if (!suggestion) return
+    const idx = suggestion.votedBy.indexOf(listener.userId)
+    if (idx === -1) return
+    suggestion.votedBy.splice(idx, 1)
+    suggestion.votes = suggestion.votedBy.length
+    suggestions = suggestion.votedBy.length === 0
+      ? suggestions.filter(s => s.key !== msg.key)
+      : sortSuggestions(suggestions)
     await this.room.storage.put("suggestions", suggestions)
     this.broadcastSuggestions(suggestions)
   }

@@ -102,7 +102,7 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
               const addLabel = unavailable
                 ? "Not available in Apple Music"
                 : effectiveAdded
-                  ? (requestMode ? "Already requested" : "Remove from queue")
+                  ? (requestMode ? "Requested — tap to retract" : "Remove from queue")
                   : (requestMode ? "Request track" : "Add to queue")
               return (
                 <Tooltip label={addLabel} align="end">

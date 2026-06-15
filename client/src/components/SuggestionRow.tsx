@@ -1,4 +1,4 @@
-import { ArrowUp, Trash2 } from "lucide-react"
+import { ArrowUp, Plus, Trash2 } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import type { SuggestedTrack } from "../types"
 
@@ -7,11 +7,12 @@ interface Props {
   currentUserId: string
   isPrivileged: boolean
   onVote: () => void
+  onRetract: () => void
   onEnqueue?: () => void
   onRemove?: () => void
 }
 
-export function SuggestionRow({ suggestion, currentUserId, isPrivileged, onVote, onEnqueue, onRemove }: Props) {
+export function SuggestionRow({ suggestion, currentUserId, isPrivileged, onVote, onRetract, onEnqueue, onRemove }: Props) {
   const hasVoted = suggestion.votedBy.includes(currentUserId)
 
   return (
@@ -27,43 +28,41 @@ export function SuggestionRow({ suggestion, currentUserId, isPrivileged, onVote,
         <p className="text-muted/70 text-xs truncate">{suggestion.artistName}</p>
         <p className="text-white text-sm font-semibold truncate">{suggestion.name}</p>
         <p className="text-muted/50 text-xs truncate">{suggestion.albumName}</p>
-        <p className="text-muted/50 text-xs truncate mt-0.5">
-          requested by <span className="text-muted/80">{suggestion.suggestedByName ?? suggestion.suggestedBy}</span>
-        </p>
       </div>
 
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Vote toggle — tapping when you've already voted retracts it. The
+            depressed state stands in for the old red "voted" pill so it reads
+            like the rest of the app's hardware-button UI. */}
         <button
-          onClick={onVote}
-          disabled={hasVoted}
-          title={hasVoted ? "Already voted" : "Upvote"}
-          className={`h-9 px-2.5 rounded-full flex items-center gap-1 text-sm font-medium transition-all ${
-            hasVoted
-              ? "bg-accent/20 text-accent cursor-default"
-              : "bg-surface text-muted hover:bg-accent/20 hover:text-accent"
-          }`}
+          onClick={hasVoted ? onRetract : onVote}
+          aria-label={hasVoted ? "Retract your vote" : "Upvote"}
+          title={hasVoted ? "Retract your vote" : "Upvote"}
+          className={`btn-3d h-11 px-3 rounded-lg flex items-center gap-1.5 text-sm font-semibold text-white ${hasVoted ? "btn-3d-pressed" : ""}`}
         >
-          <ArrowUp size={14} />
-          <span>{suggestion.votes}</span>
+          <ArrowUp size={16} strokeWidth={3} />
+          <span className="tabular-nums">{suggestion.votes}</span>
         </button>
 
         {onEnqueue && (
           <button
             onClick={onEnqueue}
+            aria-label="Add to queue"
             title="Add to queue"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-base bg-surface text-muted hover:bg-accent hover:text-white transition-all"
+            className="btn-3d w-12 h-11 rounded-lg flex items-center justify-center text-white"
           >
-            +
+            <Plus size={20} strokeWidth={3} />
           </button>
         )}
 
         {onRemove && (
           <button
             onClick={onRemove}
-            title="Remove suggestion"
-            className="w-9 h-9 rounded-full flex items-center justify-center text-muted hover:text-red-400 transition-colors"
+            aria-label="Reject request"
+            title="Reject request"
+            className="btn-3d w-12 h-11 rounded-lg flex items-center justify-center text-muted hover:text-red-400"
           >
-            <Trash2 size={14} />
+            <Trash2 size={16} />
           </button>
         )}
       </div>

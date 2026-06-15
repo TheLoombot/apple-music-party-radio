@@ -31,15 +31,45 @@ interface Props {
   isPrivileged: boolean
   currentUserId: string
   onVoteSuggestion: (key: string) => void
+  onRetractSuggestion: (key: string) => void
   onEnqueueSuggestion?: (key: string) => void
   onRemoveSuggestion?: (key: string) => void
 }
 
-export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, suggestedIsrcs, queue, onAddTrack, embedded, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
+export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, suggestedIsrcs, queue, onAddTrack, embedded, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onRetractSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
   // For the "already in queue" indicator: DJs use userQueuedIds (robot tracks
   // show as addable so they can be promoted on click); non-DJs use queuedIsrcs
   // (the request-track flow can't promote, so robot tracks stay marked).
   const queuedForRow = isPrivileged ? userQueuedIds : queuedIsrcs
+
+  // Request-mode affordance is driven by the listener's OWN participation: a
+  // request is just your first vote, so a track you've voted for shows as
+  // "requested" and re-tapping retracts your vote. Map every id form → the
+  // suggestion key so any row (search, charts, related…) can look itself up.
+  const myVoteKeyById = (() => {
+    const m = new Map<string, string>()
+    if (isPrivileged) return m
+    for (const s of suggestions) {
+      if (!s.votedBy.includes(currentUserId)) continue
+      if (s.isrc) m.set(s.isrc, s.key)
+      if (s.appleId) m.set(s.appleId, s.key)
+    }
+    return m
+  })()
+  const myVoteKey = (t: { isrc: string; appleId?: string }) =>
+    myVoteKeyById.get(t.isrc) ?? (t.appleId ? myVoteKeyById.get(t.appleId) : undefined)
+  // A request-mode row reads as "added" when it's already queued or I've voted.
+  const rowAdded = (t: { isrc: string; appleId?: string }) =>
+    queuedForRow.has(t.isrc) || queuedForRow.has(t.appleId ?? "")
+      || (!isPrivileged && !!myVoteKey(t))
+  // Tap handler shared by every add/request button: privileged adds/removes via
+  // onAddTrack; a listener retracts when they've already voted, else requests.
+  const onRowAdd = (t: Track) => {
+    if (isPrivileged) { onAddTrack(t); return }
+    const key = myVoteKey(t)
+    if (key) onRetractSuggestion(key)
+    else onAddTrack(t)
+  }
   // Land on "Heavy" when the station is empty — "Related" needs at least one
   // queued track to seed from, so it's unhelpful on a fresh/empty station.
   const [tab, setTab] = useState<Tab>(queue.length === 0 ? "heavy" : "related")
@@ -337,9 +367,9 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                                 <TrackRow
                                   key={item.track.appleId || item.track.isrc || item.track.name}
                                   track={item.track}
-                                  added={queuedForRow.has(item.track.isrc) || queuedForRow.has(item.track.appleId ?? "") || (!isPrivileged && (suggestedIsrcs.has(item.track.isrc) || suggestedIsrcs.has(item.track.appleId ?? "")))}
+                                  added={rowAdded(item.track)}
                                   isNowPlaying={nowPlayingIds.has(item.track.isrc) || nowPlayingIds.has(item.track.appleId ?? "")}
-                                  onAdd={() => onAddTrack(item.track)}
+                                  onAdd={() => onRowAdd(item.track)}
                                   onAlbumClick={item.track.appleId ? () => handleAlbumClick(item.track) : undefined}
                                   requestMode={!isPrivileged}
                                 />
@@ -387,9 +417,9 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                       key={track.appleId ?? track.isrc}
                       track={track}
                       rankNumber={i + 1}
-                      added={queuedForRow.has(track.isrc) || queuedForRow.has(track.appleId ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.appleId ?? "")))}
+                      added={rowAdded(track)}
                       isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")}
-                      onAdd={() => onAddTrack(track)}
+                      onAdd={() => onRowAdd(track)}
                       onAlbumClick={track.appleId ? () => handleAlbumClick(track) : undefined}
                       requestMode={!isPrivileged}
                     />
@@ -410,9 +440,9 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                   <TrackRow
                     key={track.appleId ?? track.isrc ?? track.name}
                     track={track}
-                    added={queuedForRow.has(track.isrc) || queuedForRow.has(track.appleId ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.appleId ?? "")))}
+                    added={rowAdded(track)}
                     isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")}
-                    onAdd={() => onAddTrack(track)}
+                    onAdd={() => onRowAdd(track)}
                     onAlbumClick={track.appleId ? () => handleAlbumClick(track) : undefined}
                     requestMode={!isPrivileged}
                   />
@@ -476,6 +506,7 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                     currentUserId={currentUserId}
                     isPrivileged={isPrivileged}
                     onVote={() => onVoteSuggestion(s.key)}
+                    onRetract={() => onRetractSuggestion(s.key)}
                     onEnqueue={onEnqueueSuggestion ? () => onEnqueueSuggestion(s.key) : undefined}
                     onRemove={onRemoveSuggestion ? () => onRemoveSuggestion(s.key) : undefined}
                   />
@@ -518,9 +549,9 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                     <TrackRow
                       key={track.appleId ?? track.isrc}
                       track={track}
-                      added={queuedForRow.has(track.isrc) || queuedForRow.has(track.appleId ?? "") || (!isPrivileged && (suggestedIsrcs.has(track.isrc) || suggestedIsrcs.has(track.appleId ?? "")))}
+                      added={rowAdded(track)}
                       isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")}
-                      onAdd={() => onAddTrack(track)}
+                      onAdd={() => onRowAdd(track)}
                       onAlbumClick={track.appleId ? () => handleAlbumClick(track) : undefined}
                       requestMode={!isPrivileged}
                     />

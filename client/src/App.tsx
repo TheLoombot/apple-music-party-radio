@@ -436,6 +436,10 @@ export default function App() {
     stationSocket.voteSuggestion(key)
   }, [])
 
+  const handleRetractSuggestion = useCallback((key: string) => {
+    stationSocket.retractSuggestion(key)
+  }, [])
+
   const handleEnqueueSuggestion = useCallback((key: string) => {
     stationSocket.enqueueSuggestion(key)
   }, [])
@@ -943,6 +947,7 @@ export default function App() {
             isPrivileged={isPrivileged}
             currentUserId={user.uid}
             onVoteSuggestion={handleVoteSuggestion}
+            onRetractSuggestion={handleRetractSuggestion}
             onEnqueueSuggestion={isPrivileged ? handleEnqueueSuggestion : undefined}
             onRemoveSuggestion={isPrivileged ? handleRemoveSuggestion : undefined}
           />
@@ -990,6 +995,7 @@ export default function App() {
                   isPrivileged={isPrivileged}
                   currentUserId={user.uid}
                   onVoteSuggestion={handleVoteSuggestion}
+                  onRetractSuggestion={handleRetractSuggestion}
                   onEnqueueSuggestion={isPrivileged ? handleEnqueueSuggestion : undefined}
                   onRemoveSuggestion={isPrivileged ? handleRemoveSuggestion : undefined}
                 />

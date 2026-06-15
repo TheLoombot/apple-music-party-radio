@@ -181,6 +181,10 @@ export class StationSocket {
     this.send({ type: "vote_suggestion", key })
   }
 
+  retractSuggestion(key: string) {
+    this.send({ type: "retract_suggestion", key })
+  }
+
   enqueueSuggestion(key: string) {
     this.send({ type: "enqueue_suggestion", key })
   }

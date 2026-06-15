@@ -40,12 +40,13 @@ interface Props {
   isPrivileged: boolean
   currentUserId: string
   onVoteSuggestion: (key: string) => void
+  onRetractSuggestion: (key: string) => void
   onEnqueueSuggestion?: (key: string) => void
   onRemoveSuggestion?: (key: string) => void
   mode?: "modal" | "panel"
 }
 
-export function DiscoveryModal({ onClose, catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, suggestedIsrcs, queue, onAddTrack, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onEnqueueSuggestion, onRemoveSuggestion, mode = "modal" }: Props) {
+export function DiscoveryModal({ onClose, catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, suggestedIsrcs, queue, onAddTrack, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onRetractSuggestion, onEnqueueSuggestion, onRemoveSuggestion, mode = "modal" }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     document.addEventListener("keydown", handler)
@@ -82,6 +83,7 @@ export function DiscoveryModal({ onClose, catalog, queuedIsrcs, userQueuedIds, n
         isPrivileged={isPrivileged}
         currentUserId={currentUserId}
         onVoteSuggestion={onVoteSuggestion}
+        onRetractSuggestion={onRetractSuggestion}
         onEnqueueSuggestion={onEnqueueSuggestion}
         onRemoveSuggestion={onRemoveSuggestion}
       />
