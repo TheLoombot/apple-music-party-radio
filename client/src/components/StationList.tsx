@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Trash2, Mic } from "lucide-react"
 import type { Station } from "../types"
 import { DJFace } from "./FaceGenerator"
+import { LoadingDots } from "./LoadingDots"
 import { artworkUrl } from "../services/musickit"
 
 function LiveDot() {
@@ -125,6 +126,7 @@ function StationRow({
 
 interface Props {
   stations: Station[]
+  loading?: boolean
   currentStationId: string
   userId: string
   userDisplayName: string
@@ -134,7 +136,7 @@ interface Props {
   onCreateStation: () => void
 }
 
-export function StationList({ stations, currentStationId, userId, userDisplayName, ownedStationIds, onSelect, onRemove, onCreateStation }: Props) {
+export function StationList({ stations, loading, currentStationId, userId, userDisplayName, ownedStationIds, onSelect, onRemove, onCreateStation }: Props) {
   const [now, setNow] = useState(Date.now())
 
   // Re-render just after the next track expires so live/offline status flips automatically
@@ -171,7 +173,9 @@ export function StationList({ stations, currentStationId, userId, userDisplayNam
   return (
     <div className="bg-panel rounded-xl overflow-hidden">
       {sortedStations.length === 0 ? (
-        <div className="p-6 text-center text-muted text-sm">No stations yet</div>
+        <div className="p-6 text-center text-muted text-sm">
+          {loading ? <LoadingDots /> : "No stations yet"}
+        </div>
       ) : (
         <ul>{sortedStations.map(s => renderRow(s))}</ul>
       )}

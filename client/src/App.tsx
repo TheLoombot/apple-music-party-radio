@@ -49,6 +49,10 @@ export default function App() {
   const [user, setUser] = useState<AppUser | null>(null)
   const [nameInput, setNameInput] = useState("")
   const [stations, setStations] = useState<Station[]>([])
+  // False until the index room delivers its first station list, so the root
+  // screen can show "loading" rather than "no stations" during the initial
+  // (sometimes multi-second) index connect.
+  const [stationsLoaded, setStationsLoaded] = useState(false)
   const [currentStationId, setCurrentStationId] = useState("")
   const [stationSelected, setStationSelected] = useState(() => isValidFreqId(window.location.pathname.slice(import.meta.env.BASE_URL.length)))
   const [nowPlaying, setNowPlaying] = useState<QueueItem | null>(null)
@@ -177,6 +181,7 @@ export default function App() {
     indexSocket.onConnectionChange = setServerConnected
     indexSocket.onStationsUpdate = (newStations) => {
       setStations(newStations)
+      setStationsLoaded(true)
       // On first update, auto-select only if a valid frequency is in the URL
       if (!didSetInitialStation) {
         didSetInitialStation = true
@@ -960,6 +965,7 @@ export default function App() {
           <div className="bg-panel rounded-xl overflow-hidden">
             <StationList
               stations={stations}
+              loading={!stationsLoaded}
               currentStationId={currentStationId}
               userId={user.uid}
               userDisplayName={user.displayName}
