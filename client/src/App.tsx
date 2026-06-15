@@ -1014,7 +1014,7 @@ export default function App() {
             scrolling region (like the side panels) so the page itself doesn't
             scroll; the footer pins to its bottom. Mobile keeps natural height
             and page scroll, with the footer below the layout. */}
-        <div className={`w-full max-w-[480px] px-4 flex-shrink-0 min-w-0 ${isDesktop ? "h-[calc(100vh-2rem)] overflow-y-auto flex flex-col gap-4" : "space-y-4"}`}>
+        <div className={`w-full max-w-[480px] px-4 flex-shrink-0 min-w-0 ${isDesktop ? "h-[calc(100vh-2rem)] overflow-y-auto flex flex-col gap-4 [&>*]:flex-shrink-0" : "space-y-4"}`}>
 
         <NowPlaying
           track={nowPlaying}
