@@ -593,6 +593,9 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
             queuedIsrcs={queuedForRow}
             nowPlayingIds={nowPlayingIds}
             onAddTrack={onAddTrack}
+            onRowAdd={onRowAdd}
+            isAdded={rowAdded}
+            requestMode={!isPrivileged}
             onClose={() => { modalOpRef.current++; setModal(null) }}
             catalog={catalog}
           />

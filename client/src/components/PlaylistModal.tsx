@@ -19,7 +19,18 @@ interface Props {
   /** When omitted (e.g. legacy callers without a station-active concept),
    *  no row is rendered as the now-playing track. */
   nowPlayingIds?: Set<string>
+  /** Plain add/request for a track — used by the "add/request all" footer.
+   *  Re-requesting an already-requested track is a server no-op, so the
+   *  footer can fire it across the whole list safely. */
   onAddTrack: (track: Track) => void
+  /** Per-row tap. For listeners this requests, or retracts if already
+   *  requested; for DJs it adds/removes. Falls back to onAddTrack. */
+  onRowAdd?: (track: Track) => void
+  /** Per-row "already added/requested" resolver. Falls back to a queue check. */
+  isAdded?: (track: Track) => boolean
+  /** Show request (↑) affordances instead of add (+) — i.e. the viewer is a
+   *  listener whose taps create requests rather than direct queue adds. */
+  requestMode?: boolean
   onClose: () => void
   catalog?: MusicCatalog
   djNotes?: Record<string, string>
@@ -28,7 +39,8 @@ interface Props {
 
 const EMPTY_SET = new Set<string>()
 
-export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = EMPTY_SET, onAddTrack, onClose, catalog, djNotes, onSaveDjNote }: Props) {
+export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = EMPTY_SET, onAddTrack, onRowAdd, isAdded, requestMode, onClose, catalog, djNotes, onSaveDjNote }: Props) {
+  const trackAdded = isAdded ?? ((t: Track) => queuedIsrcs.has(t.isrc) || queuedIsrcs.has(t.appleId ?? ""))
   const [navStack, setNavStack] = useState<NavEntry[]>([])
   const [navCurrent, setNavCurrent] = useState<NavEntry | null>(null)
   const [artworkOpen, setArtworkOpen] = useState(false)
@@ -157,10 +169,11 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = E
                     track={track}
                     trackNumber={isAlbumish ? i + 1 : undefined}
                     hideArtist={isAlbumish && track.artistName === displayPlaylist.subtitle}
-                    added={!isUnavailable && (queuedIsrcs.has(track.isrc) || queuedIsrcs.has(track.appleId ?? ""))}
+                    added={!isUnavailable && trackAdded(track)}
                     isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")}
                     unavailable={isUnavailable}
-                    onAdd={() => onAddTrack(track)}
+                    requestMode={requestMode}
+                    onAdd={() => (onRowAdd ?? onAddTrack)(track)}
                     onAlbumClick={catalog && track.appleId && !isAlbumish
                       ? () => handleTrackAlbumClick(track)
                       : undefined}
@@ -171,14 +184,15 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = E
           )}
         </div>
 
-        {/* Footer — Add all */}
-        {displayTracks && displayTracks.length > 0 && (() => {
-          // Exclude tracks already queued by the user AND the now-playing
-          // track (server would refuse to add it; we shouldn't try). Robot-
-          // queued tracks remain addable — server promotes them.
+        {/* Footer — Add all. DJs only: the suggest path is rate-limited to one
+            per few seconds, so a bulk "request all" would silently drop most of
+            the list (and spam the DJ besides). Listeners request individually. */}
+        {!requestMode && displayTracks && displayTracks.length > 0 && (() => {
+          // Exclude tracks already queued/requested AND the now-playing track
+          // (server would refuse to add it; we shouldn't try). Robot-queued
+          // tracks remain addable — server promotes them.
           const unqueued = displayTracks.filter(t =>
-            t.appleId &&
-            !queuedIsrcs.has(t.isrc) && !queuedIsrcs.has(t.appleId) &&
+            t.appleId && !trackAdded(t) &&
             !nowPlayingIds.has(t.isrc) && !nowPlayingIds.has(t.appleId)
           )
           return unqueued.length > 0 ? (
