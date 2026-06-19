@@ -7,6 +7,7 @@ import { SuggestionRow } from "./SuggestionRow"
 import { PlaylistModal } from "./PlaylistModal"
 import { LoadingDots } from "./LoadingDots"
 import type { MusicCatalog } from "../services/catalog"
+import { isIdentityPlaylist } from "../services/appleMusic"
 import type { Track, PlaylistResult, LibraryPlaylistResult, LibraryAlbumResult, AlbumResult, QueueItem, SearchItem, SuggestedTrack } from "../types"
 
 type Drillable = PlaylistResult | LibraryPlaylistResult | AlbumResult | LibraryAlbumResult
@@ -486,6 +487,9 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                         || (pl.subtitle ?? "").toLowerCase().includes(q)
                         || (pl.description ?? "").toLowerCase().includes(q)
                     })
+                    // Pin the user's own hat.fm identity playlist to the top.
+                    // Stable sort keeps every other playlist in its original order.
+                    .sort((a, b) => Number(isIdentityPlaylist(b)) - Number(isIdentityPlaylist(a)))
                     .map(pl => (
                       <PlaylistRow key={pl.id} playlist={pl} onSelect={() => handleSelectPlaylist(pl)} />
                     ))}

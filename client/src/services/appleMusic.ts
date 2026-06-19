@@ -251,6 +251,13 @@ function parseIdentityMarker(description: string | undefined): string | null {
   return m ? m[1] : null
 }
 
+/** True for the auto-created hat.fm identity playlist. The description marker
+ *  is authoritative (survives renames); the name is a fallback for the rare
+ *  case where the marker didn't come back on a library list. */
+export function isIdentityPlaylist(pl: { name?: string; description?: string }): boolean {
+  return parseIdentityMarker(pl.description) !== null || pl.name === IDENTITY_PLAYLIST_NAME
+}
+
 /** Recover the uid from the user's identity playlist, or null if none exists.
  *  Cheap library search by name first; if that misses (e.g. the user renamed
  *  the playlist in the Music app), fall back to scanning all library playlists
