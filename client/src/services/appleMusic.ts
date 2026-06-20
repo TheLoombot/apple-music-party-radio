@@ -153,23 +153,29 @@ export async function searchCatalog(term: string, storefront = "us", offset = 0)
 }
 
 export async function getAlbumTracks(albumId: string, storefront = "us"): Promise<Track[]> {
-  const res = await fetch(
-    `https://api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}/tracks?limit=30&extend=offers`,
-    { headers: headers() }
-  )
-  if (!res.ok) return []
-  const data = await res.json()
-  return (data.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null)
+  return fetchAllCatalogTracks(`https://api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}/tracks?limit=100&extend=offers`)
 }
 
 export async function getPlaylistTracks(playlistId: string, storefront = "us"): Promise<Track[]> {
-  const res = await fetch(
-    `https://api.music.apple.com/v1/catalog/${storefront}/playlists/${playlistId}/tracks?limit=100&extend=offers`,
-    { headers: headers() }
-  )
-  if (!res.ok) return []
-  const data = await res.json()
-  return (data.data ?? []).map(normalizeTrack).filter((t: Track | null): t is Track => t !== null)
+  return fetchAllCatalogTracks(`https://api.music.apple.com/v1/catalog/${storefront}/playlists/${playlistId}/tracks?limit=100&extend=offers`)
+}
+
+// Follow Apple's `next` cursor to the end so long albums (deluxe editions,
+// compilations) and playlists aren't silently truncated at one page.
+async function fetchAllCatalogTracks(firstUrl: string): Promise<Track[]> {
+  const out: Track[] = []
+  let url = firstUrl
+  while (url) {
+    const res = await fetch(url, { headers: headers() })
+    if (!res.ok) break
+    const data = await res.json()
+    for (const item of data.data ?? []) {
+      const t = normalizeTrack(item)
+      if (t) out.push(t)
+    }
+    url = data.next ? `https://api.music.apple.com${data.next}` : ""
+  }
+  return out
 }
 
 // Library tracks use playParams.catalogId, not item.id
