@@ -22,6 +22,7 @@ import { isValidFreqId, pickAvailableFreqId } from "./services/frequency"
 import { sameTrack, trackKey } from "../../shared/track"
 import { PlaybackLoop } from "./services/playbackLoop"
 import { AppleMusicPlayer } from "./services/appleMusicPlayer"
+import { previewPlayer } from "./services/previewPlayer"
 import { AppleMusicCatalog } from "./services/catalog"
 import { log } from "./services/log"
 import type { AppUser, Station, QueueItem, Track, AlbumResult, PoolTrack, LogEntry, Visit, SuggestedTrack } from "./types"
@@ -74,6 +75,9 @@ export default function App() {
   const [isMuted, setIsMuted] = useState(false)
   const [playbackBlocked, setPlaybackBlocked] = useState(false)
   const [previewOnly, setPreviewOnly] = useState(false)
+  // Apple ID of the track currently being previewed (from the Discovery panel),
+  // or null. Drives the preview button state across all track rows.
+  const [previewingId, setPreviewingId] = useState<string | null>(null)
   const [ownedStationIds, setOwnedStationIds] = useState<string[]>(() => getOwnedStationIds())
   const [djUserIds, setDJUserIds] = useState<string[]>([])
   const [serverConnected, setServerConnected] = useState<boolean | null>(null)
@@ -255,7 +259,7 @@ export default function App() {
   // Start playback loop when station changes
   useEffect(() => {
     if (appState !== "ready" || !currentStationId || !user) return
-    playbackLoop.current.onNowPlayingChange = (item) => { setStationLoading(false); setNowPlaying(item) }
+    playbackLoop.current.onNowPlayingChange = (item) => { setStationLoading(false); setNowPlaying(item); previewPlayer.stop() }
     playbackLoop.current.onPreviewOnly = () => setPreviewOnly(true)
     playbackLoop.current.onQueueChange = (upNext) => { setStationLoading(false); setUpNext(upNext) }
     playbackLoop.current.onPlaybackBlocked = () => setPlaybackBlocked(true)
@@ -283,8 +287,25 @@ export default function App() {
     setDjHearts({})
     playbackLoop.current.start(currentStationId)
     stationSocket.join(user.uid, user.displayName)
-    return () => playbackLoop.current.stop()
+    return () => { previewPlayer.stop(); playbackLoop.current.stop() }
   }, [currentStationId, appState, user?.uid]) // user.uid is stable; display name changes handled below
+
+  // Wire the preview player to the main playback loop: ducking/muting the
+  // station track while a preview plays, and surfacing which track (if any) is
+  // currently previewing to the UI. Singletons, so this runs once.
+  useEffect(() => {
+    const loop = playbackLoop.current
+    previewPlayer.onDuck = () => loop.setDucked(true)
+    previewPlayer.onUnduck = () => loop.setDucked(false)
+    const off = previewPlayer.onChange(setPreviewingId)
+    return () => { off(); previewPlayer.stop() }
+  }, [])
+
+  // Closing the Add/Request panel stops any preview — otherwise it'd keep
+  // playing (and the main track stay ducked) with no visible button to stop it.
+  useEffect(() => {
+    if (!discoveryModalOpen) previewPlayer.stop()
+  }, [discoveryModalOpen])
 
   // Re-send join when display name changes — no reconnect needed
   useEffect(() => {
@@ -443,6 +464,10 @@ export default function App() {
 
   const handleRetractSuggestion = useCallback((key: string) => {
     stationSocket.retractSuggestion(key)
+  }, [])
+
+  const handleTogglePreview = useCallback((track: Track) => {
+    if (track.appleId && track.previewUrl) previewPlayer.toggle(track.appleId, track.previewUrl)
   }, [])
 
   const handleEnqueueSuggestion = useCallback((key: string) => {
@@ -955,6 +980,8 @@ export default function App() {
             onRetractSuggestion={handleRetractSuggestion}
             onEnqueueSuggestion={isPrivileged ? handleEnqueueSuggestion : undefined}
             onRemoveSuggestion={isPrivileged ? handleRemoveSuggestion : undefined}
+            previewingId={previewingId}
+            onTogglePreview={handleTogglePreview}
           />
         )}
       </AnimatePresence>
@@ -1004,6 +1031,8 @@ export default function App() {
                   onRetractSuggestion={handleRetractSuggestion}
                   onEnqueueSuggestion={isPrivileged ? handleEnqueueSuggestion : undefined}
                   onRemoveSuggestion={isPrivileged ? handleRemoveSuggestion : undefined}
+                  previewingId={previewingId}
+                  onTogglePreview={handleTogglePreview}
                 />
               )}
             </AnimatePresence>

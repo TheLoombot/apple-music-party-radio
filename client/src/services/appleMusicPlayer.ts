@@ -142,6 +142,10 @@ export class AppleMusicPlayer implements MusicPlayer {
     } catch { return false }
   }
 
+  getCurrentTime(): number {
+    try { return (getMusicKit() as any).currentPlaybackTime ?? 0 } catch { return 0 }
+  }
+
   setVolume(level: number) {
     try { (getMusicKit() as any).volume = level } catch { /* not ready */ }
     // iOS Safari ignores programmatic volume changes; toggle muted as fallback

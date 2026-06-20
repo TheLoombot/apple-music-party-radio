@@ -6,6 +6,11 @@ export interface Track {
   albumName: string
   artworkUrl: string   // Apple Music: {w}x{h} template; Spotify: direct URL
   durationMs: number
+  // The free ~30s catalog excerpt (Apple `previews[0].url`), used by the
+  // Discovery preview button. Ephemeral/presentational — not part of track
+  // identity; sameTrack/migrateTrack ignore it, and it's absent for tracks
+  // that came from anywhere but a fresh catalog fetch.
+  previewUrl?: string
 }
 
 export interface QueueItem extends Track {

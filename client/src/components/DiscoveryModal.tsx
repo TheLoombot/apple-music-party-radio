@@ -43,10 +43,12 @@ interface Props {
   onRetractSuggestion: (key: string) => void
   onEnqueueSuggestion?: (key: string) => void
   onRemoveSuggestion?: (key: string) => void
+  previewingId: string | null
+  onTogglePreview: (track: Track) => void
   mode?: "modal" | "panel"
 }
 
-export function DiscoveryModal({ onClose, catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, suggestedIsrcs, queue, onAddTrack, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onRetractSuggestion, onEnqueueSuggestion, onRemoveSuggestion, mode = "modal" }: Props) {
+export function DiscoveryModal({ onClose, catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, suggestedIsrcs, queue, onAddTrack, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onRetractSuggestion, onEnqueueSuggestion, onRemoveSuggestion, previewingId, onTogglePreview, mode = "modal" }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     document.addEventListener("keydown", handler)
@@ -86,6 +88,8 @@ export function DiscoveryModal({ onClose, catalog, queuedIsrcs, userQueuedIds, n
         onRetractSuggestion={onRetractSuggestion}
         onEnqueueSuggestion={onEnqueueSuggestion}
         onRemoveSuggestion={onRemoveSuggestion}
+        previewingId={previewingId}
+        onTogglePreview={onTogglePreview}
       />
     </DiscoveryErrorBoundary>
   )

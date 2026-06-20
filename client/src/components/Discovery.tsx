@@ -35,9 +35,11 @@ interface Props {
   onRetractSuggestion: (key: string) => void
   onEnqueueSuggestion?: (key: string) => void
   onRemoveSuggestion?: (key: string) => void
+  previewingId: string | null
+  onTogglePreview: (track: Track) => void
 }
 
-export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, suggestedIsrcs, queue, onAddTrack, embedded, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onRetractSuggestion, onEnqueueSuggestion, onRemoveSuggestion }: Props) {
+export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, suggestedIsrcs, queue, onAddTrack, embedded, suggestions, isPrivileged, currentUserId, onVoteSuggestion, onRetractSuggestion, onEnqueueSuggestion, onRemoveSuggestion, previewingId, onTogglePreview }: Props) {
   // For the "already in queue" indicator: DJs use userQueuedIds (robot tracks
   // show as addable so they can be promoted on click); non-DJs use queuedIsrcs
   // (the request-track flow can't promote, so robot tracks stay marked).
@@ -71,6 +73,12 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
     if (key) onRetractSuggestion(key)
     else onAddTrack(t)
   }
+  // Preview button props for a track row — only wired when a preview URL exists.
+  const previewProps = (t: Track) => ({
+    previewUrl: t.previewUrl,
+    isPreviewing: !!t.appleId && previewingId === t.appleId,
+    onTogglePreview: t.previewUrl && t.appleId ? () => onTogglePreview(t) : undefined,
+  })
   // Land on "Heavy" when the station is empty — "Related" needs at least one
   // queued track to seed from, so it's unhelpful on a fresh/empty station.
   const [tab, setTab] = useState<Tab>(queue.length === 0 ? "heavy" : "related")
@@ -371,6 +379,7 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                                   added={rowAdded(item.track)}
                                   isNowPlaying={nowPlayingIds.has(item.track.isrc) || nowPlayingIds.has(item.track.appleId ?? "")}
                                   onAdd={() => onRowAdd(item.track)}
+                                  {...previewProps(item.track)}
                                   onAlbumClick={item.track.appleId ? () => handleAlbumClick(item.track) : undefined}
                                   requestMode={!isPrivileged}
                                 />
@@ -421,6 +430,7 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                       added={rowAdded(track)}
                       isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")}
                       onAdd={() => onRowAdd(track)}
+                      {...previewProps(track)}
                       onAlbumClick={track.appleId ? () => handleAlbumClick(track) : undefined}
                       requestMode={!isPrivileged}
                     />
@@ -444,6 +454,7 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                     added={rowAdded(track)}
                     isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")}
                     onAdd={() => onRowAdd(track)}
+                    {...previewProps(track)}
                     onAlbumClick={track.appleId ? () => handleAlbumClick(track) : undefined}
                     requestMode={!isPrivileged}
                   />
@@ -556,6 +567,7 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
                       added={rowAdded(track)}
                       isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")}
                       onAdd={() => onRowAdd(track)}
+                      {...previewProps(track)}
                       onAlbumClick={track.appleId ? () => handleAlbumClick(track) : undefined}
                       requestMode={!isPrivileged}
                     />
@@ -596,6 +608,8 @@ export function Discovery({ catalog, queuedIsrcs, userQueuedIds, nowPlayingIds, 
             onRowAdd={onRowAdd}
             isAdded={rowAdded}
             requestMode={!isPrivileged}
+            previewingId={previewingId}
+            onTogglePreview={onTogglePreview}
             onClose={() => { modalOpRef.current++; setModal(null) }}
             catalog={catalog}
           />

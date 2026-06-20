@@ -28,7 +28,8 @@ function normalizeTrack(item: any): Track | null {
     artistName: a.artistName ?? "",
     albumName: a.albumName ?? "",
     artworkUrl: a.artwork?.url ?? "",
-    durationMs: a.durationInMillis ?? 0
+    durationMs: a.durationInMillis ?? 0,
+    ...(a.previews?.[0]?.url ? { previewUrl: a.previews[0].url as string } : {}),
   }
 }
 

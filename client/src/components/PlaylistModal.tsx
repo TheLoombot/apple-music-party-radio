@@ -31,6 +31,9 @@ interface Props {
   /** Show request (↑) affordances instead of add (+) — i.e. the viewer is a
    *  listener whose taps create requests rather than direct queue adds. */
   requestMode?: boolean
+  /** Apple ID currently previewing (or null), and the toggle handler. */
+  previewingId?: string | null
+  onTogglePreview?: (track: Track) => void
   onClose: () => void
   catalog?: MusicCatalog
   djNotes?: Record<string, string>
@@ -39,7 +42,7 @@ interface Props {
 
 const EMPTY_SET = new Set<string>()
 
-export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = EMPTY_SET, onAddTrack, onRowAdd, isAdded, requestMode, onClose, catalog, djNotes, onSaveDjNote }: Props) {
+export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = EMPTY_SET, onAddTrack, onRowAdd, isAdded, requestMode, previewingId, onTogglePreview, onClose, catalog, djNotes, onSaveDjNote }: Props) {
   const trackAdded = isAdded ?? ((t: Track) => queuedIsrcs.has(t.isrc) || queuedIsrcs.has(t.appleId ?? ""))
   const [navStack, setNavStack] = useState<NavEntry[]>([])
   const [navCurrent, setNavCurrent] = useState<NavEntry | null>(null)
@@ -173,6 +176,9 @@ export function PlaylistModal({ playlist, tracks, queuedIsrcs, nowPlayingIds = E
                     isNowPlaying={nowPlayingIds.has(track.isrc) || nowPlayingIds.has(track.appleId ?? "")}
                     unavailable={isUnavailable}
                     requestMode={requestMode}
+                    previewUrl={track.previewUrl}
+                    isPreviewing={!!track.appleId && previewingId === track.appleId}
+                    onTogglePreview={track.previewUrl && track.appleId && onTogglePreview ? () => onTogglePreview(track) : undefined}
                     onAdd={() => (onRowAdd ?? onAddTrack)(track)}
                     onAlbumClick={catalog && track.appleId && !isAlbumish
                       ? () => handleTrackAlbumClick(track)

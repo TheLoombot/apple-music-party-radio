@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Trash2, ArrowUp, Plus, Check, Music } from "lucide-react"
+import { Trash2, ArrowUp, Plus, Check, Music, Play, Square } from "lucide-react"
 import { artworkUrl } from "../services/musickit"
 import { formatDuration } from "../utils"
 import { Tooltip } from "./Tooltip"
@@ -19,9 +19,15 @@ interface Props {
   isNowPlaying?: boolean
   onAlbumClick?: () => void
   requestMode?: boolean
+  /** The track's 30s preview URL; enables the preview button when present. */
+  previewUrl?: string
+  /** True when this track is the one currently previewing. */
+  isPreviewing?: boolean
+  /** Start/stop previewing this track. Omit to hide the preview button. */
+  onTogglePreview?: () => void
 }
 
-export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, onAdd, onRemove, unavailable, isNowPlaying, onAlbumClick, requestMode }: Props) {
+export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, onAdd, onRemove, unavailable, isNowPlaying, onAlbumClick, requestMode, previewUrl, isPreviewing, onTogglePreview }: Props) {
   // The real `added` state only flips once the server echoes the queue update
   // back over the socket. That lag makes the button look dead on the first press
   // — and invites a reflexive second press that, if the echo lands in between,
@@ -76,6 +82,17 @@ export function TrackRow({ track, trackNumber, rankNumber, hideArtist, added, on
       <span className="text-sm text-muted tabular-nums flex-shrink-0">{formatDuration(track.durationMs)}</span>
 
       <div className="flex items-center gap-2 flex-shrink-0">
+        {previewUrl && onTogglePreview && !isNowPlaying && (
+          <Tooltip label={isPreviewing ? "Stop preview" : "Preview"} align="end">
+            <button
+              onClick={onTogglePreview}
+              aria-label={isPreviewing ? "Stop preview" : "Preview"}
+              className={`btn-3d w-12 h-12 rounded-lg flex items-center justify-center text-white ${isPreviewing ? "btn-3d-pressed" : ""}`}
+            >
+              {isPreviewing ? <Square size={16} strokeWidth={3} /> : <Play size={18} strokeWidth={3} />}
+            </button>
+          </Tooltip>
+        )}
         {isNowPlaying ? (
           <Tooltip label="Now playing on this station" align="end">
             <div

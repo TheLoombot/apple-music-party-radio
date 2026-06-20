@@ -20,6 +20,10 @@ export interface MusicPlayer {
   stop(): void
   fadeOut(ms?: number): Promise<void>
   setVolume(level: number): void  // 0 = muted, 1 = full
+  /** Current playback offset into the active track, in seconds. Used to detect
+   *  whether the stream drifted from the live wall-clock position (e.g. iOS
+   *  paused it under a preview) so the loop can re-sync. */
+  getCurrentTime(): number
   /** Player's reported state — i.e. MusicKit thinks it's playing. May be true
    *  even when no audio is actually being produced (muted, stalled, autoplay
    *  blocked, etc.). Cheap, synchronous; suitable for control-flow gates. */

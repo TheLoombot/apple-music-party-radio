@@ -23,6 +23,15 @@ import { log } from "./log"
 import type { MusicPlayer } from "./player"
 import type { QueueItem } from "../types"
 
+// Volume the main track ducks to while a preview plays. On iOS, programmatic
+// volume is ignored (only mute works), so there ducking degenerates to a full
+// mute — which is fine: the station keeps advancing on its wall-clock timeline
+// and we re-sync to live when the preview ends.
+const DUCK_VOLUME = /iP(hone|ad|od)/.test(navigator.userAgent)
+  || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  ? 0
+  : 0.15
+
 export class PlaybackLoop {
   private currentTrack: QueueItem | null = null
   private currentTrackKey: string | null = null
@@ -33,6 +42,7 @@ export class PlaybackLoop {
   private lastKnownQueue: QueueItem[] = []
   private autoplayEnabled = false
   private muted = false
+  private ducked = false  // true while a track preview is playing over the station
   private nowPlayingItemTeardown: (() => void) | null = null
   // Latest-wins serializer for queue updates: drops intermediate updates so MusicKit
   // operations from a stale handler can't race with a newer handler.
@@ -71,7 +81,9 @@ export class PlaybackLoop {
   }
 
   private expectsAudio(): boolean {
-    return this.autoplayEnabled && !this.muted && this.currentTrack !== null
+    // While ducked for a preview the main stream may be muted (iOS) or quiet,
+    // so don't let the stall watchdog flag it.
+    return this.autoplayEnabled && !this.muted && !this.ducked && this.currentTrack !== null
   }
 
   private updateStallWatchdog(playing: boolean): void {
@@ -184,7 +196,12 @@ export class PlaybackLoop {
    *  Reapply it so mute survives track changes (cleared only on station
    *  switch via setMuted(false) inside start()). */
   private reassertMute() {
-    if (this.muted) this.player.setVolume(0)
+    if (this.muted || this.ducked) this.applyVolume()
+  }
+
+  /** Single source of truth for the main track's volume. Mute beats duck. */
+  private applyVolume() {
+    this.player.setVolume(this.muted ? 0 : this.ducked ? DUCK_VOLUME : 1)
   }
 
   /** Re-play the current track from the correct sync offset. Call after re-authorization. */
@@ -216,8 +233,32 @@ export class PlaybackLoop {
 
   setMuted(muted: boolean) {
     this.muted = muted
-    this.player.setVolume(muted ? 0 : 1)
+    this.applyVolume()
     this.onMutedChange?.(muted)
+  }
+
+  /** Duck (desktop) or mute (mobile) the main track while a preview plays over
+   *  it. The station keeps advancing on wall-clock time, so on un-duck we snap
+   *  back to the live position if the stream drifted (e.g. iOS paused it) —
+   *  preserving the radio metaphor instead of resuming where it left off. */
+  setDucked(ducked: boolean) {
+    if (ducked === this.ducked) return
+    this.ducked = ducked
+    this.applyVolume()
+    if (!ducked) this.resyncIfDrifted()
+  }
+
+  private resyncIfDrifted() {
+    if (!this.autoplayEnabled || !this.currentTrack) return
+    const now = Date.now()
+    if (now >= this.currentTrack.expirationTime) return
+    const startTime = this.currentTrack.expirationTime - this.currentTrack.durationMs
+    const expected = (now - startTime) / 1000
+    const actual = this.player.getCurrentTime()
+    if (Math.abs(expected - actual) > 3) {
+      log.playback.info("preview drift — re-syncing to live", { expected: Math.round(expected), actual: Math.round(actual) })
+      this.refresh()
+    }
   }
 
   // MusicKit auto-advanced to the next track natively.
