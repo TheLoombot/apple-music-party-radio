@@ -34,6 +34,10 @@ interface Track {
   // Cheap categorical signals for the vibe-aware robot DJ (genre/year/flags),
   // captured client-side and carried through pool-insert. See shared/fingerprint.ts.
   fpMeta?: FingerprintMeta
+  // 384-dim text embedding (TEXT_BLOCK) computed in-browser at add time and
+  // carried on the track; absent ⇒ categorical-only fingerprint.
+  textEmbedding?: number[]
+  textConfidence?: number
 }
 
 interface QueueItem extends Track {
@@ -1584,7 +1588,8 @@ export default class RadioParty implements Party.Server {
       // human-queued tracks; robot picks are deliberately excluded as anchors
       // so the station can't drift into an echo chamber of its own choices.
       // With no anchor at all (cold bootstrap, empty queue) we shuffle.
-      const fp = (t: { fpMeta?: FingerprintMeta }) => composeFingerprint(null, t.fpMeta ?? {})
+      const fp = (t: { fpMeta?: FingerprintMeta; textEmbedding?: number[]; textConfidence?: number }) =>
+        composeFingerprint(t.textEmbedding ?? null, t.fpMeta ?? {}, t.textConfidence ?? 1)
       const anchors: QueueItem[] = []
       if (queue[0]) anchors.push(queue[0])
       for (let i = 1; i < queue.length; i++) if (queue[i].addedBy !== "robot") anchors.push(queue[i])

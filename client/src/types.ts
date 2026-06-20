@@ -8,6 +8,11 @@ export interface Track {
   // Optional everywhere: library tracks and legacy records simply lack it, and
   // the fingerprint degrades to "no vibe info" rather than breaking.
   fpMeta?: FingerprintMeta
+  // TEXT_BLOCK of the fingerprint: a 384-dim sentence embedding of the track's
+  // vibe text, computed in-browser at add time (services/embed.ts) and carried
+  // through to pool-insert. Absent ⇒ categorical-only fingerprint.
+  textEmbedding?: number[]
+  textConfidence?: number  // downweights name-only text vs. richer editorial
   name: string
   artistName: string
   albumName: string

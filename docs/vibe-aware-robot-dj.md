@@ -1,7 +1,9 @@
 # Vibe-aware Robot DJ — project doc (in progress)
 
-Status: **Phase 1 shipped on branch `vibe-aware-robot-dj`** (categorical-only fingerprint).
-Text-embedding and behavioral signals are designed but not yet wired.
+Status: **Phases 1–2 shipped on branch `vibe-aware-robot-dj`.**
+- Phase 1: categorical fingerprint + vibe-aware picker.
+- Phase 2: in-browser TEXT embedding (name text) via transformers.js.
+Behavioral/acoustic signals and album-editorial text are designed, not yet wired.
 
 ---
 
@@ -60,7 +62,7 @@ both server and client (same discipline as `shared/track.ts`), tested by
 | Block | Source | Status |
 |---|---|---|
 | **CAT** (categorical) | Apple `genreNames`, release year, `hasLyrics`, `contentRating` | **Done** |
-| **TEXT** (editorial/mood) | Album `editorialNotes` (+ name fallback) → text embedding | Designed, not wired |
+| **TEXT** (mood) | Name text (title/artist/album/genres) → in-browser embedding | **Done (name text)**; album editorial = upgrade |
 | **BEHAV** (collaborative) | Co-occurrence in our own stations, `addedByUsers`, hearts, **skip penalties** | Future |
 | **AUDIO** (acoustic) | 30s preview embedding (CLAP/MERT) or AcousticBrainz by ISRC | Future |
 
@@ -121,9 +123,27 @@ Options for TEXT embeddings without a CF account:
 | B. Other embedding API (OpenAI/Voyage/Jina) | maybe | per-call key |
 | A. Standalone Cloudflare acct (Workers AI REST, no hosting migration) | yes (free tier) | one token |
 
-**Recommended: Option C.** It keeps the no-new-accounts property, and the client
-already fetches the album editorial text. The storage shape already assumes
-`TEXT_DIMS = 384` (bge-small), so A/B/C are interchangeable later.
+**Chose Option C (shipped).** `client/src/services/embed.ts` runs
+`Xenova/all-MiniLM-L6-v2` (int8, 384-dim = `TEXT_DIMS`) via transformers.js.
+- **Where**: `handleAddTrack` embeds the track's vibe text and attaches
+  `textEmbedding` + `textConfidence` before sending; it rides on the `Track`
+  through pool-insert (so anchors + pool candidates carry it — pool membership
+  irrelevant, which was the key design question).
+- **Lazy**: dynamically `import()`-ed so transformers.js (~229KB gzip JS + 21MB
+  ORT WASM + ~23MB model on first use) is **not** in the main bundle; passive
+  listeners download none of it. Warmed when the Discovery add-surface opens.
+- **Failure** ⇒ track sent without embedding ⇒ categorical-only (graceful).
+
+### Known costs / follow-ups for Phase 2
+- The 21MB ORT WASM is emitted into `dist/` (served from GitHub Pages, fetched
+  on demand). Could offload to a CDN via `env.backends.onnx.wasm.wasmPaths` to
+  shrink the deploy artifact.
+- `textEmbedding` (384 floats) now travels on every queue/pool item over the
+  WebSocket and is broadcast to all clients, who don't need it for rendering.
+  Stripping embeddings from server→client broadcasts (or int8-quantizing) would
+  cut bandwidth — notable for the ~100-entry pool.
+- Tracks added via non-`handleAddTrack` paths (CSV import, library, suggestions)
+  lack embeddings ⇒ categorical-only. Acceptable; backfill later if needed.
 
 ---
 
@@ -148,14 +168,18 @@ already fetches the album editorial text. The storage shape already assumes
 
 ## What's left
 
-1. **Verify live** — run the app, confirm the robot tracks a mellow vs. hype
-   queue and the shuffle fallback still fires on an empty queue.
-2. **Option C** — client-side `bge-small` text embedding → fill `TEXT_BLOCK`.
-   Requires the album editorial fetch on add (the `__dumpAppleMeta` probe in
-   `appleMusic.ts` is the throwaway scaffold for this — **remove before final
-   merge**).
-3. **BEHAV block** — mine our own station co-occurrence + skip signals.
-4. Decide whether to **precompute + store** fingerprints at pool-insert once
+1. **Verify live** — run the app, confirm (a) the robot tracks a mellow vs. hype
+   queue, (b) the shuffle fallback fires on an empty queue, (c) the embed chunk
+   + model actually load in-browser on add and embeddings reach the server.
+2. **Album editorial text** — upgrade `vibeTextForTrack` to fetch + embed album
+   `editorialNotes` (richer than name text, higher `textConfidence`). The
+   `__dumpAppleMeta` probe in `appleMusic.ts` is the throwaway scaffold —
+   **remove before final merge**. Needs the async-fetch handled without
+   blocking bulk adds (optimistic add + embedding patch message).
+3. **Bandwidth/deploy trims** — strip embeddings from server→client broadcasts;
+   offload ORT WASM to a CDN (see "Known costs" above).
+4. **BEHAV block** — mine our own station co-occurrence + skip signals.
+5. Decide whether to **precompute + store** fingerprints at pool-insert once
    TEXT/BEHAV make on-the-fly recompute non-trivial.
 
 ---
@@ -166,7 +190,10 @@ already fetches the album editorial text. The storage shape already assumes
 |---|---|
 | `shared/fingerprint.ts` | Pure core: blocks, compose, `vibeTarget`, `selectVibeAware` |
 | `shared/fingerprint.test.ts` | Invariants (13 tests) |
-| `client/src/types.ts` | `Track.fpMeta?` |
+| `client/src/services/embed.ts` | In-browser transformers.js embedding (`embedText`, `vibeTextForTrack`, `warmEmbedder`) |
+| `client/src/types.ts` | `Track.fpMeta?`, `Track.textEmbedding?`, `Track.textConfidence?` |
 | `client/src/services/appleMusic.ts` | `normalizeTrack` captures `fpMeta`; `__dumpAppleMeta` probe (throwaway) |
-| `party/index.ts` | `fillRobotQueue` vibe-aware pick; `ROBOT_MMR_LAMBDA` |
+| `client/src/App.tsx` | `handleAddTrack` embeds on add (dynamic import); warms on Discovery open |
+| `client/vite.config.ts` | `optimizeDeps.exclude` for transformers.js |
+| `party/index.ts` | `fillRobotQueue` vibe-aware pick (TEXT+CAT); `ROBOT_MMR_LAMBDA` |
 | `CLAUDE.md` | Corrected deployment section; Robot DJ section |

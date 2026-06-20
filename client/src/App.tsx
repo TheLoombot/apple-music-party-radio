@@ -128,6 +128,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createModalOpen])
 
+  // Warm the in-browser embedding model when the user opens an add surface —
+  // a strong signal they're about to queue tracks — so the first add doesn't
+  // pay the model download/init latency. Dynamically imported so transformers.js
+  // is a lazy chunk that passive listeners never download. See services/embed.ts.
+  useEffect(() => {
+    if (!discoveryModalOpen) return
+    void import("./services/embed").then(m => m.warmEmbedder())
+  }, [discoveryModalOpen])
+
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)")
     const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
@@ -395,7 +404,19 @@ export default function App() {
     if (existing) {
       stationSocket.removeTrack(existing.key)
     } else {
-      stationSocket.addTrack(track, user.uid)
+      // Embed the track's vibe text in-browser, then send. Dynamic import keeps
+      // transformers.js out of the main bundle; fire-and-forget so a bulk add
+      // (whole album/playlist) doesn't serialize on inference — the track shows
+      // up as soon as its embed resolves. On any failure the track is sent
+      // without an embedding and the fingerprint degrades to categorical.
+      const uid = user.uid
+      void import("./services/embed").then(async ({ embedText, vibeTextForTrack, NAME_TEXT_CONFIDENCE }) => {
+        const embedding = await embedText(vibeTextForTrack(track))
+        stationSocket.addTrack(
+          embedding ? { ...track, textEmbedding: embedding, textConfidence: NAME_TEXT_CONFIDENCE } : track,
+          uid,
+        )
+      })
     }
   }, [user, nowPlaying, upNext])
 

@@ -233,10 +233,15 @@ client (same discipline as `shared/track.ts`; tested by `shared/fingerprint.test
 - **CAT_BLOCK** (categorical) is built from `Track.fpMeta` — `genreNames`, `year`,
   `hasLyrics`, `explicit` — captured client-side in `normalizeTrack` from default
   Apple Songs attributes (no `extend` needed) and carried through pool-insert.
-- **TEXT_BLOCK** (editorial-prose embedding) is **not wired yet**: `composeFingerprint`
-  is called with `null` text, which it gracefully degrades to categorical-only.
-  The slot expects a 384-dim `bge-small` vector; it'll be filled later
-  **client-side** (transformers.js) to avoid needing a Cloudflare/API account.
+- **TEXT_BLOCK** is a 384-dim sentence embedding computed **in-browser** via
+  transformers.js (`Xenova/all-MiniLM-L6-v2`, int8) — no server/API/Cloudflare
+  account. `client/src/services/embed.ts` is **dynamically imported** (lazy
+  chunk; passive listeners never download it) and warmed when an add surface
+  opens. `handleAddTrack` embeds the track's vibe text and attaches
+  `textEmbedding` + `textConfidence`, which ride on the `Track` (like `fpMeta`)
+  through to pool-insert. Currently embeds **name text** (title/artist/album/
+  genres); album editorial prose is a planned richer upgrade. Embed failure ⇒
+  no `textEmbedding` ⇒ `composeFingerprint` degrades to categorical-only.
 - **Pick**: `vibeTarget` = recency-weighted centroid of the now-playing track +
   human-queued tracks (robot picks are **excluded as anchors** to prevent an
   echo chamber). `selectVibeAware` (MMR, `ROBOT_MMR_LAMBDA`) ranks candidates,

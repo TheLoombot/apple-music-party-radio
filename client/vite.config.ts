@@ -18,5 +18,8 @@ export default defineConfig(() => ({
   // from client code; without this Vite's dev server refuses to serve files
   // outside the client directory.
   server: { port: 5173, host: true, allowedHosts: true, fs: { allow: [path.resolve(__dirname, '..')] } },
+  // transformers.js (onnxruntime-web WASM) doesn't play well with esbuild
+  // prebundling — exclude it so Vite serves it as-is.
+  optimizeDeps: { exclude: ['@huggingface/transformers'] },
   define: { __COMMIT__: JSON.stringify(commitHash) }
 }))
