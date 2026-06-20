@@ -30,6 +30,13 @@ function normalizeTrack(item: any): Track | null {
     artworkUrl: a.artwork?.url ?? "",
     durationMs: a.durationInMillis ?? 0,
     ...(a.previews?.[0]?.url ? { previewUrl: a.previews[0].url as string } : {}),
+    fpMeta: {
+      // All default Songs attributes — no `extend` needed.
+      genreNames: Array.isArray(a.genreNames) ? a.genreNames : undefined,
+      year: typeof a.releaseDate === "string" ? Number(a.releaseDate.slice(0, 4)) || undefined : undefined,
+      hasLyrics: a.hasLyrics,
+      explicit: a.contentRating === "explicit",
+    },
   }
 }
 
@@ -628,3 +635,59 @@ export async function getPlaylistEditorial(playlistId: string, storefront = "us"
 }
 
 export { artworkUrl }
+
+// ─── THROWAWAY: raw-metadata probe (remove before merge) ─────────────────────
+// Dumps the full, unfiltered Apple catalog response for a song + its album so
+// we can confirm which fingerprint-relevant fields are actually populated for
+// this storefront (genreNames, editorialNotes, audioVariants, recordLabel, …).
+// Usage from the browser console:
+//   window.__dumpAppleMeta("1234567890")   // a specific catalog song id
+//   window.__dumpAppleMeta()               // auto-picks a famous track (rich editorial)
+async function dumpAppleMeta(songId: string, storefront = "us") {
+  if (!songId) {
+    // No id given — grab a well-known track so the album/artist editorial
+    // fields are guaranteed populated for the probe.
+    const seek = await fetch(
+      `https://api.music.apple.com/v1/catalog/${storefront}/search?types=songs&limit=1&term=` +
+        encodeURIComponent("Radiohead Idioteque"),
+      { headers: headers() }
+    )
+    songId = (await seek.json()).results?.songs?.data?.[0]?.id ?? ""
+    console.log("[dumpAppleMeta] auto-picked song id:", songId)
+    if (!songId) { console.warn("[dumpAppleMeta] could not auto-pick a song"); return }
+  }
+  // extend= surfaces attributes Apple omits by default; include= pulls the
+  // related album/artist resources in one round trip.
+  const songUrl =
+    `https://api.music.apple.com/v1/catalog/${storefront}/songs/${songId}` +
+    `?extend=editorialNotes,audioVariants,artistUrl` +
+    `&include=albums,artists`
+  const songRes = await fetch(songUrl, { headers: headers() })
+  const songJson = await songRes.json()
+  const song = songJson.data?.[0]
+  console.log("[dumpAppleMeta] SONG attributes:", song?.attributes)
+  console.log("[dumpAppleMeta] SONG relationships:", song?.relationships)
+
+  const albumId = song?.relationships?.albums?.data?.[0]?.id
+  if (albumId) {
+    // Album editorialNotes need their own extend — they don't ride along on include.
+    const albumUrl =
+      `https://api.music.apple.com/v1/catalog/${storefront}/albums/${albumId}` +
+      `?extend=editorialNotes`
+    const albumRes = await fetch(albumUrl, { headers: headers() })
+    const albumJson = await albumRes.json()
+    console.log("[dumpAppleMeta] ALBUM attributes:", albumJson.data?.[0]?.attributes)
+  }
+
+  const artistId = song?.relationships?.artists?.data?.[0]?.id
+  if (artistId) {
+    const artistRes = await fetch(
+      `https://api.music.apple.com/v1/catalog/${storefront}/artists/${artistId}?extend=editorialNotes`,
+      { headers: headers() }
+    )
+    const artistJson = await artistRes.json()
+    console.log("[dumpAppleMeta] ARTIST attributes:", artistJson.data?.[0]?.attributes)
+  }
+  return songJson
+}
+;(window as any).__dumpAppleMeta = (id?: string, sf?: string) => dumpAppleMeta(id ?? "", sf)

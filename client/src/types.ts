@@ -1,6 +1,13 @@
+import type { FingerprintMeta } from "../../shared/fingerprint"
+
 export interface Track {
   isrc: string
   appleId?: string  // Apple Music catalog ID (numeric string); absent = not playable
+  // Cheap categorical signals for the vibe-aware robot DJ, captured from the
+  // Apple catalog response at fetch time and carried through to pool-insert.
+  // Optional everywhere: library tracks and legacy records simply lack it, and
+  // the fingerprint degrades to "no vibe info" rather than breaking.
+  fpMeta?: FingerprintMeta
   name: string
   artistName: string
   albumName: string

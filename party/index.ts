@@ -19,6 +19,7 @@
  */
 import type * as Party from "partykit/server"
 import { migrateTrack, sameTrack, trackKey } from "../shared/track"
+import { composeFingerprint, vibeTarget, selectVibeAware, type FingerprintMeta } from "../shared/fingerprint"
 
 // ─── Shared types (mirrored from client/src/types.ts) ────────────────────────
 
@@ -30,6 +31,9 @@ interface Track {
   albumName: string
   artworkUrl: string
   durationMs: number
+  // Cheap categorical signals for the vibe-aware robot DJ (genre/year/flags),
+  // captured client-side and carried through pool-insert. See shared/fingerprint.ts.
+  fpMeta?: FingerprintMeta
 }
 
 interface QueueItem extends Track {
@@ -149,6 +153,10 @@ interface Profile {
 
 /** How many robot-queued tracks to maintain in the tail of the queue at all times. */
 const TARGET_ROBOT_DEPTH = 8
+
+/** MMR tradeoff for vibe-aware robot picks: 1 = always closest to the vibe
+ *  (risks near-duplicates), lower = more variety. See selectVibeAware. */
+const ROBOT_MMR_LAMBDA = 0.7
 
 /** Max tracks a single non-robot user may have queued at once (prevents queue flooding). */
 const MAX_USER_QUEUE_DEPTH = 100
@@ -1564,39 +1572,60 @@ export default class RadioParty implements Party.Server {
       const alreadyQueued = new Set<string>(
         queue.flatMap(q => [q.isrc, q.appleId].filter((v): v is string => !!v))
       )
+      const candidates = pool.filter(t => {
+        if (t.isrc && alreadyQueued.has(t.isrc)) return false
+        if (t.appleId && alreadyQueued.has(t.appleId)) return false
+        return true
+      })
+
+      // Vibe-aware selection: rank pool candidates by how well they fit the
+      // current vibe rather than picking at random. The vibe target is the
+      // recency-weighted centroid of the now-playing track plus any
+      // human-queued tracks; robot picks are deliberately excluded as anchors
+      // so the station can't drift into an echo chamber of its own choices.
+      // With no anchor at all (cold bootstrap, empty queue) we shuffle.
+      const fp = (t: { fpMeta?: FingerprintMeta }) => composeFingerprint(null, t.fpMeta ?? {})
+      const anchors: QueueItem[] = []
+      if (queue[0]) anchors.push(queue[0])
+      for (let i = 1; i < queue.length; i++) if (queue[i].addedBy !== "robot") anchors.push(queue[i])
+      const target = anchors.length ? vibeTarget(anchors.map(fp)) : null
+
+      let picks: PoolTrack[]
+      if (target) {
+        const ranked = selectVibeAware(
+          target,
+          candidates.map(t => ({ id: trackKey(t) ?? t.appleId ?? "", fingerprint: fp(t) })),
+          needed,
+          ROBOT_MMR_LAMBDA,
+        )
+        const byId = new Map(candidates.map(t => [trackKey(t) ?? t.appleId ?? "", t]))
+        picks = ranked.map(r => byId.get(r.id)).filter((t): t is PoolTrack => !!t)
+      } else {
+        // Fisher–Yates shuffle, then take what we need.
+        const shuffled = candidates.slice()
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1))
+          ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+        }
+        picks = shuffled.slice(0, needed)
+      }
 
       let changed = false
-      let filled = 0
-      let attempts = 0
-      while (filled < needed && attempts < needed * 4) {
-        attempts++
-        const candidates = pool.filter(t => {
-          if (t.isrc && alreadyQueued.has(t.isrc)) return false
-          if (t.appleId && alreadyQueued.has(t.appleId)) return false
-          return true
-        })
-        if (candidates.length === 0) break  // pool exhausted — leave queue short
-
-        const pick = candidates[Math.floor(Math.random() * candidates.length)]
-        if (pick.isrc) alreadyQueued.add(pick.isrc)
-        if (pick.appleId) alreadyQueued.add(pick.appleId)
-
+      // Use max(lastExpiry, now) so robot tracks always have future expiration
+      // times even when the existing queue has stale items (e.g. after DO
+      // hibernation); each subsequent pick starts when the previous one ends.
+      let cursor = queue.length ? Math.max(queue[queue.length - 1].expirationTime, Date.now()) : Date.now()
+      for (const pick of picks) {
         const { lastPlayedAt: _, addedByUsers: _2, playCount: _3, ...track } = pick
-        const last = queue[queue.length - 1]
-        // Use max(lastExpiry, now) so robot tracks always have future expiration times
-        // even when the existing queue has stale items (e.g. after DO hibernation).
-        const startFrom = last ? Math.max(last.expirationTime, Date.now()) : Date.now()
-        const expirationTime = startFrom + track.durationMs
-
+        cursor += track.durationMs
         queue.push({
           ...track,
           key: crypto.randomUUID(),
-          expirationTime,
+          expirationTime: cursor,
           addedByName: undefined,
           addedBy: "robot",
           addedAt: Date.now(),
         })
-        filled++
         changed = true
       }
 

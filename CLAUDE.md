@@ -218,7 +218,29 @@ shapes (`catalogId` / `platformIds.apple` / `appleId`) on every read; records
 matching no shape pass through unstripped. Never delete pool entries for
 missing IDs — quarantine (exclude from robot candidates) and let them heal.
 
-Pool is capped at 100 entries (LRU). Robot DJ picks randomly from the pool.
+Pool is capped at 100 entries (LRU).
+
+## Robot DJ — vibe-aware selection
+
+The robot DJ (`fillRobotQueue` in `party/index.ts`) no longer picks randomly. It
+ranks pool candidates by how well they fit the **current vibe** using
+`shared/fingerprint.ts` — the ONE implementation imported by both server and
+client (same discipline as `shared/track.ts`; tested by `shared/fingerprint.test.ts`).
+
+- A track's **fingerprint** is a fixed-length `number[]` of L2-normalized,
+  weighted blocks concatenated: `[ W_TEXT·conf·TEXT_BLOCK ‖ W_CAT·CAT_BLOCK ]`.
+  Cosine of two fingerprints = the weight-blended sum of each block's similarity.
+- **CAT_BLOCK** (categorical) is built from `Track.fpMeta` — `genreNames`, `year`,
+  `hasLyrics`, `explicit` — captured client-side in `normalizeTrack` from default
+  Apple Songs attributes (no `extend` needed) and carried through pool-insert.
+- **TEXT_BLOCK** (editorial-prose embedding) is **not wired yet**: `composeFingerprint`
+  is called with `null` text, which it gracefully degrades to categorical-only.
+  The slot expects a 384-dim `bge-small` vector; it'll be filled later
+  **client-side** (transformers.js) to avoid needing a Cloudflare/API account.
+- **Pick**: `vibeTarget` = recency-weighted centroid of the now-playing track +
+  human-queued tracks (robot picks are **excluded as anchors** to prevent an
+  echo chamber). `selectVibeAware` (MMR, `ROBOT_MMR_LAMBDA`) ranks candidates,
+  balancing on-vibe fit against variety. Empty queue / no anchor ⇒ shuffle fallback.
 
 ---
 
@@ -313,8 +335,8 @@ Env vars live in `.env` at project root (Vite reads from there via `envDir` in `
 
 ## Deployment
 
-**Automatic** — GitHub Actions deploys on every push to `main`:
-- PartyKit deploys to Cloudflare Workers/DO
-- Client (`client/dist/`) deploys as a static site to Cloudflare Pages at hat.fm
+**Automatic** — GitHub Actions (`.github/workflows/deploy.yml`) on every push to `main`:
+- **Server**: `npx partykit deploy` → PartyKit's **managed platform** (`*.partykit.dev`, login `theloombot`). PartyKit runs on Cloudflare DO under the hood, but there is **no Cloudflare account of ours** — no account id, API token, or platform bindings (`env.AI`, KV, Vectorize, …). Anything needing those must use an external REST API over `fetch`, or run client-side.
+- **Client**: `client/dist/` → **GitHub Pages** (`actions/deploy-pages@v4`). The apex domain `hat.fm` is served via the `CNAME` file + the `404.html` SPA redirect shim (a GitHub Pages convention), with `vite.config.ts` `base: '/'`.
 
-Never run `npm run deploy` manually. The CNAME (`client/public/CNAME = hat.fm`) and `vite.config.ts` (`base: '/'`) are configured for the apex domain.
+Never run `npm run deploy` manually.
