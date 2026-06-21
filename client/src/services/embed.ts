@@ -15,9 +15,18 @@ import { TEXT_DIMS } from "../../../shared/fingerprint"
 /** Smallest well-supported transformers.js embedding model at TEXT_DIMS (384). */
 const MODEL_ID = "Xenova/all-MiniLM-L6-v2"
 
-/** Confidence for name-derived text. Lower than real album editorial prose
- *  (a later upgrade) so thin descriptions don't dominate the vibe. */
+/** Confidence for name-only text (title/artist/album/genres). Discounted
+ *  because it's thin — used when no editorial prose is available. */
 export const NAME_TEXT_CONFIDENCE = 0.6
+
+/** Confidence when real editorial/description prose is folded into the text.
+ *  Full weight — this is the rich signal the fingerprint was designed around. */
+export const EDITORIAL_TEXT_CONFIDENCE = 1
+
+/** Cap editorial length so long prose can't blow past the model's ~256-token
+ *  window and bury the identity-bearing head (title/artist/album/genres),
+ *  which we always place first. */
+const MAX_EDITORIAL_CHARS = 600
 
 env.allowLocalModels = false  // always fetch from the HF CDN + cache in-browser
 
@@ -54,11 +63,15 @@ export async function embedText(text: string): Promise<number[] | null> {
   }
 }
 
-/** The text we embed for a track: title, artist, album, genres. Cheap and
- *  universal (no extra Apple fetch). Album editorial prose is a later, richer
- *  layer built on top of this. */
-export function vibeTextForTrack(t: Track): string {
-  return [t.name, t.artistName, t.albumName, ...(t.fpMeta?.genreNames ?? [])]
+/** The text we embed for a track. The head (title/artist/album/genres) is
+ *  always present and comes first so it survives token truncation; album/
+ *  playlist editorial prose, when available, is appended (capped) for a much
+ *  richer vibe signal. Pass `editorial` to fold it in — callers raise
+ *  textConfidence to EDITORIAL_TEXT_CONFIDENCE when they do. */
+export function vibeTextForTrack(t: Track, editorial?: string): string {
+  const head = [t.name, t.artistName, t.albumName, ...(t.fpMeta?.genreNames ?? [])]
     .filter(Boolean)
     .join(" — ")
+  const ed = editorial?.trim()
+  return ed ? `${head} — ${ed.slice(0, MAX_EDITORIAL_CHARS)}` : head
 }

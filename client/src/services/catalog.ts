@@ -57,8 +57,11 @@ export class AppleMusicCatalog implements MusicCatalog {
   getHeavyRotation() { return this.cached("heavyRotation", () => getHeavyRotationMixTracks(this.storefront)) }
   getRelatedPlaylists(songId: string) { return getRelatedPlaylistsForSong(songId, this.storefront) }
   getAlbumForTrack(songId: string) { return this.cached(`albumFor:${songId}`, () => getAlbumForSong(songId, this.storefront)) }
-  getAlbumEditorial(albumId: string) { return getAlbumEditorial(albumId, this.storefront) }
-  getPlaylistEditorial(playlistId: string) { return getPlaylistEditorial(playlistId, this.storefront) }
+  // Cached so the ArtworkFlip display and the add-time embedding share one
+  // fetch per album/playlist for the whole session (and repeated art flips
+  // stop re-fetching).
+  getAlbumEditorial(albumId: string) { return this.cached(`albumEditorial:${albumId}`, () => getAlbumEditorial(albumId, this.storefront)) }
+  getPlaylistEditorial(playlistId: string) { return this.cached(`playlistEditorial:${playlistId}`, () => getPlaylistEditorial(playlistId, this.storefront)) }
   getSongsByIds(ids: string[]) { return getSongsByIds(ids, this.storefront) }
   getSongsByIsrcs(isrcs: string[]) { return getSongsByIsrcs(isrcs, this.storefront) }
 }

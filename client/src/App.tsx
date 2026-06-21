@@ -410,10 +410,23 @@ export default function App() {
       // up as soon as its embed resolves. On any failure the track is sent
       // without an embedding and the fingerprint degrades to categorical.
       const uid = user.uid
-      void import("./services/embed").then(async ({ embedText, vibeTextForTrack, NAME_TEXT_CONFIDENCE }) => {
-        const embedding = await embedText(vibeTextForTrack(track))
+      const cat = catalog.current
+      void import("./services/embed").then(async ({ embedText, vibeTextForTrack, NAME_TEXT_CONFIDENCE, EDITORIAL_TEXT_CONFIDENCE }) => {
+        // Fold album editorial prose into the embedded text when we can find it.
+        // Both fetches are cached per session and shared with the ArtworkFlip
+        // display; best-effort, so any failure falls back to name-only text.
+        let editorial: string | undefined
+        if (track.appleId) {
+          try {
+            const album = await cat.getAlbumForTrack(track.appleId)
+            if (album) editorial = (await cat.getAlbumEditorial(album.id)).notes
+          } catch { /* best-effort — name-only fallback */ }
+        }
+        const embedding = await embedText(vibeTextForTrack(track, editorial))
         stationSocket.addTrack(
-          embedding ? { ...track, textEmbedding: embedding, textConfidence: NAME_TEXT_CONFIDENCE } : track,
+          embedding
+            ? { ...track, textEmbedding: embedding, textConfidence: editorial ? EDITORIAL_TEXT_CONFIDENCE : NAME_TEXT_CONFIDENCE }
+            : track,
           uid,
         )
       })
