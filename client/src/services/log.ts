@@ -7,6 +7,7 @@
 //   net      — WebSocket / HTTP transport
 //   auth     — MusicKit / Apple session lifecycle
 //   app      — top-level user actions (station select/create/delete, reauth)
+//   embed    — local embedding model (transformers.js) requests + responses
 //
 // Default level is `info`, so routine flow is visible without flipping a switch.
 // To dig in:
@@ -18,11 +19,11 @@
 // Reload the page after changing.
 
 type Level = "debug" | "info" | "warn" | "error"
-type Category = "queue" | "sync" | "playback" | "net" | "auth" | "app"
+type Category = "queue" | "sync" | "playback" | "net" | "auth" | "app" | "embed"
 
 const LEVELS: Record<Level, number> = { debug: 0, info: 1, warn: 2, error: 3 }
 const DEFAULT_LEVEL: Level = "info"
-const CATEGORIES: Category[] = ["queue", "sync", "playback", "net", "auth", "app"]
+const CATEGORIES: Category[] = ["queue", "sync", "playback", "net", "auth", "app", "embed"]
 
 interface Config {
   global: Level
@@ -90,4 +91,5 @@ export const log = {
   net: bind("net"),
   auth: bind("auth"),
   app: bind("app"),
+  embed: bind("embed"),
 }

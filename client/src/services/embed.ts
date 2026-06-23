@@ -11,6 +11,7 @@
 import { pipeline, env, type FeatureExtractionPipeline } from "@huggingface/transformers"
 import type { Track } from "../types"
 import { TEXT_DIMS } from "../../../shared/fingerprint"
+import { log } from "./log"
 
 /** Smallest well-supported transformers.js embedding model at TEXT_DIMS (384). */
 const MODEL_ID = "Xenova/all-MiniLM-L6-v2"
@@ -52,12 +53,28 @@ export function warmEmbedder(): void {
 export async function embedText(text: string): Promise<number[] | null> {
   const clean = text.trim()
   if (!clean) return null
+  // Debug visibility into every local-model invocation. Gated behind the
+  // `embed` log category (localStorage.log = "embed:debug" or "debug").
+  log.embed.debug("request →", { model: MODEL_ID, chars: clean.length, text: clean })
+  const t0 = performance.now()
   try {
     const extractor = await getExtractor()
     const out = await extractor(clean, { pooling: "mean", normalize: true })
     const arr = Array.from(out.data as Float32Array)
-    return arr.length === TEXT_DIMS ? arr : null
-  } catch {
+    if (arr.length !== TEXT_DIMS) {
+      log.embed.warn("response ✗ unexpected dims", { dims: arr.length, expected: TEXT_DIMS, text: clean })
+      return null
+    }
+    log.embed.debug("response ←", {
+      dims: arr.length,
+      ms: Math.round(performance.now() - t0),
+      preview: arr.slice(0, 8).map(x => +x.toFixed(4)),
+      vector: arr,
+      text: clean,
+    })
+    return arr
+  } catch (e) {
+    log.embed.warn("response ✗ error", { error: e instanceof Error ? e.message : String(e), text: clean })
     extractorPromise = null  // allow a later retry
     return null
   }
